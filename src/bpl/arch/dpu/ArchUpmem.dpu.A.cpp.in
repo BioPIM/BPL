@@ -1,0 +1,461 @@
+////////////////////////////////////////////////////////////////////////////////
+// BPL, the Process In Memory library for bioinformatics 
+// date  : 2023
+// author: edrezen
+////////////////////////////////////////////////////////////////////////////////
+
+extern "C"
+{
+    #include <mram.h>
+    #include <defs.h>
+    #include <mutex.h>
+    #include <barrier.h>
+    #include <alloc.h>
+    #include <perfcounter.h>
+    int printf (const char* fmt, ...);
+}
+
+#include <bpl/core/Task.hpp>
+#include <bpl/arch/ArchUpmemResources.hpp>
+#include <bpl/utils/serialize.hpp>
+#include <bpl/utils/metaprog.hpp>
+#include <bpl/utils/split.hpp>
+#include <bpl/utils/Range.hpp>
+#include <tasks/@TASKNAME@.hpp>
+
+#define PRINTF(a...)  //printf(a)
+#define DEBUGn(n,a...)     //if (me()==n)  { printf(a); }
+#define VERBOSEn(n,a...)   //if (me()==n)  { printf(a); }
+#define DEBUG0(a...)     DEBUGn(0,a)
+#define VERBOSE0(a...)   VERBOSEn(0,a)
+
+
+#define WITH_SPLIT_ARGUMENTS
+
+//#define FAKE
+
+////////////////////////////////////////////////////////////////////////////////
+using resources_t = bpl::arch::ArchUpmemResources;
+using task_t      = @TASKNAME@ <resources_t @TASKTEMPLATE@>;
+
+////////////////////////////////////////////////////////////////////////////////
+// MUTEXES
+////////////////////////////////////////////////////////////////////////////////
+
+// We get the number of mutexes allowed for task_t
+template<typename TASK>  constexpr int getNbMutex () {  return 0;  }
+
+template<typename TASK>
+requires (bpl::core::is_task_v<TASK>)
+constexpr int getNbMutex ()  {  return TASK::MUTEX_NB;  }
+
+static constexpr int MUTEX_NB = getNbMutex<task_t>();
+
+// We define a vector of MUTEX_NB mutexes.
+// Actually, this is a vector or uint8_t with a specific '__atomic_bit' attribute
+// (see upmem/include/syslib/mutex.h)
+static uint8_t __atomic_bit  atomicMutexes[MUTEX_NB];
+
+using TaskBase_t   = bpl::core::TaskBase<bpl::core::Task<resources_t,MUTEX_NB>>;
+using ArrayMutex_t = bpl::core::array_wrapper<TaskBase_t::mutex_t,MUTEX_NB>;
+        
+// some checks
+//static_assert (std::is_base_of_v<TaskBase_t,task_t> == true);
+//static_assert (std::is_same_v<TaskBase_t::mutex_t,resources_t::mutex> == true);
+//static_assert (std::is_same_v<ArrayMutex_t,decltype(TaskBase_t::mutexes)> == true);
+
+// initialization of the static member of CRTP class bpl::core::TaskBase
+template<>  ArrayMutex_t TaskBase_t::mutexes = ArrayMutex_t::init_from <uint8_t> (atomicMutexes);
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TimeStats
+{
+    uint32_t all;
+    uint32_t unserialize;
+    uint32_t split;
+    uint32_t exec;
+    uint32_t result;
+};
+
+struct AllocatorStats
+{
+    uint32_t used        = 0;
+    uint32_t nbCallsGet  = 0;
+    uint32_t nbCallsRead = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+static const std::size_t ARGS_SIZE   = @TASKSIZE@ * 1024*1024;
+
+__host uint32_t __nbtaskunits__;                                            // HOST -> DPU
+__host uint32_t __dpuid__;                                                  // HOST -> DPU
+__host uint32_t __reset__;                                                  // HOST -> DPU
+__mram_noinit  uint8_t __args__   [ARGS_SIZE];                              // HOST -> DPU
+__mram_noinit  uint8_t __argsSplitStatus__   [32];                          // HOST -> DPU
+
+__host uint32_t        __result_tasklet_order__ [NR_TASKLETS];              // DPU  -> HOST
+__host uint32_t        __result_tasklet_size__  [NR_TASKLETS];              // DPU  -> HOST
+__host TimeStats       __nb_cycles__            [NR_TASKLETS];              // DPU  -> HOST
+__host AllocatorStats  __allocator_stats__;                                 // DPU  -> HOST
+
+__host uint32_t __heap_pointer__       = (uint32_t) DPU_MRAM_HEAP_POINTER + 0x00000;      // DPU  -> HOST
+__host uint32_t __heap_pointer_init__  = (uint32_t) DPU_MRAM_HEAP_POINTER + 0x00000;      // DPU  -> HOST
+
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+BARRIER_INIT(my_barrier, NR_TASKLETS);
+
+MUTEX_INIT(__MRAM_Allocator_mutex__);
+bpl::arch::MRAM::Allocator<true>  __MRAM_Allocator_lock__;
+bpl::arch::MRAM::Allocator<false> __MRAM_Allocator_nolock__;
+
+__host std::size_t totalSize  = 0;
+__host std::size_t taskletIdx = 0;
+
+__host std::size_t cumulOffsets[NR_TASKLETS];
+
+using Serializer = bpl::core::Serialize<resources_t,bpl::core::BufferIterator<resources_t>,8>;
+
+////////////////////////////////////////////////////////////////////////////////
+void banner (const char* msg)
+{
+    if (me()==0)
+    {
+        DEBUG0 ("\n");
+        DEBUG0 ("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+        DEBUG0 ("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++   %20s   ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n", msg);
+        DEBUG0 ("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+    }
+}
+
+#define WITH_PERFCOUNTER
+
+#ifdef WITH_PERFCOUNTER 
+    struct Perf
+    {
+        static uint32_t init () { return perfcounter_config(COUNT_CYCLES, true); }
+        static uint32_t get  () { return perfcounter_get(); }
+    };
+#else
+    struct Perf
+    {
+        static uint32_t init () { return 0; }    
+        static uint32_t get  () { return 0; }
+    };
+#endif
+
+////////////////////////////////////////////////////////////////////////////////
+// We define a function that can configure a Task instance.
+// The default implementation does nothing; only the specialization for a type
+// being a Task does something.
+template<typename T, typename...ARGS> 
+auto configure (T&& task, ARGS...args) 
+{
+}
+
+template<typename T, typename...ARGS>
+requires (bpl::core::is_task_v<T>)
+auto configure (T&& task, ARGS...args)
+{
+    task.configure (args...); 
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// We define a function that can post process the result of a task
+// The default implementation does nothing; 
+// only the specialization for bpl::core::vector (directly or not) does something
+template<typename T> 
+void postprocess (T& result) 
+{
+    DEBUG0 ("postprocess generic: %d  @: 0x%lx \n", sizeof(result), uint64_t(&result));
+}
+
+template<typename...ARGS>
+void postprocess (std::tuple<ARGS...>& result)
+{
+    DEBUG0 ("postprocess tuple\n");
+    bpl::core::for_each_in_tuple (result, [&] (auto&& p)
+    {
+        postprocess (p);
+    });
+}
+
+template<typename T, int DATABLOCK_SIZE_LOG2,int MEMTREE_NBITEMS_PER_BLOCK_LOG2, int MAX_MEMORY_LOG2>
+void postprocess (
+    resources_t::vector<T,DATABLOCK_SIZE_LOG2,MEMTREE_NBITEMS_PER_BLOCK_LOG2, MAX_MEMORY_LOG2>& result
+) 
+{
+    DEBUG0 ("postprocess vector\n");
+    // FIRST VERSION: to be improved...
+    result.flush();
+    result.flush_block_all();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+int main()
+{
+    uint32_t initial_time = Perf::init ();
+
+    // shortcut
+    int tuid = me();
+    
+    barrier_wait(&my_barrier);
+    banner("BEGIN");
+
+    if (tuid==0)  
+    {
+        __MRAM_Allocator_lock__.init (__heap_pointer_init__);
+        
+        if (__reset__)  
+        {
+            __MRAM_Allocator_lock__.reset();
+        }
+
+        DEBUG0 ("__reset__=%d  __nbtaskunits__=%3d  __dpuid__=%3d \n", __reset__, __nbtaskunits__, __dpuid__); 
+
+        // Trace for dumping the incoming buffer.
+        VERBOSE0 ("INCOMING BUFFER '__args__'\n");
+        for (size_t idx=0; idx<std::min(size_t(512),ARGS_SIZE); idx++)  {  VERBOSE0 ("%3d%c", __args__[idx], (idx%32==31 ? '\n' : ' '));  }   VERBOSE0 ("\n");
+    }
+    barrier_wait(&my_barrier);
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // DATA MANAGEMENT (HOST -> DPU)
+    ////////////////////////////////////////////////////////////////////////////////
+
+    // IMPORTANT !!! add __dma_aligned to the following CACHE object (otherwise strange things happen...)
+    __dma_aligned char CACHE[1<<8];
+    static const int CACHE_SIZE = sizeof(CACHE)/sizeof(CACHE[0]);
+
+    DEBUG0 ("\n*************************************************************************************************\n");
+    DEBUG0 ("check_stack()=%d  @CACHE=%ld  sizeof(CACHE)=%d \n", check_stack(), uint64_t(CACHE), sizeof(CACHE));
+
+    // we reset variables (important if successive calls are done)
+    totalSize  = 0;
+    taskletIdx = 0;
+
+    using task_parameters = bpl::core::transform_tuple_t <
+        bpl::core::transform_tuple_t <
+            bpl::core::task_params_t<task_t>, 
+            bpl::core::removetag_once
+        >,
+        bpl::core::removetag_global
+    >;
+
+    banner("PARAMS RETRIEVE");
+
+    // We retrieve the arguments (broadcasted by the host) as a tuple.
+    task_parameters argsAsTuple;
+
+#ifndef FAKE
+    {
+        banner("SERIALIZE PROCESS");
+
+        // We need a way to iterate the raw buffer of the input arguments.
+        bpl::core::BufferIterator<resources_t> iter (__args__, CACHE, CACHE_SIZE);
+
+        DEBUG0("Retrieving input parameters from incoming buffer from host...  #tuple=%d  sizeof(tuple)=%d  @tuple=%ld\n", 
+            std::tuple_size_v<decltype(argsAsTuple)>, sizeof(argsAsTuple), uint64_t(&argsAsTuple)
+        );
+
+        // Note: we use the BufferIterator in a block -> will be deleted as soon as we leave the block
+        Serializer::restore (iter, argsAsTuple);
+    }
+#else
+    for (uint32_t i=0; i<ARGS_SIZE; i++)  { __args__[i]=0; }
+#endif
+    
+    // Performance stats
+    __nb_cycles__ [tuid].unserialize = Perf::get() - initial_time;
+
+    // We compute the actual puid
+    uint32_t puid = __dpuid__*NR_TASKLETS + tuid;
+
+    // TBD: we may have to modify some parameters of the tuple according to the split scheme used by the host
+#ifndef FAKE
+#ifdef WITH_SPLIT_ARGUMENTS
+    {
+        __attribute__((unused)) auto popcount = [] (char* ptr, int size)
+        {
+            int res=0;
+            for (int i=0; i<size; i++)  {  for (int j=0; j<8; j++)  { res += (ptr[i] >> j) & 1; } }
+            return res;
+        };
+
+        banner("SPLIT PROCESS");
+
+        int idx=0;
+        bpl::core::for_each_in_tuple (argsAsTuple, [&] (auto&& p)
+        {
+            // we get the split status for the current argument
+            uint8_t level = __argsSplitStatus__[idx];
+
+            VERBOSE0("tuid: %3d  arg[%2d]:  split=%1d  sizeof=%3d \n", tuid, idx, level, sizeof(p));
+            
+            // We may have to split the current argument, one split per tasklet
+            if (level>=3)  
+            {  
+                p = SplitOperator<std::decay_t<decltype(p)>>::split (
+                    p,  
+                    tuid,        //index(level,puid), 
+                    NR_TASKLETS  //index(level,__nbtaskunits__)
+                );  
+            }
+            
+            idx++;
+        });
+    }
+    
+    // Performance stats
+    __nb_cycles__ [tuid].split = Perf::get() - __nb_cycles__ [tuid].unserialize;
+
+#endif // WITH_SPLIT_ARGUMENTS
+#endif // #ifndef FAKE
+    
+    ////////////////////////////////////////////////////////////////////////////////
+    // TASK EXECUTION
+    ////////////////////////////////////////////////////////////////////////////////
+
+    using result_type = bpl::core::return_t<decltype(&task_t::operator())>;
+
+    // We call the 'run' method with 'puid' and the deserialized input arguments.
+    auto fct = [&] (auto &&... args) -> result_type  
+    {
+        // We instantiate a task_t object.
+        task_t task;
+
+        // We may have to configure the task with some values.
+        configure (task, puid, perfcounter_config (COUNT_CYCLES, true));
+
+        return task (std::forward<decltype(args)>(args)...);
+    };
+
+    banner("EXEC BEGIN");
+
+#ifndef FAKE
+    // This implemention will run the task
+    result_type result = std::apply (fct, argsAsTuple);
+#else
+    // This implemention will return a default value for the type returned by the task
+    result_type result = result_type ();
+#endif
+
+    // We may need some post process on the result.
+    // For instance, instances of bpl::core::vector may need to be 'flushed' if they are
+    // in dirty state.
+    postprocess (result); 
+    
+    // Performance stats
+    __nb_cycles__ [tuid].exec = Perf::get() - __nb_cycles__ [tuid].split;
+
+    banner("EXEC END");
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // DATA MANAGEMENT (DPU -> HOST)
+    ////////////////////////////////////////////////////////////////////////////////
+
+    // We memorize the tasklet id and result size
+    // NOTE: the trick here is to first compute the size of the result before copying the result into MRAM
+    // -> this can be done in the context of the current tasklet without concurrent access
+    __result_tasklet_order__ [tuid] = puid;
+    __result_tasklet_size__  [tuid] = Serializer::size (result);
+
+    // However, we have to prevent concurrent access when computing the offset (for each tasklet) of the MRAM pointer 
+    // where to put the result.
+    // Note that we also could directy use Serializer::iterate with mutex protection; it is then possible to skip the
+    // cumulOffsets computation BUT if there is many information to broadcast to host, it could be time costly because
+    // each serialization (for each tasklet) would not be pararellized.
+
+    banner ("COMPUTE OFFSETS");
+
+    barrier_wait(&my_barrier);
+    if (tuid==0) // compute the offset only by one tasklet
+    {
+        for (size_t i=0; i<NR_TASKLETS; i++)
+        {
+            cumulOffsets[i] = (i==0 ? 0 : __result_tasklet_size__[i-1] + cumulOffsets[i-1]);
+        }
+        __heap_pointer__ = __MRAM_Allocator_lock__.get(0);
+    }
+    barrier_wait(&my_barrier);
+
+    std::size_t localSize = 0;
+
+    // Now, each tasklet knows where to copy its result to the MRAM -> we can call the serialization method
+    // We copy the result of the task into MRAM
+    Serializer::iterate (0, result , [&] (int depth, void* ptr, std::size_t size, std::size_t roundedSize)
+    {
+        size_t offset = cumulOffsets[tuid] + localSize;
+
+        // We compute where the information has to be copied 
+        __mram_ptr void*  dest = (__mram_ptr void*) ((char*)__heap_pointer__ + offset);
+
+        // We check that the incoming pointer has a decent alignement.
+        bool isAlignmedWRAM = (((unsigned long)ptr) & 7) == 0;
+
+        // We have also to that the actual size is not too short. Indeed mram_write must have at least 8 bytes,
+        // so if our object to be serialize is less than 8 bytes, we could write too extra memory (from WRAM)
+        // with potential UB.
+        bool shouldCopy = (size < 8) or (not isAlignmedWRAM);
+        
+        // If we are unlucky, we need to force alignment
+        if (shouldCopy)  
+        {
+            if (size > sizeof(CACHE))  
+            {  
+                /* WE SHOULD RETURN SOME ERROR STATUS. */
+                printf ("ERROR: size overflow when retrieving result\n");
+            }
+            for (std::size_t i=0; i<size; i++)  { CACHE[i] = ((uint8_t*)ptr)[i]; }  
+        }
+        
+        mram_write (shouldCopy ? CACHE : ptr,  dest,  roundedSize);
+        
+        localSize += roundedSize;
+    });
+
+    // Performance stats
+    __nb_cycles__ [tuid].result = Perf::get() - __nb_cycles__ [tuid].exec;
+
+    barrier_wait(&my_barrier);
+    if (tuid==0)  
+    {  
+        __allocator_stats__.used        = __MRAM_Allocator_lock__.used();
+        __allocator_stats__.nbCallsGet  = __MRAM_Allocator_lock__.nbCallsGet;
+        __allocator_stats__.nbCallsRead = __MRAM_Allocator_lock__.nbCallsRead;
+        
+        PRINTF ("==> MRAM used: %d bytes (%.3f MB)    start: 0x%x  pos: 0x%x  __heap_pointer__: 0x%x   nbCallsGet: %d\n",  
+            __MRAM_Allocator_lock__.used(),  __MRAM_Allocator_lock__.used()/1024.0/1024.0, 
+            __MRAM_Allocator_lock__.start(), __MRAM_Allocator_lock__.pos(), uint32_t(__heap_pointer__),
+            __MRAM_Allocator_lock__.nbCallsGet 
+        );
+        
+        if (false)
+        {
+            for (int n=0; n<5; n++)
+            {
+                __mram_ptr void* ptr = (__mram_ptr void*) (__heap_pointer__+ n*sizeof(CACHE));
+                mram_read(ptr, CACHE,  sizeof(CACHE));
+                
+                for (size_t i=0; i<sizeof(CACHE); i++)
+                {
+                    if (i%32==0)  { printf ("\nMRAM 0x%x > ", (uint32_t) ptr + i); }
+                    if (i%8==0)  { printf ("| "); }
+                    printf ("%3d ", (uint8_t) CACHE[i]);
+                }
+            }
+            printf ("\n");
+        }
+    }
+    
+    __nb_cycles__ [tuid].all = Perf::get() - initial_time;
+    
+    banner("END");
+    
+    barrier_wait(&my_barrier);
+
+    return 0;
+}

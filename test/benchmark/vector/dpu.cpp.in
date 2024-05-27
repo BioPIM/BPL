@@ -1,0 +1,264 @@
+////////////////////////////////////////////////////////////////////////////////
+// BPL, the Process In Memory library for bioinformatics 
+// date  : 2023
+// author: edrezen
+////////////////////////////////////////////////////////////////////////////////
+
+extern "C"
+{
+    #include <mram.h>
+    #include <stdint.h>
+    #include <mutex.h>
+    #include <defs.h>
+    int printf (const char* fmt, ...);
+}
+
+#define DEBUG(a...)  //printf(a)
+
+////////////////////////////////////////////////////////////////////////////////
+
+using type = uint32_t;
+
+static constexpr int BUFFER = 2048 /sizeof(type);
+
+static const uint32_t NMAX_LOG2 = @NMAX@;
+static const uint32_t NMAX      = 1ULL << NMAX_LOG2;
+
+#include <bpl/utils/vector.hpp>
+#include <bpl/arch/dpu/ArchUpmemMRAM.hpp>
+
+////////////////////////////////////////////////////////////////////////////////
+MUTEX_INIT(__MRAM_Allocator_mutex__);
+bpl::arch::MRAM::Allocator<true> __MRAM_Allocator__;
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+class Allocator
+{
+public:
+    using address_t = decltype(__MRAM_Allocator__)::address_t;
+
+    static constexpr bool is_freeable = false;
+    
+//    static Allocator& singleton () {  static Allocator instance; return instance; }
+
+    static inline address_t write (void* src, size_t n)
+    {
+        address_t result = __MRAM_Allocator__.write (src, n);
+//        nbwrites_++;
+        return result;
+    };
+
+    static inline address_t* read (address_t src, void* tgt, size_t n)
+    {
+        __MRAM_Allocator__.read (src, tgt, n);
+//        nbreads_++;
+        return (address_t*) tgt;
+    };
+
+    static void free (address_t a)
+    {
+        // not really a free, isn't it ?
+    }
+
+    static void debug ()
+    {
+//        if (me()==0)   printf ("[ALLOCATOR] #write=%d  #read=%d\n", nbwrites_, nbreads_);
+    }
+
+    static void reset()
+    {
+        __MRAM_Allocator__.reset();
+    }
+
+    static void reset_stats()  
+    { 
+//        nbwrites_ = nbreads_ = 0; 
+    }
+
+//    size_t nbwrites_ = 0;
+//    size_t nbreads_  = 0;
+};
+
+///////////////////////////////////////////////////////////////////////////////
+//
+///////////////////////////////////////////////////////////////////////////////
+uint32_t next (uint32_t next_val, uint8_t n)
+{
+    static uint32_t taps[] = {
+        0,
+        /*   1 */  0x00000001,    /*   2 */  0x00000003,    /*   3 */  0x00000006,    /*   4 */  0x0000000c,
+        /*   5 */  0x00000014,    /*   6 */  0x00000030,    /*   7 */  0x00000060,    /*   8 */  0x000000b8,
+        /*   9 */  0x00000110,    /*  10 */  0x00000240,    /*  11 */  0x00000500,    /*  12 */  0x00000829,
+        /*  13 */  0x0000100d,    /*  14 */  0x00002015,    /*  15 */  0x00006000,    /*  16 */  0x0000d008,
+        /*  17 */  0x00012000,    /*  18 */  0x00020400,    /*  19 */  0x00040023,    /*  20 */  0x00090000,
+        /*  21 */  0x00140000,    /*  22 */  0x00300000,    /*  23 */  0x00420000,    /*  24 */  0x00e10000,
+        /*  25 */  0x01200000,    /*  26 */  0x02000023,    /*  27 */  0x04000013,    /*  28 */  0x09000000,
+        /*  29 */  0x14000000,    /*  30 */  0x20000029,    /*  31 */  0x48000000,    /*  32 */  0x80200003
+    };
+
+    bool lsb = (next_val & 1) == 1;
+    next_val = next_val >> 1;
+    if (lsb)  {  next_val ^= taps[n];  }
+    return next_val;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+//
+///////////////////////////////////////////////////////////////////////////////
+template<typename DOIT>
+void loop (DOIT doit)
+{
+    for (uint32_t n=0; n<NMAX; n++)  {  doit (n);  }
+}
+
+template<typename DOIT>
+void loop_r (DOIT doit)
+{
+    for (int32_t n=NMAX-1; n>=0; n--)  {  doit (n);  }
+}
+
+template<typename DOIT>
+void loop_lfsr (DOIT doit)
+{
+    uint32_t val = NMAX/2;
+
+    doit (val);
+    
+    for (uint32_t i=1; i<NMAX; i++)
+    {
+        val = next(val,NMAX_LOG2);
+        doit (val);
+    }
+}
+
+#define LOOP loop
+
+///////////////////////////////////////////////////////////////////////////////
+//
+///////////////////////////////////////////////////////////////////////////////
+template<typename PRE, typename DOIT, typename POST>
+void test_template (PRE pre, DOIT doit, POST post)
+{
+    for (uint32_t n=0; n<NMAX; n+=BUFFER)
+    {
+        pre(n);
+        for (type i=0; i<BUFFER; i++)  {  doit (n, i);  }
+        post(n);
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+//
+///////////////////////////////////////////////////////////////////////////////
+auto vector_write (bool check)
+{
+    uint64_t result = 0;
+    
+    bpl::core::vector <type, Allocator> vec;
+
+    LOOP ([&] (auto n)  { vec.push_back (type(n));  } );
+    
+    if (check)
+    {
+//        LOOP ([&] (auto n)  {  result += vec[n]; } );
+        vec.iterate ([&] (type n) {  result += n; });
+        
+// IN THE FUTURE:  for (type n : vec)   {  result += n; }
+    }
+    
+    return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+//
+///////////////////////////////////////////////////////////////////////////////
+type __mram_noinit  big [NMAX];
+
+auto handcrafted_write (bool check)
+{
+    uint64_t result = 0;
+
+    __dma_aligned type input[BUFFER];
+    
+    for (uint32_t n=0; n<NMAX; n+=BUFFER)
+    {
+        for (uint32_t i=0; i<BUFFER; i++)  {  input[i]  = type(n+i); }
+        
+        mram_write (input, (__mram_ptr void *) ( (type*)big + n), sizeof(input));
+    }
+    
+    if (check)
+    {
+        for (uint32_t n=0; n<NMAX; n+=BUFFER)
+        {
+            mram_read ((__mram_ptr void *) ( (type*)big + n), input, sizeof(input));
+            
+            for (uint32_t i=0; i<BUFFER; i++)  {  result += input[i]; }
+        }
+    }
+
+    return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+//
+///////////////////////////////////////////////////////////////////////////////
+auto upmem_write (bool check)
+{
+    uint64_t result = 0;
+    
+    LOOP ([&] (auto n)  {  big[n] = type(n); } );
+
+    if (check)
+    {
+        LOOP ([&] (auto n)  {  result += big[n]; } );
+    }
+
+    return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+__host  uint32_t nb_runs  = 1UL << (22 - NMAX_LOG2);
+__host  uint32_t nb_items = NMAX_LOG2;
+__host  uint32_t choice   = 1;
+__host  uint64_t result   = 0;
+
+///////////////////////////////////////////////////////////////////////////////
+int main()
+{
+    if (me()==0)
+    {
+        //printf ("check_stack()=%d\n", check_stack());
+
+        if (choice==1)  
+        {
+            for (uint32_t n=1; n<=nb_runs; n++)  {   result = vector_write (false); Allocator::reset ();  }  
+        }
+        else if (choice==2)
+        {
+            for (uint32_t n=1; n<=nb_runs; n++)  {   result = handcrafted_write (false);   }  
+        }
+        else if (choice==3)
+        {
+            for (uint32_t n=1; n<=nb_runs; n++)  {   result = upmem_write (false);   }  
+        }
+        
+        else if (choice==4)  
+        {
+            for (uint32_t n=1; n<=nb_runs; n++)  {   result = vector_write (true); Allocator::reset ();  }  
+        }
+        else if (choice==5)
+        {
+            for (uint32_t n=1; n<=nb_runs; n++)  {   result = handcrafted_write (true);   }  
+        }
+        else if (choice==6)
+        {
+            for (uint32_t n=1; n<=nb_runs; n++)  {   result = upmem_write (true);   }  
+        }
+    }
+
+    return 0;
+}

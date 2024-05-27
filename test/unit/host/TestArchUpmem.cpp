@@ -1,0 +1,19 @@
+////////////////////////////////////////////////////////////////////////////////
+// BPL, the Process In Memory library for bioinformatics 
+// date  : 2023
+// author: edrezen
+////////////////////////////////////////////////////////////////////////////////
+
+//#include <catch2/catch_test_macros.hpp>
+//
+//#include <bpl/arch/ArchUpmem.hpp>
+//
+//using namespace bpl::arch;
+//
+//////////////////////////////////////////////////////////////////////////////////
+//TEST_CASE ("dpu_set_handle_t: check 1", "[ArchUpmem]" )
+//{
+//    details::dpu_set_handle_t handle (DpuComponentKind_e::DPU, 1);
+//
+//    printf ("=> %ld\n", handle.getProcUnitNumber());
+//}

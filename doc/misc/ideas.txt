@@ -1,0 +1,762 @@
+
+////////////////////////////////////////////////////////////////////////////////
+// name for the library
+////////////////////////////////////////////////////////////////////////////////
+Genomics
+Algorithm
+Parallelization
+
+Re-usable
+Component
+
+Architecture
+Library
+Design
+Hardware
+API
+Interface
+Software
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+// 
+////////////////////////////////////////////////////////////////////////////////
+
+struct KmerCount
+{
+    static auto run (int puid, const Database& db, int kmersize)
+    {
+        for (const Sequence& seq : db)  
+        {  
+        	for (auto kmer : KmerSequence(seq,kmersize))
+        	{
+        		distrib[kmer] ++;
+        	}
+        }
+    }
+};
+
+
+=
+////////////////////////////////////////////////////////////////////////////////
+// DPU
+////////////////////////////////////////////////////////////////////////////////
+struct MyTask
+{
+    static auto run (int puid, const Database& dbref, Sequence query)
+    {
+        for (const Sequence& ref : dbref)  {   compare (ref, query); }
+    }
+};
+
+struct MyTask
+{
+    static auto run (int puid, Sequence query)
+    {
+    	// We retrieve a global object from its name
+    	const Database& dbref = global<Database>("dbref");
+    
+        for (const Sequence& ref : dbref)  {  compare (ref, query);  }
+    }
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+// HOST
+////////////////////////////////////////////////////////////////////////////////
+{
+    Split<Database> dbref = Database("/opt/database/ref.fasta");
+    launcher.prefetch (dbref, "dbref");
+
+==> PAS VRAIMENT ENVISAGEABLE car cela est trop spécifique à PIM et ne permettrait pas un partage d'une tâche entre CPU et PIM par exemple.
+
+
+    Database mydb;
+    launcher.prefetch (mydb, "mydb");
+ 
+    Sequence qry;   
+    launcher.run<MyTask> (qry);
+    
+    launcher.run<MyTask> (mydb, qry);
+    launcher.run<MyTask> (prefetch(mydb), qry);
+    launcher.run<MyTask> (persist(mydb), qry);
+    launcher.run<MyTask> (keep(mydb), qry);
+
+    launcher.run<MyTask>    (persist(split(mydb)), qry);
+    launcher.run<OtherTask> (persist(split(mydb)), qry);
+
+    launcher.run<MyTask>    (persist(mydb), qry);
+    launcher.run<OtherTask> (3.141592, persist(mydb), qry);
+    
+    launcher.run<MyTask>    (mydb, qry);
+    launcher.run<OtherTask> (3.141592, mydb, qry);
+    
+}
+
+template<typename T>
+struct persist
+{
+	persist(T&& t) : t_(t) {}
+	operator T() { return t_; }
+	T t_;	 
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TaskletLevel   {  enum { value=3 };   enum { nbpu = 1                     };  };
+struct DPULevel       {  enum { value=2 };   enum { nbpu = 16*TaskletLevel::nbpu };  };
+struct RankLevel      {  enum { value=1 };   enum { nbpu = 64*DPULevel::nbpu     };  };
+
+auto range = std::make_pair(size_t(0),dbRef.size());
+
+auto launcher = Launcher (RankLevel(2)); 
+
+launcher.run<DoSomething> (MySplit<RankLevel>    (range)); 	-> 2       splits
+launcher.run<DoSomething> (MySplit<DPULevel>     (range));	-> 2*64    splits
+launcher.run<DoSomething> (MySplit<TaskletLevel> (range));	-> 2*64*16 splits
+
+
+
+Launcher<ArchUpmem> launcher (TaskUnit::rank(10));
+Launcher<ArchUpmem> launcher (TaskUnit::dpu(10));
+
+Launcher<ArchUpmem> launcher (TaskUnit::get("rank",10));
+
+Launcher<ArchUpmem> launcher (TaskUnit<RANK>(10));
+Launcher<ArchUpmem> launcher (TaskUnit<DPU> (10));
+
+Launcher<ArchUpmem> launcher (TaskUnit<ArchUpmem::rank>(10));
+Launcher<ArchUpmem> launcher (TaskUnit<ArchUpmem::dpu> (10));
+
+Launcher<ArchUpmem> launcher (ArchUpmem::TaskUnitRank(10));
+Launcher<ArchUpmem> launcher (ArchUpmem::Rank(10));
+
+auto results = launcher.run <MyAlgorithm> (
+   split<ProcessUnitTasklet> (dbRef),
+   dbQry
+);
+
+auto results = launcher.run <MyAlgorithm> (
+   split<TaskUnit<ArchUpmem::rank>> (dbRef),
+   dbQry
+);
+
+
+auto results = launcher.run <MyAlgorithm> (
+   TaskUnit<ArchUpmem::rank>::split (dbRef),
+   dbQry
+);
+
+Launcher<ArchUpmem> (TaskUnit<ArchUpmem::rank>(10)).run <MyAlgorithm> (
+   TaskUnit<ArchUpmem::dpu>::split (range)
+);
+
+Launcher<ArchUpmem> (TaskUnit<ArchUpmem::rank>(10)).run <MyAlgorithm> (
+   split<TaskUnit<ArchUpmem::dpu>> (range)
+);
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+static auto run (int puid,  const buffer_t& buffer);
+
+
+static auto run (TaskId tuid,  const buffer_t& buffer);
+
+struct TaskId
+{
+	int idx;
+	int total;
+	int hierarchy[3];
+	int argLevel[32];
+};
+
+struct TaskId   // fourni par ARCH -> le tableau 'hierarchy' a une taille qui en dépend.
+{
+	uint16_t idx;
+	uint16_t total;
+	uint8_t  hierarchy[4];
+};
+
+
+
+    auto result = launcher.run<Checksum4> (
+        split<ArchUpmem::DPU>(data),
+        split<ArchUpmem::Tasklet>(std::make_pair (0, data.size()))
+    );
+
+    auto result = launcher.run<Checksum4> (
+        split<ArchUpmem::DPU>(data),
+        split<ArchUpmem::DPU>(
+        	split<ArchUpmem::Tasklet>(std::make_pair (0, data.size()))
+    	)
+    );
+
+    auto result = launcher.run<Checksum4> (
+        split<DPU>(data),
+        split<DPU,Tasklet>(std::make_pair (0, data.size()))
+    );
+
+    auto result = launcher.run<Checksum4> (
+        split<Rank>(data),
+        split<Rank,Tasklet>(std::make_pair (0, data.size()))
+    );
+
+    auto result = launcher.run<DoSomething> ( 
+        iterate (ref),
+        split<Tasklet> (iterate (qry))
+    );
+
+
+	for (refChunk : chunk(ref,10000) )  // iteration via une liste d'itérateurs par chunks
+	{
+	    auto result = launcher.run<DoSomething> ( 
+	        refChunk,
+	        split<Tasklet> (qry)
+	    );
+	}
+	
+
+
+    auto result = launcher.run<Checksum5> (
+        split<ArchUpmem::DPU>(data)
+    );
+
+////////////////////////////////////////////////////////////////////////////////
+// BANK
+////////////////////////////////////////////////////////////////////////////////
+
+{
+    Bank db = Bank::create ("/shared/somedb.fa");
+    
+    for (const Sequence& seq : db)
+    {
+    	seq.header();
+    	seq.data();
+    }
+}
+
+
+	for (auto&& refChunk : chunk<1000>(bankrandom) )  
+	{
+	    auto result = launcher.run<DoSomething> ( 
+	        refChunk,
+	        split<Tasklet> (qry)
+	    );
+	}
+
+
+template<typename ARCH>
+struct BankChunk
+{
+	USING(ARCH);
+	
+	array<Sequence,1024> sequences;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+auto res = launcher.run<Benchmark2> (split<ArchUpmem::Tasklet> (range));
+
+auto res = launcher.run<Benchmark2> (split<ArchUpmem::Tasklet,CONTIGUOUS> (range));
+auto res = launcher.run<Benchmark2> (split<ArchUpmem::Tasklet,RAKE>       (range));
+auto res = launcher.run<Benchmark2> (split<ArchUpmem::Tasklet,RANDOM>     (range));
+
+auto res = launcher.run<Benchmark2> (split<ArchUpmem::Tasklet,SPLIT_CONTIGUOUS> (range));
+auto res = launcher.run<Benchmark2> (split<ArchUpmem::Tasklet,SPLIT_RAKE>       (range));
+auto res = launcher.run<Benchmark2> (split<ArchUpmem::Tasklet,SPLIT_RANDOM>     (range));
+
+auto res = launcher.run<Benchmark2> (split<ArchUpmem::Tasklet,CONT> (range));
+auto res = launcher.run<Benchmark2> (split<ArchUpmem::Tasklet,RAKE> (range));
+auto res = launcher.run<Benchmark2> (split<ArchUpmem::Tasklet,RAND> (range));
+
+
+auto res = launcher.run<Benchmark2> (split_0 <ArchUpmem::Tasklet> (range));
+auto res = launcher.run<Benchmark2> (split_0 <ArchUpmem::Tasklet> (range));
+auto res = launcher.run<Benchmark2> (split_0 <ArchUpmem::Tasklet> (range));
+
+////////////////////////////////////////////////////////////////////////////////
+
+=> for DPU, global will be translated by a global MRAM variable, ex:
+
+	//////////  HOST  //////////
+	int a;
+	uint32_t b[4];
+	auto res = launcher.run<DoSomething> (a, global(b));
+
+	//////////  DPU  //////////
+	__mram_noinit uint32_t  b[4];
+	int main()  
+	{
+	    int a;
+	    DoSomething::run (a, b)  
+	    return 0;  
+	}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template<typename T>
+class global
+{
+public:
+	using type = T;
+	
+	T& get() const { return object; }
+	
+private:
+	type object;
+};
+
+vector<int> v0;  // allocated in global WRAM
+
+global<vector<int>> v1;  // encapsulated by 'global' in order to tag the variable as declared in global scope
+
+
+int main ()
+{
+   	vector<int> v2 (v1);  
+   	
+   	// here, v2 is allocated in stack (WRAM) but since v1 is a 'global' object, there exists a specific constructor
+   	// in vector class that will share the MemoryTree of v1 between the different v2 instances (one per tasklet)
+   	//
+   	// then, v1 will have an inner cache specific to the current tasklet but when insertions in the memory tree will
+   	// be made, it will be in the unique shared MemoryTree instance from v1
+
+}
+
+
+// OTHER POSSIBILITY
+
+MemoryTree memtree;
+
+int main ()
+{
+   	vector<int> v1 (memtree);
+}  
+
+////////////////////////////////////////////////////////////////////////////////
+
+// HOST PART
+int main()
+{
+	Launcher<ArchUPMEM> launcher (config);
+	
+	Task<Checksum> checksum (launcher);
+	
+	checksum (vec);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template<typename ARCH>
+struct DoSomething
+{
+	auto run (int tuid, Bank bank)
+	{
+	    // We iterate the sequence of the bank.
+        for (auto [i,seq] : enumerate(bank))
+        {
+	    }
+	}
+};
+
+int main()
+{
+	Launcher<ArchUpmem> launcher (ArchUpmem::Rank(4)); 
+
+    Bank(uri).visit ([&] (auto bank)
+    {
+		launcher.run<DoSomething> (bank);
+	}
+}
+
+int main()
+{
+	Launcher<ArchUpmem> launcher (ArchUpmem::Rank(4)); 
+
+	launcher.iterate <DoSomething> (split<ArchUpmem::Tasklet> (bank) );
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// MASH LIKE...
+////////////////////////////////////////////////////////////////////////////////
+
+template<typename ARCH>
+struct SketchBuilder
+{
+	USING(ARCH);
+
+	static constexpr int MAX_KMER_SIZE   = 15;
+	static constexpr int MAX_SKETCH_SIZE = 10000;
+	
+	using hash_t   = uint32_t;
+	using sketch_t = SortedArray<hash_t, MAX_SKETCH_SIZE>;
+	
+    static auto run (int puid, const Bank& bank, int ksize=MAX_KMER_SIZE, int ssize=MAX_SKETCH_SIZE)
+    {
+    	vector<sketch_t> result;
+    
+    	// We define a kmer model.
+    	KmerModel<CANONICAL,MAX_KMER_SIZE> kmodel (ksize);
+
+		// We iterate the sequence of the bank.    
+        for (const Sequence& seq : db)  
+        {  
+        	// We add a new sketch
+        	result.push_back (sketch_t (ssize));
+			
+			// and get a reference on it.
+			sketch_t& sketch = result.back();
+			
+			// We kmerize the current sequence and insert kmers hashed values to the current sketch.
+        	for (auto kmer : kmodel(seq))  {  sketch.insert (hash(kmer)); }
+        }
+        
+        return result;
+    }
+};
+
+USAGE:
+
+int main()
+{
+	Bank bank ("file://somefasta.fa")
+	
+	Launcher<ArchUpmem> launcher (ArchUpmem::Rank(40));
+	
+	auto result = launcher.run<SketchBuilder> (split<ArchUpmem::Tasklet> (bank));
+}
+
+
+template<typename ARCH>
+struct SketchDistance
+{
+	USING(ARCH);
+
+	static constexpr int MAX_SKETCH_SIZE = 10000;
+	using hash_t   = uint32_t;
+	using sketch_t = SortedArray<hash_t, MAX_SKETCH_SIZE>;
+	
+    static auto run (int tuid, vector<sketch_t>& dbRef, vector<sketch_t>& dbQry)
+    {
+        vector<sketch_t::size_t> result;
+
+        for (const auto& sketchQry : dbQry)
+        {
+            for (const auto& sketchRef : dbRef)
+            {
+                sketch_t::size_t count = 0;
+
+                for (size_t r=0, q=0; r<sketchRef.size() and q<sketchQry.size(); )
+                {
+                    auto hashRef = sketchRef[r];
+                    auto hashQry = sketchQry[q];
+
+                         if (hashRef == hashQry)   { r++;  q++;  count ++;  }
+                    else if (hashRef <  hashQry)   { r++;  }
+                    else if (hashRef >  hashQry)   { q++;  }
+                }
+                result.push_back (count);
+            }
+        }
+
+        return result;
+    }
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+////////////////////////////////////////////////////////////////////////////////
+
+Possibilité pour le Launcher de NE PAS créer explicitement un vecteur de résultats
+-> plutôt générer un iterable qui récupère des DPUs les informations lorsqu'elles 
+sont utilisées.
+
+Exemple:
+
+	for (auto&& result : launcher.run<SketchBuilder> (split<ArchUpmem::Tasklet> (bank)))
+	{
+	
+	}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+////////////////////////////////////////////////////////////////////////////////
+
+Création d'une tache avant son exécution:
+
+auto task = launcher.create<SketchJaccard>();
+    
+auto result = task (split<ArchUpmem::Tasklet>(ref), qry);
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+////////////////////////////////////////////////////////////////////////////////
+struct config_upmem
+{
+    using arch_t  = ArchUpmem;
+    using level_t = ArchUpmem::Rank;
+    using unit_t  = ArchUpmem::Tasklet;
+    static const int nbunits = 4;
+};
+
+struct config_multicore
+{
+    using arch_t  = ArchMulticore;
+    using level_t = ArchMulticore::Thread;
+    using unit_t  = ArchMulticore::Thread;
+    static const int nbunits = 16;
+};
+
+auto operator""_rank(unsigned long long int nb)  {   return ArchUpmem::Rank{nb};  }
+ 
+Launcher launcher { 4_rank    };  ==> possible de savoir qu'il s'agit d'une archi upmem
+Launcher launcher { 16_thread };  ==> possible de savoir qu'il s'agit d'une archi multicore
+
+launcher.run<Checksum> ( split<> (data) );
+
+Launcher{4_rank}.run<Checksum> (split(data));
+
+auto result = Launcher{4_rank}.run<SketchJaccard> (split(ref), qry);
+
+Launcher{4_rank}  équivalent à  Launcher<ArchUpmem> { ArchUpmem::Rank{4} }
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+////////////////////////////////////////////////////////////////////////////////
+
+auto run (int tuid, const vector<hash_t>& db)
+
+auto run (int tuid, const global<vector<hash_t>>& db)
+
+
+auto result = launcher.run<SplitRangeInt> (split<level_t>(range), global(1234567));
+
+auto result = launcher.run<SplitRangeInt> (split<level_t>(range), "iijij", 1234567);
+
+
+template<int global=0b01>
+auto run (const vector<uint8_t>& v, size_t k)	
+{
+}
+
+run (4, global({1,2,3,5,8}), 11);
+
+
+
+
+
+
+template<class ARCH>
+struct SplitRangeInt
+{
+    USING(ARCH);
+
+    static auto run (int puid,  bpl::core::RangeInt range, uint32_t foo, Global<10>={})
+    {
+        uint64_t sum = 0;
+        for (uint64_t i : range)  {  sum += i;  }
+        return sum;
+    }
+    
+    static auto run (int puid,  bpl::core::RangeInt range, uint32_t foo, Modifier<Global,0,0,1> ={})
+    {
+        uint64_t sum = 0;
+        for (uint64_t i : range)  {  sum += i;  }
+        return sum;
+    }
+
+	template<typename T = Global<0> >
+    static auto run (int puid,  bpl::core::RangeInt range, uint32_t foo, T={})
+    {
+    }
+};
+
+launcher.run<SplitRangeInt,Global<0>> (3, 4);
+
+
+
+
+template<class ARCH, class CONFIG=void>
+struct DoSomething
+{
+	auto operator() (int tuid, double x)
+	{
+	}
+};
+
+launcher.run<DoSomething> (3.14);
+launcher.run<DoSomething,Global<0>> (3.14);
+
+
+template<class ARCH, class CONFIG=void>
+struct DoSomething
+{
+	auto operator() (const vector<uint32_t>& ref, const vector<uint32_t>& qry) const  {}
+};
+
+	auto operator() (const vector<uint32_t>& ref, const vector<uint32_t>& qry) const  {}
+
+	auto operator() (const modifier::vector<uint32_t>& ref, const modifier::vector<uint32_t>& qry) const  {}
+
+	auto operator() (const vector<uint32_t>& ref, const vector<uint32_t>& qry) const  {}
+
+	auto operator() (const vector<uint32_t>& ref, const vector<uint32_t>& qry) const  {}
+
+	using modifier = split<level<0>,1>;
+
+
+
+auto dosomething1 (A a, const std::vector<int>& ref, global<0> = {}, split<1> = {});
+
+auto dosomething2 (A a, const std::vector<int>& ref, double x, modifiers<global,split,none> = {});
+
+struct modif
+{
+    using arg0 = global;
+    using arg1 = split;
+};
+
+template<typename ARCH>
+struct DoSomething
+{
+	template<typename...ARGS>
+	static auto run (double x, int n, char c) { };
+};
+
+using Scheme = qualifiers<global,split,none>;
+
+launcher.run <DoSomething, tuple<global,split,none> > (a,b,c);
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+////////////////////////////////////////////////////////////////////////////////
+
+template<ARCH...>
+struct ArchRunner
+{
+	static_assert (sizeof...(ARCH) > 0);
+	
+	template <typename> class TASK, ARGS...>
+	requires (is_reduceable_v<TASK>)
+	static bool run (size_t nbpu, ARGS...args)
+	{
+		std::vector<?> results;
+		
+	    std::apply ([] (auto&&...arch)  
+	    {  
+	    	Launcher<decltype(arch)> launcher {nbpu};
+	    	
+	    	results.push_back (std::move(launcher.run<TASK> (args)));
+
+		}, std::tuple<ARCH...> {} );
+		
+		// compare the results.
+	}
+};
+
+
+// EXAMPLE:
+
+bool isok = ArchRunner<ArchUpmem,ArchMulticore>::run<VectorChecksum> (split (data));
+
+
+a.run (modifier(x));
+
+
+
+
+
+
+
+bool run ()
+{
+    std::apply ([] (auto&&...arg)  
+    {  
+    	(FCT<decltype(arg)>() (),...);  
+	}, std::tuple<ARCH...> {} );
+}
+
+
+
+    auto result = Launcher<typename CONFIG::arch_t>(resources).run<VectorChecksum> (data);
+
+    size_t n = launcher.getProcUnitNumber();
+
+    // We test a continuous range of integers
+    for (size_t i=n; i<=2*n; i++)  {  VectorChecksum_aux_aux<CONFIG> (launcher, i);  }
+
+    // We test some powers of 2
+    for (size_t n=10; n<=17; n++)  {  VectorChecksum_aux_aux<CONFIG> (launcher, size_t(1)<<n);  }
+
+
+TEST_CASE ("VectorChecksum", "[Vector]" )
+{
+    config::run<VectorChecksum_aux> ();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+////////////////////////////////////////////////////////////////////////////////
+
+template<class ARCH, typename T>
+struct DoSomething
+{
+	auto operator() (T x)
+	{
+	}
+};
+
+Launcher<ArchUpmem>().run<DoSomething,int> (3);
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+////////////////////////////////////////////////////////////////////////////////
+
+
+
+auto dosomething (const vector<uint32_t>& vec)  
+{
+}
+
+auto dosomething (const mytag<vector<uint32_t>>& vec)  
+{
+}
+
+template<typename T>
+struct mytag
+{
+	using type = T;
+	
+	
+	 
+};
+
+
+
+operator() (const persist<vector<uint32_t>>& ref)  
+operator() (const prefetch<vector<uint32_t>>& ref)  
+operator() (const preload<vector<uint32_t>>& ref)  
+operator() (const load_once<vector<uint32_t>>& ref)  
+operator() (const once<vector<uint32_t>>& ref)  
+
+template<typename T>
+struct once
+{
+	using type = T; 
+};
+
+
+
+

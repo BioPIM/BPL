@@ -1,0 +1,30 @@
+////////////////////////////////////////////////////////////////////////////////
+// BPL, the Process In Memory library for bioinformatics 
+// date  : 2024
+// author: edrezen
+////////////////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+#include <bpl/core/Task.hpp>
+
+////////////////////////////////////////////////////////////////////////////////
+//
+////////////////////////////////////////////////////////////////////////////////
+template<class ARCH>
+struct VectorAsInput : bpl::core::Task<ARCH>
+{
+    USING(ARCH);
+
+    using type_t   = uint32_t;
+    using vector_t = vector<type_t>;
+
+    auto operator() (const vector_t& input)
+    {
+        uint64_t sum = 0;
+
+        for (auto x : input)  { sum += x;  }
+
+        return sum + this->tuid();
+    }
+};

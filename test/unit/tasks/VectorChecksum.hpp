@@ -1,0 +1,32 @@
+////////////////////////////////////////////////////////////////////////////////
+// BPL, the Process In Memory library for bioinformatics 
+// date  : 2024
+// author: edrezen
+////////////////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+#include <bpl/core/Task.hpp>
+
+////////////////////////////////////////////////////////////////////////////////
+//
+////////////////////////////////////////////////////////////////////////////////
+template<class ARCH>
+struct VectorChecksum : bpl::core::Task<ARCH>
+{
+    USING(ARCH);
+
+    auto operator() (const vector<uint32_t>& v)
+    {
+        uint64_t checksum = 0;
+
+        for (auto x : v)
+        {
+           checksum += x;
+        }
+
+        return checksum;
+    }
+
+    static uint64_t reduce (uint64_t a, uint64_t b)  { return a+b; }
+};

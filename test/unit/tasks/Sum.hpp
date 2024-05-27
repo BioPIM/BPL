@@ -1,0 +1,16 @@
+////////////////////////////////////////////////////////////////////////////////
+// BPL, the Process In Memory library for bioinformatics 
+// date  : 2024
+// author: edrezen
+////////////////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+template<class ARCH>
+struct Sum
+{
+    int operator() (int a, int b, int c, int d)
+    {
+        return a+b+c+d;
+    }
+};
