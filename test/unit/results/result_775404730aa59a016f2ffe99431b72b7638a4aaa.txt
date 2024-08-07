@@ -1,0 +1,81 @@
+0.006 s: MULTICORE: check properties
+0.054 s: UPMEM: check properties
+0.161 s: Bank1
+0.046 s: Bank2
+0.042 s: Bank3
+0.042 s: Bank4
+0.053 s: Bank5
+0.000 s: BankRandom1
+0.000 s: BankChunk1
+0.059 s: Parrot
+0.000 s: Launcher checksum no split (multicore)
+0.042 s: Sum
+0.137 s: SumGeneric
+0.036 s: CountInstances
+0.159 s: Parrot3
+0.044 s: Parrot4
+0.053 s: Array1
+0.042 s: Mix runs
+0.159 s: GetPuid
+0.140 s: DoSomething
+0.041 s: HelloWorld
+0.044 s: ReturnArray
+0.000 s: Concepts
+0.039 s: template task
+0.000 s: MemoryTree1
+0.000 s: MemoryTree2
+1.158 s: MemoryTree3
+0.000 s: Negation
+0.000 s: FirstPredicate
+0.000 s: TransfoTuple
+0.000 s: TransfoType
+0.000 s: TaskParameters
+0.046 s: IntegerType
+0.009 s: RangeInt
+0.000 s: SplitPair1
+0.000 s: SplitPair2
+0.000 s: Global
+0.000 s: Tag1
+5.135 s: Once1
+6.355 s: Once2
+0.059 s: Global1
+0.045 s: Global2
+0.064 s: Global3
+0.000 s: serialize (1)
+0.000 s: unserialize (common types)
+0.000 s: unserialize (specific types)
+1.665 s: SketchJaccard
+5.832 s: SketchJaccard0
+0.059 s: SketchJaccard1
+14.048 s: SketchJaccardTopK
+54.940 s: SketchJaccardTopKSeries
+1.482 s: SketchJaccard2
+0.000 s: Span1
+1.300 s: RangeSplit
+0.042 s: IterableSplitNo
+0.037 s: IterableSplitYes
+0.149 s: Checksum3
+0.157 s: Checksum4
+0.160 s: Checksum5
+12.048 s: SplitRangeInt
+0.072 s: SplitOperator
+1.037 s: mutex
+0.066 s: Vector1
+1.590 s: VectorCheck
+0.137 s: VectorAsInput
+0.122 s: VectorAsInput2
+0.041 s: VectorAsInput3
+6.974 s: VectorAsInputSplit
+1.114 s: VectorInputOutput
+0.034 s: VectorAsInputCustom
+0.248 s: VectorChecksum
+14.352 s: VectorChecksumLevels
+0.217 s: VectorAsOutput
+0.000 s: VectorMulticore
+0.075 s: VectorOfVectors
+0.848 s: VectorFlush
+25.351 s: VectorSwap
+19.290 s: VectorAdd1
+===============================================================================
+All tests passed (112472966 assertions in 78 test cases)
+

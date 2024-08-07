@@ -55,9 +55,9 @@ template<>
 struct serializable<RangeInt> : std::true_type
 {
     template<class ARCH, class BUFITER, int ROUNDUP, typename T, typename FCT>
-    static auto iterate (int depth, const T& t, FCT fct)
+    static auto iterate (bool transient, int depth, const T& t, FCT fct, void* context=nullptr)
     {
-        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (depth+1, t.bounds_, fct);
+        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (false, depth+1, t.bounds_, fct, context);
     }
 
     template<class ARCH, class BUFITER, int ROUNDUP, typename T>
@@ -82,6 +82,9 @@ struct SplitOperator<bpl::core::RangeInt>
 
         return bpl::core::RangeInt (x.first() + i0, x.first() + i1);
     }
+
+    static auto split2 (const bpl::core::RangeInt& x, std::size_t idx, std::size_t total)
+    {  return split (x, idx, total);  }
 };
 
 

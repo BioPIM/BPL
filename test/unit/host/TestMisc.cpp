@@ -18,8 +18,13 @@ using namespace bpl::arch;
 #include <tasks/IntegerType.hpp>
 #include <tasks/Once1.hpp>
 #include <tasks/Global1.hpp>
+#include <tasks/Global2.hpp>
+#include <tasks/Global3.hpp>
+#include <tasks/Global4.hpp>
+#include <tasks/Global5.hpp>
 
 #include <iostream>
+#include <list>
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("IntegerType", "[Misc]" )
@@ -218,44 +223,6 @@ TEST_CASE ("Once2", "[once]" )
 }
 
 //////////////////////////////////////////////////////////////////////////////
-template<typename T> using is_not_reference = bpl::core::negation<std::is_reference>::type <T>;
-
-TEST_CASE ("Negation", "[metaprog]" )
-{
-    int  a;
-    int& b = a;
-
-    static_assert (is_not_reference<decltype(a)>::value == true);
-    static_assert (is_not_reference<decltype(b)>::value == false);
-}
-
-//////////////////////////////////////////////////////////////////////////////
-
-template<typename T>
-using prototype_t = bpl::core::FunctionSignatureParser<std::decay_t<decltype(&T::operator())>>::args_tuple;
-
-struct FirstPredicate1  {  auto operator() (int,  int&)       {} };
-struct FirstPredicate2  {  auto operator() (int&, int&, int&) {} };
-struct FirstPredicate3  {  auto operator() (int&, int,  int&) {} };
-struct FirstPredicate4  {  auto operator() ()                 {} };
-
-TEST_CASE ("FirstPredicate", "[metaprog]" )
-{
-    REQUIRE (bpl::core::first_predicate_idx_v <prototype_t<FirstPredicate1>,  is_not_reference, true > == 0);
-    REQUIRE (bpl::core::first_predicate_idx_v <prototype_t<FirstPredicate1>,  is_not_reference       > == 0);
-    REQUIRE (bpl::core::first_predicate_idx_v <prototype_t<FirstPredicate1>, std::is_reference, false> == 1);
-
-    REQUIRE (bpl::core::first_predicate_idx_v <prototype_t<FirstPredicate2>,  is_not_reference, false> == 3);
-    REQUIRE (bpl::core::first_predicate_idx_v <prototype_t<FirstPredicate2>, std::is_reference, true > == 0);
-
-    REQUIRE (bpl::core::first_predicate_idx_v <prototype_t<FirstPredicate3>,  is_not_reference, false> == 1);
-    REQUIRE (bpl::core::first_predicate_idx_v <prototype_t<FirstPredicate3>, std::is_reference, false> == 0);
-
-    REQUIRE (bpl::core::first_predicate_idx_v <prototype_t<FirstPredicate4>,  is_not_reference, false> == 0);
-    REQUIRE (bpl::core::first_predicate_idx_v <prototype_t<FirstPredicate4>, std::is_reference, false> == 0);
-}
-
-//////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("Global1", "[global]" )
 {
     using array_t = typename Global1<ArchMulticore>::type;
@@ -266,22 +233,83 @@ TEST_CASE ("Global1", "[global]" )
 
     array_t values;   for (size_t i=0; i<values.size(); i++)  { truth += values[i] = i+1;   }
 
+    // IMPORTANT !!!  it is not possible to split an 'array', so the same array will be used on each process unit.
+    // Trying to split an array => static assert failure.
     REQUIRE (launcher.run<Global1> (values) == truth * launcher.getProcUnitNumber());
 }
 
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("Global2", "[global]" )
 {
-    using array_t = typename Global1<ArchMulticore>::type;
+    using type1 = typename Global2<ArchMulticore>::type1;
+    using type2 = typename Global2<ArchMulticore>::type2;
 
     Launcher<ArchUpmem> launcher {1_dpu};
 
+    uint64_t truth1 = 0;
+    uint64_t truth2 = 0;
+
+    type1 v1;   for (size_t i=0; i<v1.size(); i++)  { truth1 += v1[i] = 10  + i+1;   }
+    type2 v2;   for (size_t i=0; i<v2.size(); i++)  { truth2 += v2[i] = 100 + i+1;   }
+
+    auto res = launcher.run<Global2> (v1,v2);
+
+    REQUIRE (std::get<0>(res) == truth1 * launcher.getProcUnitNumber());
+    REQUIRE (std::get<1>(res) == truth2 * launcher.getProcUnitNumber());
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("Global3", "[global]" )
+{
+    using type1 = typename Global3<ArchMulticore>::type1;
+    using type2 = typename Global3<ArchMulticore>::type2;
+    using type3 = typename Global3<ArchMulticore>::type3;
+
+    Launcher<ArchUpmem> launcher {1_dpu};
+
+    uint64_t truth1 = 0;
+    uint64_t truth2 = 0;
+    uint64_t truth3 = 0;
+
+    type1 v1;   for (size_t i=0; i<v1.size(); i++)  { truth1 += v1[i] = 10   + i+1;   }
+    type2 v2;   for (size_t i=0; i<v2.size(); i++)  { truth2 += v2[i] = 100  + i+1;   }
+    type3 v3;   for (size_t i=0; i<v3.size(); i++)  { truth3 += v3[i] = 1000 + i+1;   }
+
+    auto res = launcher.run<Global3> (v1,v2,v3);
+
+    REQUIRE (std::get<0>(res) == truth1 * launcher.getProcUnitNumber());
+    REQUIRE (std::get<1>(res) == truth2 * launcher.getProcUnitNumber());
+    REQUIRE (std::get<2>(res) == truth3 * launcher.getProcUnitNumber());
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("Global4", "[global]" )
+{
+    Launcher<ArchUpmem> launcher {57_dpu, false};
+
+    size_t nbitems = 1000*1000;
+
     uint64_t truth = 0;
+    std::vector<uint32_t> v (nbitems);
+    for (size_t i=0; i<v.size(); i++) { truth += (v[i] = i+1); }
 
-    array_t values;   for (size_t i=0; i<values.size(); i++)  { truth += values[i] = i+1;   }
+    for (auto x : launcher.run<Global4> (v))  {  REQUIRE (truth == x);  }
+}
 
-    // IMPORTANT !!!  it is not possible to split an 'array', so the same array will be used on each process unit.
-    auto result = launcher.run<Global1> (split(values));
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("Global5", "[global]" )
+{
+    Launcher<ArchUpmem> launcher {57_dpu, false};
 
-    REQUIRE (result == truth * launcher.getProcUnitNumber());
+    size_t nbitems = 1000*1000;
+
+    uint64_t truth = 0;
+    std::vector<uint32_t> v (nbitems);
+    for (size_t i=0; i<v.size(); i++) { truth += (v[i] = i+1); }
+
+    // WARNING: using 'split' on a parameter tagged with 'global' in the task prototype
+    // should lead to a static assertion
+    launcher.run<Global5> (split(v));
+
+    REQUIRE (true);
 }

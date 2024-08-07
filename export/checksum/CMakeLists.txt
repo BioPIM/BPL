@@ -19,7 +19,7 @@ project (org_pim_bpl_checksum VERSION 0.1 DESCRIPTION "Checksum")
 SET (HOST_BINARY checksum)
 
 # Define the list of DPU binaries that can be launched by the Host.
-SET (DPU_BINARIES "Checksum")
+SET (TASKS_LIST "Checksum")
 
 # Now we can read the generic part.
 ADD_SUBDIRECTORY(src)

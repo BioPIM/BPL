@@ -134,7 +134,10 @@ static constexpr bool is_base_of_template_v = is_base_of_template_t<base,derived
 
 //////////////////////////////////////////////////////////////////////////////////////////
 template<typename T>
-struct remove_first_type { };
+struct remove_first_type  {  using type = T;  };
+
+template<typename T>
+using remove_first_type_t = typename remove_first_type<T>::type;
 
 template<typename T, typename... Ts>
 struct remove_first_type<std::tuple<T, Ts...>>
@@ -155,17 +158,24 @@ using decay_tuple = decltype(decay_types(std::declval<T>()));
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/61112088/transform-tuple-type-to-another-tuple-type
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-template <typename Tuple, template <typename> typename Component>
+template <typename Tuple, template <typename> typename... Component>
 struct transform_tuple;
 
-template <typename... Ts, template <typename> typename Component>
-struct transform_tuple<std::tuple<Ts...>, Component>
+template <typename... Ts, template <typename> typename HEAD>
+struct transform_tuple<std::tuple<Ts...>, HEAD>
 {
-    using type = std::tuple<typename Component<Ts>::type ...>;
+    using type = std::tuple<typename HEAD<Ts>::type ...>;
 };
 
-template<typename T, template <typename> typename Component>
-using transform_tuple_t = typename transform_tuple<T,Component>::type;
+template <typename... Ts, template <typename> typename HEAD, template <typename> typename... TAIL>
+struct transform_tuple<std::tuple<Ts...>, HEAD, TAIL...>
+{
+    using head = typename transform_tuple <std::tuple<Ts...>, HEAD>:: type;
+    using type = typename transform_tuple <head, TAIL...>::type ;
+};
+
+template<typename T, template <typename> typename... Component>
+using transform_tuple_t = typename transform_tuple<T,Component...>::type;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template<typename T>
@@ -261,10 +271,17 @@ make_struct(std::tuple< types... > t) // &, &&, const && etc.
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template<class TASK>
-using task_params_t = bpl::core::decay_tuple <
+template<class TASK, bool DECAY=true>
+using task_params_t = std::conditional_t<DECAY,
+    bpl::core::decay_tuple <
+        typename bpl::core::FunctionSignatureParser<decltype(&TASK::operator())>::args_tuple
+    >,
     typename bpl::core::FunctionSignatureParser<decltype(&TASK::operator())>::args_tuple
 >;
+
+template<class TASK>
+using task_params_nodecay_t = task_params_t<TASK,false>;
+
 
 // see https://stackoverflow.com/questions/40536060/c-perfect-forward-copy-only-types-to-make-tuple
 template<class TASK, typename ...ARGS>
@@ -599,23 +616,23 @@ template<unsigned long long MASK, typename ...ARGS>
 using pack_filter_by_mask_t = typename pack_filter_by_mask<MASK,ARGS...>::type;
 
 template<unsigned long long MASK, typename T, typename ...ARGS>
-struct pack_filter_by_mask<MASK,T,ARGS...>
+struct pack_filter_by_mask<MASK,std::tuple<T,ARGS...>>
 {
     // Just for readability
-    using TAIL = pack_filter_by_mask_t < (MASK>>1),ARGS...>;
+    using TAIL = pack_filter_by_mask_t <(MASK>>1),std::tuple<ARGS...> >;
 
     using type = std::conditional_t <
         MASK&1,
         decltype(std::tuple_cat (
           std::make_tuple (std::declval<T>()),
-          std::make_tuple (std::declval<TAIL>())
+          std::declval<TAIL>()
         )),
-        pack_filter_by_mask_t < (MASK>>1),ARGS...>
+        TAIL
     >;
 };
 
 template<unsigned long long MASK>
-struct pack_filter_by_mask<MASK>  {  using type = std::tuple<>;  };
+struct pack_filter_by_mask<MASK,std::tuple<>>  {  using type = std::tuple<>;  };
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -630,6 +647,50 @@ struct pack_filter_by_mask_partition
 
 template<unsigned long long MASK, typename ...ARGS>
 using pack_filter_by_mask_partition_t = typename pack_filter_by_mask_partition <MASK,ARGS...>::type;
+
+template<template<typename> class PREDICATE, typename ...ARGS>
+using pack_predicate_partition_t =
+    pack_filter_by_mask_partition_t <
+        tuple_create_mask<PREDICATE,ARGS...>::value,
+        ARGS...
+    >;
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// https://stackoverflow.com/questions/12666761/sizeof-variadic-template-sum-of-sizeof-of-all-elements
+template<typename...ARGS>
+inline constexpr unsigned int sum_sizeof (const std::tuple<ARGS...>& t)  {  return (0 + ... + sizeof(ARGS));  }
+
+///////////////////////////////////////////////////////////////////////////////////////////
+
+// https://stackoverflow.com/questions/78544926/merging-two-tuples-according-to-a-given-criteria/78545217#78545217
+
+template <std::size_t N>
+constexpr std::array<std::pair<std::size_t, std::size_t>, N>
+mask_to_array(std::uint64_t mask)
+{
+    std::array<std::pair<std::size_t, std::size_t>, N> res{};
+    std::size_t ai = 0;
+    std::size_t bi = 0;
+
+    for (auto& [ab, i] : res) {
+        ab = mask & 1;
+        i = ab ? ai++ : bi++;
+        mask >>= 1;
+    }
+    return res;
+}
+
+template <std::uint64_t MASK, typename...A, typename...B>
+constexpr auto merge_tuples (std::tuple<A...>& a, std::tuple<B...>& b)
+{
+    constexpr std::size_t N = sizeof...(A) + sizeof...(B);
+    constexpr auto arr = mask_to_array<N>(MASK);
+
+    return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        return std::tie(std::get<arr[Is].second>(std::get<arr[Is].first>(std::tie(b, a)))...);
+
+    }(std::make_index_sequence<N>());
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 struct identity
@@ -687,6 +748,89 @@ auto transform_each(const std::tuple<Args...>& t, F f)
 {
     return transform_each_impl(t, f, std::make_index_sequence<sizeof...(Args)>{});
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+template<typename TIter1, typename TIter2>
+struct zip_iterator
+{
+    TIter1 iter1_;
+    TIter2 iter2_;
+
+    template<typename OTHER>
+    bool operator != (const OTHER& other) const
+    {
+        return (iter1_ != other.iter1_) and (iter2_ != other.iter2_);
+    }
+
+    void operator++ ()  {  ++iter1_;  ++ iter2_;  }
+
+    auto operator * () const
+    {
+        return TieOrMaketuple <decltype(*iter1_), decltype(*iter2_)>::get (*iter1_,*iter2_);
+    }
+};
+
+
+template <typename T1,
+          typename T2,
+          typename TIter1 = decltype(std::declval<T1>().begin()),
+          typename TIter2 = decltype(std::declval<T2>().begin())
+>
+constexpr auto zip (T1&&  iterable1, T2&&  iterable2)
+{
+//    struct iterator
+//    {
+//        TIter1 iter1_;
+//        TIter2 iter2_;
+//
+//        bool operator != (const iterator & other) const
+//        {
+//            return (iter1_ != other.iter1_) and (iter2_ != other.iter2_);
+//        }
+//
+//        void operator++ ()  {  ++iter1_;  ++ iter2_;  }
+//
+//        auto operator * () const
+//        {
+//            return TieOrMaketuple <decltype(*iter1_), decltype(*iter2_)>::get (*iter1_,*iter2_);
+//        }
+//    };
+    struct iterable_wrapper
+    {
+        T1 iterable1_;
+        T2 iterable2_;
+
+        auto begin() const { return zip_iterator<decltype(iterable1_.begin()),decltype(iterable2_.begin())>{ iterable1_.begin(), iterable2_.begin() }; }
+        auto end()   const { return zip_iterator<decltype(iterable1_.end()),decltype(iterable2_.end())> { iterable1_.end(),   iterable2_.end  () }; }
+    };
+
+    return iterable_wrapper { std::forward<T1>(iterable1) , std::forward<T2>(iterable2)  };
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <template<typename,typename> class COMPARATOR, typename A, typename B>
+struct compare_tuples : std::true_type {};
+
+template <template<typename,typename> class COMPARATOR, typename A, typename B>
+static constexpr bool compare_tuples_v = compare_tuples<COMPARATOR,A,B>::value;
+
+template <template<typename,typename> class COMPARATOR>
+struct compare_tuples<COMPARATOR,std::tuple<>, std::tuple<>> : std::true_type {};
+
+template <template<typename,typename> class COMPARATOR, typename...A, typename... B>
+struct compare_tuples<COMPARATOR,std::tuple<A...>, std::tuple<B...>>
+{
+    static_assert (sizeof...(A) == sizeof...(B));
+
+    using TA = std::tuple<A...>;
+    using TB = std::tuple<B...>;
+
+    static constexpr bool value =
+        COMPARATOR<std::tuple_element<0,TA>,std::tuple_element<0,TB>>::value &&
+            compare_tuples_v<COMPARATOR,remove_first_type_t<TA>,remove_first_type_t<TB>>;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 } };  // end of namespace

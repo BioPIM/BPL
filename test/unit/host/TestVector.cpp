@@ -33,6 +33,10 @@ using namespace bpl::arch;
 #include <tasks/VectorOfVectors.hpp>
 #include <tasks/VectorFlush.hpp>
 #include <tasks/VectorSwap.hpp>
+#include <tasks/VectorAdd.hpp>
+#include <tasks/VectorMove1.hpp>
+#include <tasks/VectorMove2.hpp>
+#include <tasks/VectorEmplaceBack.hpp>
 
 #include <Runner.hpp>
 
@@ -335,6 +339,30 @@ TEST_CASE ("VectorChecksum", "[Vector]" )
 }
 
 //////////////////////////////////////////////////////////////////////////////
+template<typename LAUNCHER>
+void VectorChecksumLevels_aux (LAUNCHER&& launcher, size_t nbItems)
+{
+    uint64_t truth = 0;  std::vector<uint32_t> v;  for (size_t i=1; i<=nbItems; i++)  { v.push_back(i); truth+=v.back(); }
+
+    REQUIRE (launcher.template run<VectorChecksum> (split<ArchUpmem::DPU>     (v)) == truth*NR_TASKLETS);
+    REQUIRE (launcher.template run<VectorChecksum> (split<ArchUpmem::Tasklet> (v)) == truth);
+}
+
+TEST_CASE ("VectorChecksumLevels", "[Vector]" )
+{
+    for (size_t nbDPU : {1, 2, 3, 5, 8, 13, 21, 34, 55, 89})
+    {
+        Launcher<ArchUpmem> launcher (ArchUpmem::DPU(nbDPU), false /* traces yes/no */);
+
+        for (size_t nbItems=1; nbItems<=200; nbItems++)
+        {
+            // printf ("nbDPU: %3ld   nbItems: %3ld \n", nbDPU, nbItems);
+            VectorChecksumLevels_aux (launcher, nbItems);
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
 
 template<template <typename> typename  TASK, typename PROC_UNIT, typename ...ARGS>
 void VectorAsOutput_aux_aux (PROC_UNIT pu, size_t nbItems, ARGS... args)
@@ -510,4 +538,98 @@ TEST_CASE ("VectorSwap", "[Vector]" )
     for (size_t n : {1,10,100,1000,10000})  { test(n);    }
     for (size_t n=1; n<=100; n++)           { test(n);    }
     for (size_t n=1; n<=14;  n++)           { test(1<<n); }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorAdd1", "[Vector]" )
+{
+    size_t nbranks = 20;
+    size_t nbdpu   = nbranks*64;
+
+    auto build = [] (size_t n, size_t k)
+    {
+        std::vector<uint32_t> v(n);  for (size_t i=0; i<v.size(); i++)  { v[i] = k*(i+1); } return v;
+    };
+
+    size_t nbitems = nbdpu*1000*1000;
+
+    auto v1 = build (nbitems,1);
+    auto v2 = build (nbitems,2);
+
+    [[maybe_unused]] auto t0 = timestamp();
+
+    Launcher<ArchUpmem> launcher { ArchUpmem::DPU(nbdpu), false};
+
+    auto res = launcher.run<VectorAdd> (split(v1), split(v2));
+
+    [[maybe_unused]] auto t1 = timestamp();
+
+    size_t nbErrors1 = 0;
+    size_t nbErrors2 = 0;
+
+    auto results = res.retrieve();
+	//   auto& results = res;
+
+    for (auto& v : results)
+    {
+        nbErrors1 += v.size() == nbitems / launcher.getProcUnitNumber() ? 0 : 1;
+    }
+
+    [[maybe_unused]] auto t2 = timestamp();
+
+#if 1
+    size_t count = 0;
+    for (auto& v : results)
+    {
+        for (size_t i=0; i<v.size(); i++)  {  nbErrors2 += v[i] == ++count * 3 ? 0 : 1;  }
+    }
+
+    REQUIRE (nbErrors1 == 0);
+    REQUIRE (nbErrors2 == 0);
+    REQUIRE (count     == nbitems);
+#endif
+
+    //printf ("time: %.3f  %.3f  #nbitems: %ld  #errors: [%ld,%ld] \n", (t1-t0)/1000.0, (t2-t1)/1000.0, nbitems, nbErrors1, nbErrors2 );
+    launcher.getStatistics().dump();
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorMove1", "[Vector]" )
+{
+    Launcher<ArchUpmem> launcher { 1_rank };
+
+    for (auto res : launcher.run<VectorMove1> ())
+    {
+        REQUIRE (res.size()==2);
+        REQUIRE (res[0]==1);
+        REQUIRE (res[1]==2);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorMove2", "[Vector]" )
+{
+    Launcher<ArchUpmem> launcher { 1_rank };
+
+    std::vector<uint32_t> v  { 1,2 };
+
+    for (auto res : launcher.run<VectorMove2> (v))
+    {
+        REQUIRE (res.size()==2);
+        REQUIRE (res[0]==1);
+        REQUIRE (res[1]==2);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorEmplaceBack", "[Vector]" )
+{
+    Launcher<ArchUpmem> launcher { 1_rank };
+
+    for (auto res : launcher.run<VectorEmplaceBack> ())
+    {
+        REQUIRE (res.size()==2);
+        REQUIRE (res[0].a==1);   REQUIRE (res[0].x==3.14f);
+        REQUIRE (res[1].a==5);   REQUIRE (res[1].x==2.71f);
+    }
 }

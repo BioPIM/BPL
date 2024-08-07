@@ -6,9 +6,11 @@
 
 #pragma once
 
+#include <bpl/core/Task.hpp>
+
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct SketchJaccardTopK
+struct SketchJaccardTopK : bpl::core::Task<ARCH>
 {
     USING(ARCH);
 
@@ -128,6 +130,9 @@ struct SketchJaccardTopK
 
                 result.push_back (count);
             }
+
+            // We notify the progression of the task
+            this->notify (idxSketchQry,nbSketchQry);
         }
 
         return result;

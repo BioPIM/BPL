@@ -10,6 +10,8 @@
 #define __BPL_UTILS_SPLITTER_HPP__
 
 #include <bpl/utils/metaprog.hpp>
+#include <bpl/utils/split.hpp>
+
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl { namespace core {
 ////////////////////////////////////////////////////////////////////////////////
@@ -104,6 +106,7 @@ namespace details
  * \return a SplitProxy instance that proxies the incoming object
  */
 template<typename LEVEL, typename TYPE>
+requires (is_splitable_v<TYPE>)
 auto split (TYPE& t)
 {
     return details::SplitProxy<LEVEL,bpl::core::SplitKind::CONT,TYPE> (t);
@@ -115,6 +118,7 @@ auto split (TYPE& t)
  * \return a SplitProxy instance that proxies the incoming object
  */
 template<typename LEVEL, typename TYPE>
+requires (is_splitable_v<TYPE>)
 auto  split (const TYPE& t)
 {
     return details::SplitProxy<LEVEL,bpl::core::SplitKind::CONT,TYPE> (t);
@@ -196,8 +200,6 @@ void retrieveSplitStatus (uint8_t status[32])
 }
 
 
-#include <bpl/utils/split.hpp>
-
 ////////////////////////////////////////////////////////////////////////////////
 /** Type trait specialization in case the incoming type is a SplitProxy */
 template<typename LEVEL, bpl::core::SplitKind KIND, typename TYPE>
@@ -215,5 +217,11 @@ struct SplitOperator<details::SplitProxy<LEVEL,KIND,TYPE>>
         return SplitOperator<TYPE>::split (t, idx, total);
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+// WARNING!!! we make std::array not splitable since it is not possible to
+// reduce its size at runtime.
+template <typename T, size_t N>
+struct splitable<std::array<T,N>> {  static constexpr int value = false;  };
 
 #endif /* __BPL_UTILS_SPLITTER_HPP__ */

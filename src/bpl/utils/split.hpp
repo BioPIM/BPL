@@ -34,6 +34,9 @@ struct SplitOperator
 
         return t;
     }
+
+    static auto split2 (const T& t, std::size_t idx, std::size_t total)
+    {  return split (t, idx, total);  }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,6 +54,9 @@ struct SplitOperator<std::pair<A,B>>
 
         return std::pair { t.first+i0, t.first+i1 };
     }
+
+    static auto split2 (const std::pair<A,B>& t, std::size_t idx, std::size_t total)
+    {  return split (t, idx, total);  }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -70,6 +76,11 @@ struct SplitOperator<std::vector<T>>
 
         return std::vector<T> (t.begin()+subrange.first, t.begin()+subrange.second);
     }
+
+    static auto split2 (const std::vector<T>& t, std::size_t idx, std::size_t total)
+    {
+        return SplitOperator<std::span<T>>::split ((std::vector<T>&)t, idx, total);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -81,14 +92,20 @@ struct SplitOperator<std::span<T>>
         auto range    = std::make_pair (size_t(0), t.size());
         auto subrange = SplitOperator<decltype(range)>::split (range, idx, total);
 
-        DEBUG_SPLIT ("SPLIT<span>  sizeof: %2d  idx: %5d  total: %5d  [%5d %5d]  => [%5d %5d]\n",
+        auto res = t.subspan (subrange.first, subrange.second - subrange.first);
+
+        DEBUG_SPLIT ("SPLIT<span>  sizeof: %2d  idx: %5d  total: %5d  [%5d %5d]  => [%5d %5d]   #res: %d\n",
             (uint32_t) sizeof(T), (uint32_t)idx, (uint32_t)total,
             (uint32_t)range.first,    (uint32_t)range.second,
-            (uint32_t)subrange.first, (uint32_t)subrange.second
-            );
+            (uint32_t)subrange.first, (uint32_t)subrange.second,
+            (uint32_t)res.size()
+        );
 
-        return t.subspan (subrange.first, subrange.second - subrange.first);
+        return res;
     }
+
+    static auto split2 (std::span<T> t, std::size_t idx, std::size_t total)
+    {  return split (t, idx, total);  }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

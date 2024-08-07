@@ -109,6 +109,8 @@ public:
      */
     size_t getProcUnitNumber() const { return arch_.getProcUnitNumber(); }
 
+    auto getProcUnitDetails()  const { return arch_.getProcUnitDetails(); }
+
     /** Run a task on the underlying architecture.
      *
      * Launcher has the responsibility to check whether the end user has provided some information for splitting the input

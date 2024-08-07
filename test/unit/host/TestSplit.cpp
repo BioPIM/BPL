@@ -30,7 +30,12 @@ void testRangeSplit (size_t usedRanks)
 
     auto config = ArchUpmem::Rank(usedRanks);
 
-    Launcher<ArchUpmem> launcher (config);
+    Launcher<ArchUpmem> launcher { config, false };
+
+    auto detailsProcUnits = launcher.getProcUnitDetails();
+
+    size_t nbRanks    = std::get<0>(detailsProcUnits);
+    size_t nbDPUs     = std::get<1>(detailsProcUnits);
 
     auto results = launcher.run<RangeSplit> (
         data,
@@ -38,16 +43,6 @@ void testRangeSplit (size_t usedRanks)
         split<ArchUpmem::DPU    > (data),
         split<ArchUpmem::Tasklet> (data)
     );
-
-    size_t nbResults  = results.size();
-
-    size_t nbRanks    = nbResults != usedRanks*64*16 ? 0 : usedRanks;  // no multiple ranks with simulator
-    size_t nbDPUs     = nbRanks==0 ? usedRanks : nbRanks*64;
-    size_t nbTasklets = nbDPUs  * NR_TASKLETS;
-
-    size_t stepRanks    = nbRanks==0 ? data.second : data.second / nbRanks;
-    size_t stepDPUs     = data.second / nbDPUs;
-    size_t stepTasklets = data.second / nbTasklets;
 
     size_t idx = 0;
 
@@ -59,23 +54,27 @@ void testRangeSplit (size_t usedRanks)
         REQUIRE (std::get<0>(r).second == c1.second);
 
         // rank
-        auto c2 = std::make_pair ((idx/64/16+0)*stepRanks, (idx/64/16+1)*stepRanks);
+        auto c2 = SplitOperator<decltype(data)>::split (data, idx/64/16, nbRanks);
         REQUIRE (std::get<1>(r).first  == c2.first);
         REQUIRE (std::get<1>(r).second == c2.second);
 
         // DPU
-        auto c3 = std::make_pair ((idx/16+0) *stepDPUs, (idx/16+1) *stepDPUs);
+        auto c3 = SplitOperator<decltype(data)>::split (data, idx/16, nbDPUs);
         REQUIRE (std::get<2>(r).first  == c3.first);
         REQUIRE (std::get<2>(r).second == c3.second);
 
         // tasklet
-        auto c4 = std::make_pair ((idx/1+0)  *stepTasklets, (idx/1+1)  *stepTasklets);
+        auto c4 = SplitOperator<decltype(data)>::split (c3, idx%16, 16);
         REQUIRE (std::get<3>(r).first  == c4.first);
         REQUIRE (std::get<3>(r).second == c4.second);
 
         if (false)
         {
-            printf ("[%2ld,%2ld]  EXPECTED  [%6ld %6ld]  [%6ld %6ld]  [%6ld %6ld]  [%6ld %6ld]    ||    FOUND   [%6ld %6ld]  [%6ld %6ld]  [%6ld %6ld]  [%6ld %6ld]\n",
+            bool b1 = (std::get<1>(r).first  == c2.first) and (std::get<1>(r).second == c2.second);
+            bool b2 = (std::get<2>(r).first  == c3.first) and (std::get<2>(r).second == c3.second);
+            bool b3 = (std::get<3>(r).first  == c4.first) and (std::get<3>(r).second == c4.second);
+
+            printf ("[%2ld,%2ld]  EXPECTED  [%6ld %6ld]  [%6ld %6ld]  [%6ld %6ld]  [%6ld %6ld]    ||    FOUND   [%6ld %6ld]  [%6ld %6ld]  [%6ld %6ld]  [%6ld %6ld]  ->  [%c%c%c]\n",
                 idx%16, idx/16,
                 c1.first, c1.second,
                 c2.first, c2.second,
@@ -84,7 +83,8 @@ void testRangeSplit (size_t usedRanks)
                 std::get<0>(r).first, std::get<0>(r).second,
                 std::get<1>(r).first, std::get<1>(r).second,
                 std::get<2>(r).first, std::get<2>(r).second,
-                std::get<3>(r).first, std::get<3>(r).second
+                std::get<3>(r).first, std::get<3>(r).second,
+                b1 ? ' ' : 'X', b2 ? ' ' : 'X', b3 ? ' ' : 'X'
             );
         }
 
@@ -177,9 +177,7 @@ TEST_CASE ("Checksum5", "[Split]" )
 
     Launcher<ArchUpmem> launcher (ArchUpmem::Rank(4));
 
-    launcher.run<Checksum5> (
-        split<ArchUpmem::DPU>(data)
-    );
+    launcher.run<Checksum5> (data);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -211,5 +209,45 @@ TEST_CASE ("SplitRangeInt", "[Split]" )
         for (size_t nbResource : {1,10,100,500})    {  SplitRangeInt_aux (i0, i1, ArchUpmem::DPU       {nbResource} );  }
         for (size_t nbResource : {1,2,3,5,8,13,21}) {  SplitRangeInt_aux (i0, i1, ArchUpmem::Rank      {nbResource} );  }
         for (size_t nbResource : {1,2,3,5,8,13})    {  SplitRangeInt_aux (i0, i1, ArchMulticore::Thread{nbResource} );  }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+void SplitOperator_aux (size_t nbItems, size_t nbSplits1, size_t nbSplits2)
+{
+    uint64_t truth=0;
+    std::vector<uint32_t> v0;  for (size_t i=1; i<=nbItems; i++)  { v0.push_back(i); truth+=v0.back(); }
+
+    uint64_t check=0;
+    for (size_t i=0; i<nbSplits1; i++)
+    {
+        auto v1 = SplitOperator<decltype(v0)>::split (v0, i, nbSplits1);
+
+        for (size_t j=0; j<nbSplits2; j++)
+        {
+            auto v2 = SplitOperator<decltype(v1)>::split (v1, j, nbSplits2);
+
+            for (auto x : v2)
+            {
+                check += x;
+                //printf ("[i,j]: [%3ld,%3ld]  [v1,v2]: [%3ld,%3ld]  x: %ld \n", i,j, v1.size(), v2.size(), x);
+            }
+        }
+    }
+
+    REQUIRE (truth == check);
+}
+
+TEST_CASE ("SplitOperator", "[Split]" )
+{
+    for (size_t nbItems=1; nbItems<=1000; nbItems++)
+    {
+        for (size_t nbSplits1 : {1,2,4,8})
+        {
+            for (size_t nbSplits2 : {1,2,3,5,8,13,21})
+            {
+                SplitOperator_aux (nbItems, nbSplits1, nbSplits2);
+            }
+        }
     }
 }

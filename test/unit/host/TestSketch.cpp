@@ -170,11 +170,16 @@ std::vector<hash_t> getSketches (const char* filename, size_t ssize, size_t nbSk
 
 //////////////////////////////////////////////////////////////////////////////
 template<typename CONFIG>
-auto SketchJaccardTopK_aux (size_t nbSketchRef = 10, size_t nbSketchQry = 100, size_t SSIZE = 10000)
+auto SketchJaccardTopK_aux (double& runtime, size_t nbSketchRef = 10, size_t nbSketchQry = 100, size_t SSIZE = 10000)
 {
+    auto timestamp = []
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() / 1000.0;
+    };
+
     size_t nbunits = CONFIG::nbunits;
 
-    Launcher<typename CONFIG::arch_t> launcher (typename CONFIG::level_t {nbunits});
+    Launcher<typename CONFIG::arch_t> launcher (typename CONFIG::level_t {nbunits}, false);
 
     using hash_t = typename SketchJaccardTopK<typename CONFIG::arch_t>::hash_t;
 
@@ -207,7 +212,13 @@ auto SketchJaccardTopK_aux (size_t nbSketchRef = 10, size_t nbSketchQry = 100, s
 //        nbSketchRef, nbSketchQry, ref.size(), qry.size(), launcher.getProcUnitNumber(), sizeof(hash_t)
 //    );
 
+    double t0 = timestamp();
+
     auto result = launcher.template run<SketchJaccardTopK> (split(ref), qry, SSIZE);
+
+    double t1 = timestamp();
+
+    runtime = t1-t0;
 
     //printf ("#result: %ld\n", result.size());
 
@@ -252,6 +263,9 @@ TEST_CASE ("SketchJaccardTopK", "[Sketch]" )
 //    nbSketchRef = 16;
 //    nbSketchQry = 1200;
 
+//    nbSketchRef = 10;
+//    nbSketchQry = 100;
+
 //    nbSketchRef = 2;
 //    nbSketchQry = 4;
 //    SSIZE       = 100;
@@ -260,8 +274,13 @@ TEST_CASE ("SketchJaccardTopK", "[Sketch]" )
 //    nbSketchQry = 13;
 //    SSIZE = 10000;
 
-    auto res1 = SketchJaccardTopK_aux<config1::upmem>     (nbSketchRef, nbSketchQry, SSIZE);
-    auto res2 = SketchJaccardTopK_aux<config1::multicore> (nbSketchRef, nbSketchQry, SSIZE);
+    [[maybe_unused]] double t1;
+    auto res1 = SketchJaccardTopK_aux<config1::upmem>     (t1, nbSketchRef, nbSketchQry, SSIZE);
+
+    [[maybe_unused]] double t2;
+    auto res2 = SketchJaccardTopK_aux<config1::multicore> (t2, nbSketchRef, nbSketchQry, SSIZE);
+
+    //printf ("UPMEM: %.2f  MULTICORE: %.2f\n", t1,t2);
 
     REQUIRE (res1.size() == res2.size());
 
@@ -349,9 +368,7 @@ for (size_t qryCoeff : { 1, 2, 5, 10, 50, 100, 500, 1000, 2000, 5000, 10000})
 
 TEST_CASE ("SketchJaccard2", "[Sketch]" )
 {
-    size_t nbranks = 1;
-
-    Launcher<ArchUpmem> launcher (ArchUpmem::Rank (nbranks), false);
+    Launcher<ArchUpmem> launcher (1_rank, false);
 
     using sketch_t = SketchJaccard<ArchUpmem>::sketch_t;
 

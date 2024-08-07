@@ -5,3 +5,4 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 static size_t BROADCAST_SIZE_MBYTES[]  = { @BROADCAST_SIZE_MBYTES@ }; 
+static size_t STACK_SIZE_PERCENT[]     = { @STACK_SIZE_PERCENT@    }; 

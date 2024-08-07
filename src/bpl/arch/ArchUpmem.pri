@@ -8,6 +8,7 @@ extern "C"
 {
     #include <dpu.h>
     #include <dpu_memory.h>
+    #include <dpu_management.h>
 }
 
 #include <string>
@@ -34,8 +35,10 @@ public:
         //else                                     { throw std::runtime_error ("bad DPU allocation"); }
              
         // We retrieve the number of DPU for the current set.
-        DPU_ASSERT(dpu_get_nr_dpus(handle(), &nbDPUs_));
+        DPU_ASSERT(dpu_get_nr_dpus(handle(),  &nbDPUs_));
 
+        DPU_ASSERT(dpu_get_nr_ranks(handle(), &nbRanks_));
+        
         // We compute the number of process units.
         nbProcUnits_ = nbDPUs_ * NR_TASKLETS;
         
@@ -68,11 +71,14 @@ public:
 
     size_t getDpuNumber() const { return nbDPUs_; }
 
+    size_t getRanksNumber() const { return nbRanks_; }
+
     struct dpu_set_t& handle()  { return handle_; }
 
 private:
     struct dpu_set_t handle_;
     uint32_t nbDPUs_      = 0;
+    uint32_t nbRanks_     = 0;
     uint32_t nbProcUnits_ = 0;
     bool     trace_       = false;
     std::string options_;

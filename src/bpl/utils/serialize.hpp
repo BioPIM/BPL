@@ -64,12 +64,12 @@ struct Serialize
     ////////////////////////////////////////////////////////////////////////////////
     template <typename T, typename FCT>
     requires (is_serializable_v<T>)
-    static auto iterate (int depth, const T& t, FCT fct)
+    static auto iterate (bool transient, int depth, const T& t, FCT fct, void* context=nullptr)
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "is_serializable", (uint32_t) sizeof(T));
 
         // we forward the request to the implementation provided by the user
-        serializable<T>::template iterate<ARCH,BUFITER,ROUNDUP> (depth, t, fct);
+        serializable<T>::template iterate<ARCH,BUFITER,ROUNDUP> (transient, depth, t, fct, context);
     }
 
     template<typename T>
@@ -87,10 +87,10 @@ struct Serialize
     ////////////////////////////////////////////////////////////////////////////////
     template<typename T, typename FCT>
     requires (std::is_arithmetic_v<T>)
-    static auto iterate (int depth, const T& t, FCT fct)
+    static auto iterate (bool transient, int depth, const T& t, FCT fct, void* context=nullptr)
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "is_arithmetic", (uint32_t) sizeof(T));
-        fct (depth, (void*)&t, sizeof(T), round(sizeof(T)));
+        fct (transient, depth, (void*)&t, sizeof(T), round(sizeof(T)));
     }
 
     template<typename T>
@@ -109,11 +109,11 @@ struct Serialize
     ////////////////////////////////////////////////////////////////////////////////
     template<typename T, typename FCT>
     requires (std::is_trivially_copyable_v<T> and not (std::is_arithmetic_v<T> or is_serializable_v<T>))
-    static auto iterate (int depth, const T& t, FCT fct)
+    static auto iterate (bool transient, int depth, const T& t, FCT fct, void* context=nullptr)
     {
         DEBUG_SERIALIZATION (DEBUG_FMT,  depth, "iterate", "is_trivially_copyable and not is_arithmetic and not is_serializable_v", (uint32_t) sizeof(T));
 
-        fct (depth, (void*)&t, sizeof(T), round(sizeof(T)));
+        fct (transient, depth, (void*)&t, sizeof(T), round(sizeof(T)));
     }
 
     template<typename T>
@@ -131,13 +131,13 @@ struct Serialize
     // std::is_class_v<T> and not (std::is_trivially_copyable_v<T> or is_serializable_v<T>)
     ////////////////////////////////////////////////////////////////////////////////
     template<typename T, typename FCT>
-    static auto iterate (int depth, const T& t, FCT fct)
+    static auto iterate (bool transient, int depth, const T& t, FCT fct, void* context=nullptr)
     requires (std::is_class_v<T> and not (std::is_trivially_copyable_v<T> or is_serializable_v<T>))
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "not is_trivially_copyable and is_class", (uint32_t) sizeof(T));
 
         // We convert the incoming class into a tuple.
-        iterate (depth, to_tuple(t), fct);
+        iterate (transient, depth, to_tuple(t), fct, context);
     }
 
     template<typename T>
@@ -188,13 +188,13 @@ struct Serialize
     // this template specialization won't be called and the default will be instead
     // (which leads to issue...)
     template<typename T, size_t N,typename FCT>
-    static auto iterate (int depth, const typename ARCH::template array<T,N>& t, FCT fct)
+    static auto iterate (bool transient, int depth, const typename ARCH::template array<T,N>& t, FCT fct, void* context=nullptr)
     requires (not std::is_trivial_v<T>)
     {
         DEBUG_SERIALIZATION (DEBUG_FMT,  depth, "iterate", "array + not is_trivially_copyable", (uint32_t) N*sizeof(T));
 
         // We must iterate each item of the array.
-        for (T&& x : t)  {  iterate (depth, x,fct);  }
+        for (T&& x : t)  {  iterate (transient, depth, x,fct, context);  }
     }
 
     template<typename T, size_t N>
@@ -216,13 +216,13 @@ struct Serialize
     // ARRAY: std::is_trivial_v<T>
     ////////////////////////////////////////////////////////////////////////////////
     template<typename T, size_t N,typename FCT>
-    static auto iterate (int depth, const typename ARCH::template array<T,N>& t, FCT fct)
+    static auto iterate (bool transient, int depth, const typename ARCH::template array<T,N>& t, FCT fct, void* context=nullptr)
     requires (std::is_trivial_v<T>)
     {
-        DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "array + not is_serializable_v<T>", (uint32_t) (N*sizeof(T)));
+        DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "array + is_trivial_v<T>", (uint32_t) (N*sizeof(T)));
 
         uint32_t n = N*sizeof(T);
-        fct (depth, (void*)t.data(), n, round (n) );
+        fct (transient, depth, (void*)t.data(), n, round (n) );
     }
 
     template<typename T, size_t N>
@@ -231,7 +231,7 @@ struct Serialize
     {
         uint32_t n = N*sizeof(T);
 
-        DEBUG_SERIALIZATION (DEBUG_FMT, 0, "restore", "array + not is_serializable_v<T>", (uint32_t) n);
+        DEBUG_SERIALIZATION (DEBUG_FMT, 0, "restore", "array + is_trivial_v<T>", (uint32_t) n);
 
         it.memcpy (result.data(), round (n) );
     }
@@ -240,12 +240,12 @@ struct Serialize
     // PAIR
     ////////////////////////////////////////////////////////////////////////////////
     template<typename A, typename B, typename FCT>
-    static auto iterate (int depth, const pair<A,B>& t, FCT fct)
+    static auto iterate (bool transient, int depth, const pair<A,B>& t, FCT fct, void* context=nullptr)
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "pair", (uint32_t) sizeof(pair<A,B>));
 
-        iterate (depth+1, t.first, fct);
-        iterate (depth+1, t.second,fct);
+        iterate (true, depth+1, t.first, fct, context);
+        iterate (true, depth+1, t.second,fct, context);
     }
 
     template<typename A, typename B>
@@ -261,12 +261,12 @@ struct Serialize
     // TUPLE
     ////////////////////////////////////////////////////////////////////////////////
     template<typename ...ARGS, typename FCT>
-    static void iterate (int depth, const tuple<ARGS...>& t, FCT fct)
+    static void iterate (bool transient, int depth, const tuple<ARGS...>& t, FCT fct, void* context=nullptr)
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "tuple", (uint32_t) sizeof(tuple<ARGS...>));
-        for_each_in_tuple (t, [fct,depth] (auto&& x)
+        for_each_in_tuple (t, [&] (auto&& x)
         {
-            iterate (depth+1, x,fct);
+            iterate (transient, depth+1, x,fct, context);
         });
     }
 
@@ -285,13 +285,13 @@ struct Serialize
     // STRING
     ////////////////////////////////////////////////////////////////////////////////
     template<typename FCT>
-    static void iterate (int depth, const string& t, FCT fct)
+    static void iterate (bool transient, int depth, const string& t, FCT fct, void* context=nullptr)
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "string", (uint32_t) size_t(0));
 
         typename string::size_type n = t.size();
-        iterate (depth, n,fct);
-        fct (depth, (char*)t.data(), n, round(n));
+        iterate (transient, depth, n,fct, context);
+        fct (transient, depth, (char*)t.data(), n, round(n));
     }
 
     static void restore (iter_t& it, string& result)
@@ -313,15 +313,15 @@ struct Serialize
     // VECTOR: not std::is_trivially_copyable_v<T> and not is_serializable_v<vector<T>>
     ////////////////////////////////////////////////////////////////////////////////
     template<typename T, typename FCT>
-    static auto iterate (int depth, const vector<T>& t, FCT fct)
+    static auto iterate (bool transient, int depth, const vector<T>& t, FCT fct, void* context=nullptr)
     requires (not std::is_trivially_copyable_v<T> and not is_serializable_v<vector<T>>)
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "vector + not is_trivially_copyable", (uint32_t) sizeof(T));
 
         typename vector<T>::size_type n = t.size();
-        iterate (depth, n,fct);
+        iterate (transient, depth, n,fct, context);
 
-        for (auto&& x : t)  {  iterate (depth+1, x,fct);  }
+        for (auto&& x : t)  {  iterate (transient, depth+1, x,fct, context);  }
     }
 
     template<typename T>
@@ -345,15 +345,15 @@ struct Serialize
     // VECTOR: std::is_trivially_copyable_v<T>  and not is_serializable_v<vector<T>>
     ////////////////////////////////////////////////////////////////////////////////
     template<typename T, typename FCT>
-    static auto iterate (int depth, const vector<T>& t, FCT fct)
+    static auto iterate (bool transient, int depth, const vector<T>& t, FCT fct, void* context=nullptr)
     requires (std::is_trivially_copyable_v<T>  and not is_serializable_v<vector<T>>)
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "vector + is_trivially_copyable", (uint32_t) sizeof(T));
 
         typename vector<T>::size_type n = t.size();
-        iterate (depth, n,fct);
+        iterate (true, depth, n,fct, context);
 
-        fct (depth, (void*)t.data(), sizeof(T)*t.size(), round(sizeof(T)*t.size()));
+        fct (transient, depth, (void*)t.data(), sizeof(T)*t.size(), round(sizeof(T)*t.size()));
     }
 
     template<typename T>
@@ -375,7 +375,6 @@ struct Serialize
 #else
         // We restore each item of the vector.
         for (size_t i=0; i<n; i++)  {  restore (it, result[i]);  }
-
 #endif
     }
 
@@ -383,7 +382,7 @@ struct Serialize
     // SPAN
     ////////////////////////////////////////////////////////////////////////////////
     template<typename T, typename FCT>
-    static auto iterate (int depth, const span<T>& t, FCT fct)
+    static auto iterate (bool transient, int depth, const span<T>& t, FCT fct, void* context=nullptr)
     requires (not (std::is_trivially_copyable_v<T> or is_serializable_v<T>))
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "span + not is_trivially_copyable", (uint32_t) sizeof(T));
@@ -391,17 +390,20 @@ struct Serialize
         DEBUG_SERIALIZATION ("ITERATE(span + not is_trivially_copyable):  size: %d\n", t.size());
 
         typename vector<T>::size_type n = t.size();
-        iterate (depth, n,fct);
+        iterate (transient, depth, n,fct, context);
 
-        for (auto&& x : t)  {  iterate (depth+1, x,fct);  }
+        for (auto&& x : t)  {  iterate (transient, depth+1, x,fct, context);  }
     }
 
     template<typename T, typename FCT>
-    static auto iterate (int depth, const span<T>& t, FCT fct)
+    static auto iterate (bool transient, int depth, const span<T>& t, FCT fct, void* context=nullptr)
     requires (std::is_trivially_copyable_v<T>  and not is_serializable_v<T>)
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "span + is_trivially_copyable", (uint32_t) sizeof(T));
-        DEBUG_SERIALIZATION ("ITERATE(span + is_trivially_copyable):  size: %d\n", t.size());
+
+        iterate (true, depth, t.size(),fct);
+
+        fct (transient, depth, (void*)t.data(), sizeof(T)*t.size(), round(sizeof(T)*t.size()));
     }
 
     template<typename T>
@@ -432,26 +434,27 @@ struct Serialize
     ////////////////////////////////////////////////////////////////////////////////
 
     template<typename T, typename CALLBACK>
-    static size_t size (const T& x, CALLBACK callback)
+    static auto size (const T& x, CALLBACK callback)
     {
         DEBUG_SERIALIZATION ("[size] ++++++++++++++++++\n");
 
         size_t idx = 0;
-        size_t totalSize = 0;
-        iterate (0, x, [&] (int depth, void* ptr, size_t size, size_t roundedSize)
+        pair<size_t,size_t> sizes {0,0};  // transient,permanent
+        iterate (false, 0, x, [&] (bool transient, int depth, void* ptr, size_t size, size_t roundedSize)
         {
-            callback (depth, idx, totalSize);
-            totalSize += roundedSize;
+            callback (transient, size, roundedSize);
+            sizes.first  +=     transient ?  roundedSize : 0 ;
+            sizes.second += not transient ?  roundedSize : 0 ;
             idx++;
         });
-        DEBUG_SERIALIZATION ("[size] ------------------  %d \n", uint32_t(totalSize) );
-        return totalSize;
+        DEBUG_SERIALIZATION ("[size] ------------------  %d,%d \n", uint32_t(sizes.first),uint32_t(sizes.first)  );
+        return sizes;
     }
 
     template<typename T>
-    static size_t size (const T& x)
+    static auto size (const T& x)
     {
-        return size (x, [] (int depth, size_t idx, size_t offset) {} );
+        return size (x, [] (bool transient, size_t size, size_t roundedSize) {} );
     }
 
     template<typename T>
@@ -460,14 +463,14 @@ struct Serialize
         // First iteration: get the total size.
         // Note: we also could use only one iteration and resize the vector size at each iteration.
         // -> however, computing first the full vector size allows to have only one vector memory allocation.
-        size_t totalSize = size (x);
+        auto totalSize = size (x);
 
         DEBUG_SERIALIZATION ("[to  ] ++++++++++++++++++\n");
 
         // Second iteration: fill the buffer
-        buffer_t buffer (totalSize);
+        buffer_t buffer (totalSize.first + totalSize.second);
         auto loop = buffer.data();
-        iterate (0, x, [&] (int depth, void* ptr, size_t size, size_t roundedSize)
+        iterate (false, 0, x, [&] (bool transient, int depth, void* ptr, size_t size, size_t roundedSize)
         {
             DEBUG_SERIALIZATION ("[to  ]  ------------------------------------------> dist: %ld\n", loop - buffer.data());
             // We can do a memcpy here since the data pointed by 'ptr' is supposed
@@ -481,85 +484,171 @@ struct Serialize
     }
 
     template<typename INFO, typename TRANSFO, typename CALLBACK, typename ...ARGS>
-    static buffer_t tuple_to_buffer (const tuple<ARGS...>& x, INFO info, TRANSFO transfo, CALLBACK cbk)
+    static size_t tuple_to_buffer (const tuple<ARGS...>& x, buffer_t& buffer, INFO info, TRANSFO transfo, CALLBACK cbk)
     {
         // The serialized buffer is built by serializing each item of the provided tuple.
         // A previous version computed first the size of the buffer in order to allocate
         // the correct size. Now, we prefer to build the buffer dynamically and update the
         // buffer size when needed. Actually, we provided a initial 'defaultSize' size that
         // could be enough to cope with several small sizeof for the tuple items.
-        size_t defaultSize = 256;
+        [[maybe_unused]] size_t defaultSize = 256;
 
-        // We create a buffer with a default size (may be extended if needed)
-        buffer_t buffer (defaultSize);
+        size_t idxArg          = 0;
+        size_t offsetLocal     = 0;
+        size_t offsetGlobal    = 0;
+        size_t offsetTransient = 0;
 
-        size_t idxArg       = 0;
-        size_t offsetLocal  = 0;
-        size_t offsetGlobal = 0;
+        // We need to compute the buffer size first since we will provide addresses to the 'cbk' and not offsets
+        // from a base address (that could change over time if the buffer needs to be resized).
+        // The buffer size should include only the size of transient objects. For instance, arguments that are vectors
+        // are supposed to exist during the whole serialization process, so their data don't need to be copied in the
+        // buffer. On the other hand, the size of a vector requires the allocation of a temporary object that holds the
+        // vector size; in such a case, the object is transient and needs to be copied in the buffer.
+
+        size_t transientBufferSize = 0;
+
+        size_t iarg=0;
+        for_each_in_tuple (x, [&] (auto&& itemTuple)
+        {
+            // see https://stackoverflow.com/questions/46114214/lambda-implicit-capture-fails-with-variable-declared-from-structured-binding
+            size_t level, isSplit, nbUnits;
+            std::tie(level, isSplit, nbUnits) = info (iarg, std::forward<decltype(itemTuple)>(itemTuple));
+
+            // We get the size of the current argument.
+            size (itemTuple, [&] (bool transient, size_t size, size_t roundedSize)
+            {
+                if (transient) {  transientBufferSize += roundedSize * nbUnits;  }
+            });
+
+            iarg++;
+        });
+
+        // We reserve only for transient data
+        buffer.resize (transientBufferSize);
+
+        // We need to know the number of parts iterated for each argument.
+        // These numbers will be known for sure after the parsing of the first DPU and then can
+        // be reused for other arguments as an offet.
+        size_t nbPartsPerArgOffset[32];  for (auto& x : nbPartsPerArgOffset)  { x=0; }
 
         for_each_in_tuple (x, [&] (auto&& itemTuple)
         {
-            DEBUG_SERIALIZATION ("[tuple_to_buffer  ]  ------------------------------------------> local: %ld  global: %ld\n", offsetLocal, offsetGlobal);
+            DEBUG_SERIALIZATION ("[tuple_to_buffer  ]  ------------------------------------------> idxArg:%ld  local: %ld  global: %ld\n", idxArg, offsetLocal, offsetGlobal);
 
             // For each item of the tuple, we apply a transformation.
-            // Such a transformation may for instance split the item in several parts.
-            size_t idxTransfo = 0;
+            // Such a transformation may for instance split the item in several parts (one per DPU for instance).
+            size_t idxDPU = 0;
 
-            auto fct = [&] (bool status, auto& item)
+            auto fct = [&] (bool status, auto&& item)
             {
                 DEBUG_SERIALIZATION ("[tuple_to_buffer  ]      status: %d\n", status);
+
+                size_t idxPart = 0;  // for instance, a vector is serialized in two parts.
 
                 // We serialize the item only if the status allows to do so.
                 if (status)
                 {
                     offsetLocal = 0;
 
-                    iterate (0, item,  [&] (int depth, void* ptr, size_t size, size_t roundedSize)
+                    // lifecycle object :  true-> transient   false->permanent
+                    iterate (false, 0, item,  [&] (bool isTransient, int depth, void* ptr, size_t size, size_t roundedSize)
                     {
-                        // We may have to resize the buffer if needed. Note that we add a few extra 'defaultSize' bytes
-                        if (offsetGlobal+roundedSize >= buffer.size())
+                        // Here, we are in the following loop:
+                        //    foreach idxArg
+                        //       foreach idxDPU
+                        //          foreach idxPart
+                        //
+                        // So we have to compute the position of the current block (in the scatter/gather DPU point of view)
+                        // for the current DPU. Example:
+                        //
+                        //    DPU0:  ARG0            ARG1       ARG2
+                        //           PART0 PART1     PART0      PART0 PART1
+                        //    DPU1:  ARG0            ARG1       ARG2
+                        //           PART0 PART1     PART0      PART0 PART1
+
+                        size_t idxBlock = nbPartsPerArgOffset[idxArg] + idxPart;
+
+                        uint8_t* actualPtr = (uint8_t*) ptr;
+
+                        if (isTransient)
                         {
-                            buffer.resize (offsetGlobal + roundedSize + defaultSize);
+                            // We may have to resize the buffer if needed. Note that we add a few extra 'defaultSize' bytes
+
+                            // We can do a memcpy here since the data pointed by 'ptr' is supposed
+                            // to be available at this time in memory. We are also sure about the size
+                            // available in 'buffer' since its size has been previously updated if needed.
+                            memcpy (buffer.data() + offsetTransient, (char*)ptr, size);
+
+                            actualPtr = (uint8_t*) buffer.data() + offsetTransient;
+
+                            offsetTransient += roundedSize;
                         }
 
-                        // We can do a memcpy here since the data pointed by 'ptr' is supposed
-                        // to be available at this time in memory. We are also sure about the size
-                        // available in 'buffer' since its size has been previously updated if needed.
-                        memcpy (buffer.data() + offsetGlobal, (char*)ptr, size);
+                        VERBOSE_SERIALIZATION ("[tuple_to_buffer]  transient: %d sts: %d  idxDPU: %3ld  idxArg: %3ld  idxPart: %2ld  idxBlock: %3ld  nbPtsOff: %ld  offsets: [%10ld,%7ld,%7ld]  #buf: %10d  size: %8d  ptr: [%p,%p] \n",
+                            isTransient, status, idxDPU, idxArg, idxPart, idxBlock, nbPartsPerArgOffset[idxArg],
+                            offsetGlobal, offsetLocal,offsetTransient,
+                            (uint32_t)buffer.size(),
+                            (uint32_t)size, ptr, actualPtr
+                        );
+
+                        // We call the callback in order to provide some information during the serialization process.
+                        // NOTE: we could have used a std::vector in order to gather this information and then provide it
+                        // to the caller. However, the serialize capacity we implement here can be used either by the multicore
+                        // arch and the UPMEM arch, so we prefer here make no use of explicit std class but nevertheless provide
+                        // some information through a callback.
+
+                        // We invoke the callback for the current part.
+                        cbk (idxDPU, idxBlock, actualPtr, roundedSize);
 
                         offsetLocal  += roundedSize;
                         offsetGlobal += roundedSize;
+
+                        // We increase the parts number for the current argument to be serialized.
+                        idxPart++;
                     });
                 }
 
-                // We call the callback in order to provide some information during the serialization process.
-                // NOTE: we could have used a std::vector in order to gather this information and then provide it
-                // to the caller. However, the serialize capacity we implement here can be used either by the multicore
-                // arch and the UPMEM arch, so we prefer here make no use of explicit std class but nevertheless provide
-                // some information through a callback.
-                cbk (idxTransfo, idxArg, offsetGlobal-offsetLocal, offsetLocal);
+                else  // not status
+                {
+                    //printf ("==> iterate  sts: %d  idxDPU: %3ld  idxArg: %3ld  \n", status, idxDPU, idxArg);
 
-                idxTransfo++;
+                    // We have to reuse the same scheme as the previous DPU.
+                    // By convention, we set the pointer to null in order to inform the caller
+
+                    for (size_t idxBlock = nbPartsPerArgOffset[idxArg]; idxBlock<nbPartsPerArgOffset[idxArg+1]; idxBlock++)
+                    {
+                        cbk (idxDPU, idxBlock, nullptr, 0);
+                    }
+                }
+
+                // We remember the number of iterated parts for the current argument.
+                // We can do that on the first DPU for instance.
+                if (idxDPU==0)
+                {
+                    // We need to compute the sum of the previous values.
+                    nbPartsPerArgOffset [idxArg+1] = idxPart + nbPartsPerArgOffset [idxArg];
+                }
+
+                idxDPU++;
             };
 
             // We get some information about the current item of the tuple.
             // In particular, we are interested to know whether it has to be split or not.
-            auto [level, isSplit, nbUnits] = info (idxArg, itemTuple);
+            auto [level, isSplit, nbUnits] = info (idxArg, std::forward<decltype(itemTuple)>(itemTuple));
 
             // According to the split status, we don't have the same action.
             if (not isSplit)
-            //if (not isSplit or (isSplit and level==1))
             {
                 // No split -> we can use the same item.
                 // For instance with Upmem arch, it means that the same information will be broadcasted to all DPUs.
-                for (size_t i=0; i<nbUnits; i++)  {  fct (i==0, itemTuple);  }
+                for (size_t i=0; i<nbUnits; i++)  {  fct (i==0, std::forward<decltype(itemTuple)>(itemTuple));  }
             }
             else
             {
                 // Split -> several items will be created (one per split part)
-                for (const auto& [status,itemRef] : transfo(idxArg, itemTuple))
+                for (auto&& [status,itemRef] : transfo(idxArg, std::forward<decltype(itemTuple)>(itemTuple)))
                 {
-                    fct (status,itemRef);
+                    fct (status, std::forward<decltype(itemRef)>(itemRef));
                 }
             }
 
@@ -576,10 +665,7 @@ struct Serialize
         }
         VERBOSE_SERIALIZATION ("\n");
 
-        // We need to resize the buffer with the correct size (we may have used too much room with the 'resize')
-        buffer.resize (round(offsetGlobal));
-
-        return buffer;
+        return offsetGlobal;
     }
 
 
@@ -631,9 +717,9 @@ struct bpl::core::serializable<details::SplitProxy<L,K,TT>>
     static constexpr int value = true;
 
     template<class ARCH, class BUFITER, int ROUNDUP, typename T, typename FCT>
-    static auto iterate (int depth, const T& t, FCT fct)
+    static auto iterate (bool transient, int depth, const T& t, FCT fct, void* context=nullptr)
     {
-        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (depth+1, t._t, fct);
+        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (transient, depth+1, t._t, fct, context);
     }
 
     template<class ARCH, class BUFITER, int ROUNDUP, typename T>
@@ -653,11 +739,11 @@ struct bpl::core::serializable<bpl::core::Range>
     static constexpr int value = true;
 
     template<class ARCH, class BUFITER, int ROUNDUP, typename T, typename FCT>
-    static auto iterate (int depth, const T& t, FCT fct)
+    static auto iterate (bool transient, int depth, const T& t, FCT fct, void* context=nullptr)
     {
         //printf ("Range::iterate:  %ld %ld \n", *t.begin(), *t.end  ());
-        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (depth+1, *t.begin(), fct);
-        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (depth+1, *t.end  (), fct);
+        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (true, depth+1, *t.begin(), fct, context);
+        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (true, depth+1, *t.end  (), fct, context);
     }
 
     template<class ARCH, class BUFITER, int ROUNDUP, typename T>
@@ -679,11 +765,11 @@ struct bpl::core::serializable<bpl::core::RakeRange>
     static constexpr int value = true;
 
     template<class ARCH, class BUFITER, int ROUNDUP, typename T, typename FCT>
-    static auto iterate (int depth, const T& t, FCT fct)
+    static auto iterate (bool transient, int depth, const T& t, FCT fct, void* context=nullptr)
     {
-        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (depth+1, *t.begin(), fct);
-        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (depth+1, *t.end  (), fct);
-        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (depth+1,  t.begin().modulo(), fct);
+        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (transient, depth+1, *t.begin(), fct, context);
+        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (transient, depth+1, *t.end  (), fct, context);
+        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (transient, depth+1,  t.begin().modulo(), fct, context);
         //printf ("RakeRange::iterate:  %ld %ld %ld\n", *t.begin(), *t.end  (),  t.begin().modulo());
 
     }
@@ -705,9 +791,9 @@ template<typename T>
 struct bpl::core::serializable<bpl::core::once<T>> : std::true_type
 {
     template<class ARCH, class BUFITER, int ROUNDUP, typename TYPE, typename FCT>
-    static auto iterate (int depth, const TYPE& t, FCT fct)
+    static auto iterate (bool transient, int depth, const TYPE& t, FCT fct, void* context=nullptr)
     {
-        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (depth+1, *t, fct);
+        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (transient, depth+1, *t, fct, context);
     }
 
     template<class ARCH, class BUFITER, int ROUNDUP, typename TYPE>

@@ -15,7 +15,6 @@ foreach (NAME  "helloworld" "checksum")
 	    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/scripts           ${TMP_DIR}/${NAME}/scripts
 	    WORKING_DIRECTORY "${TMP_DIR}"
 	    COMMAND ${CMAKE_COMMAND} -E tar "cfvz" ${CMAKE_BINARY_DIR}/${NAME}.tar.gz  ${NAME} 
-	    COMMAND ${CMAKE_COMMAND} -E remove_directory ${TMP_DIR}
 	)
 
 endforeach()

@@ -96,7 +96,8 @@ struct Cache
 template<
     typename T,
     typename ALLOCATOR,
-    int DATABLOCK_SIZE_LOG2
+    int DATABLOCK_SIZE_LOG2,
+    bool SHARED_ITER_CACHE = true
 >
 class vector_view
 {
@@ -170,15 +171,55 @@ public:
 
 protected:
 
+    // The cache size is the total number of items per block divided by a power of 2
+    static constexpr int CACHE_DIV_LOG2 = 1;
+    static constexpr int CACHE_ITEMS_NB_LOG2  = DATABLOCK_SIZE_LOG2 - CACHE_DIV_LOG2;
+    static constexpr int CACHE_ITEMS_NB       = 1 << CACHE_ITEMS_NB_LOG2;
+
+    using cache_t = impl::Cache < T, ALLOCATOR,  CACHE_ITEMS_NB>;
+
+    // We need a tool that provides a cache:
+    //    1: a specific one or
+    //    2: the one used in the vector_view itself
+    // The first case is important when a vector_view is shared by several users
+    // (like tasklets using a global<vector_view> instance)
+    //
+    // Both cases will be handled by a template specialization of this struct
+    template<class REFERENCE, bool REUSE_CACHE>
+    struct iterator_cache
+    {
+              cache_t& get(const REFERENCE* ref);
+        const cache_t& get(const REFERENCE* ref) const;
+    };
+
+    template<class REFERENCE>
+    struct iterator_cache<REFERENCE,true>
+    {
+              cache_t& get(const REFERENCE* ref)       { return ref->cache();   }
+        const cache_t& get(const REFERENCE* ref) const { return ref->cache();   }
+    };
+
+    template<class REFERENCE>
+    struct iterator_cache<REFERENCE,false>
+    {
+        iterator_cache () = default;
+        iterator_cache (const iterator_cache& other) {}
+
+              cache_t& get(const REFERENCE* ref)       { return cache_;   }
+        const cache_t& get(const REFERENCE* ref) const { return cache_;   }
+        cache_t cache_;
+    };
+
     template<class REFERENCE>
     struct iterator
     {
+
         iterator (const REFERENCE* ref, size_type idx)  : ref_(ref), idx_(idx)
         {
             if (ref_->hasBeenFilled())
             {
                 a_ = ref_->getFillAddress() + (idx_ >> DATABLOCK_SIZE_LOG2)*SIZEOF_DATABLOCK;
-                ref_->cache().read (a_);
+                cache().read (a_);
             }
         }
 
@@ -188,34 +229,38 @@ protected:
         bool operator != (const iterator& other) const   {  return idx_ != other.idx_;  }
         bool operator == (const iterator& other) const   {  return idx_ == other.idx_;  }
 
-        const T& operator* () const  {  return ref_->cache() [idx_];  }
+        const T& operator* () const  {  return cache() [idx_];  }
 
         iterator& operator ++ ()
         {
-            if (ref_->cache().isFull(idx_++))
+            if (cache().isFull(idx_++))
             {
                 // We have iterated all the items available in the cache -> we must
                 // fill the cache with the next data.
                 a_ += SIZEOF_DATABLOCK;
 
-                ref_->cache().read (a_);
+                cache().read (a_);
             }
             return *this;
         }
 
-        iterator operator+ (size_t nbItems) const
+        iterator operator+ (size_t nbItems)
         {
             iterator result { *this };
 
             result.a_   += (nbItems >> CACHE_ITEMS_NB_LOG2) * SIZEOF_DATABLOCK;
             result.idx_ += nbItems;
 
-            ref_->cache().read (a_);
+            cache().read (a_);
 
             return result;
         }
 
+              cache_t& cache()       { return cache_.get(ref_); }
+        const cache_t& cache() const { return cache_.get(ref_); }
+
         const REFERENCE* ref_;
+        iterator_cache<REFERENCE,SHARED_ITER_CACHE> cache_;
         size_type  idx_ = 0;
         address_t  a_   = 0;
     };
@@ -225,13 +270,6 @@ protected:
     // WARNING!!! order of attributes is important here
     size_type datablockIdx_  = -1;
     address_t fillAddress_   =  0;
-
-    // The cache size is the total number of items per block divided by a power of 2
-    static constexpr int CACHE_DIV_LOG2 = 1;
-    static constexpr int CACHE_ITEMS_NB_LOG2  = DATABLOCK_SIZE_LOG2 - CACHE_DIV_LOG2;
-    static constexpr int CACHE_ITEMS_NB       = 1 << CACHE_ITEMS_NB_LOG2;
-
-    using cache_t = impl::Cache < T, ALLOCATOR,  CACHE_ITEMS_NB>;
 
     mutable cache_t cache_[1<<CACHE_DIV_LOG2];
 
@@ -273,9 +311,9 @@ private:
     using parent_t     = vector_view<T,ALLOCATOR,DATABLOCK_SIZE_LOG2>;
     using memorytree_t = MemoryTree <ALLOCATOR, MEMTREE_NBITEMS_PER_BLOCK_LOG2, MAX_MEMORY_LOG2>;
 
-    static constexpr int SIZEOF_DATABLOCK = parent_t::SIZEOF_DATABLOCK;
-
 public:
+
+    static constexpr int SIZEOF_DATABLOCK = parent_t::SIZEOF_DATABLOCK;
 
     static constexpr int MEMTREE_NBITEMS_PER_BLOCK  = 1 << MEMTREE_NBITEMS_PER_BLOCK_LOG2;
     static constexpr int MAX_MEMORY                 = 1 << MAX_MEMORY_LOG2;
@@ -356,6 +394,14 @@ public:
         this->cache()[this->datablockIdx_] = item;
 
         this->dirty_ = true;
+    }
+
+    /** Appends a new element to the end of the container. */
+    template< class... ARGS >
+    void emplace_back (ARGS&&... args)
+    {
+        // no optimization (right now)
+        this->push_back ( T(std::forward<ARGS>(args)...) );
     }
 
     /** Returns the (copied) value at index 'idx'

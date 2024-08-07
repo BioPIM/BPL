@@ -1,0 +1,35 @@
+////////////////////////////////////////////////////////////////////////////////
+// BPL, the Process In Memory library for bioinformatics 
+// date  : 2024
+// author: edrezen
+////////////////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+////////////////////////////////////////////////////////////////////////////////
+//
+////////////////////////////////////////////////////////////////////////////////
+template<class ARCH>
+struct VectorEmplaceBack
+{
+    USING(ARCH);
+
+    struct type
+    {
+        type () {}
+        type (int a, float x) : a(a), x(x) {}
+        int a; float x;
+    };
+
+    using result_t = vector<type>;
+
+    result_t operator() ()
+    {
+        result_t v;
+
+        v.emplace_back (1, 3.14);
+        v.emplace_back (5, 2.71);
+
+        return v;
+    }
+};

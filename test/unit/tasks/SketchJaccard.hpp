@@ -16,7 +16,7 @@ struct SketchJaccard : bpl::core::Task<ARCH>
 
     using hash_t   = uint32_t;
     using count_t  = uint16_t;
-    using sketch_t = array<hash_t,40>;
+    using sketch_t = array<hash_t,36>;
 
     vector<count_t> operator() (const vector<sketch_t>& dbRef, const vector<sketch_t>& dbQry)
     {

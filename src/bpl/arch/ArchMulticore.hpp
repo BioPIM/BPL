@@ -96,6 +96,8 @@ public:
      */
     size_t getProcUnitNumber() const { return nbThreads_; }
 
+    auto getProcUnitDetails()  const { return std::make_tuple(getProcUnitNumber()); }
+
     ////////////////////////////////////////////////////////////////////////////////
     /** Configure an object of type T. We distinguish here two cases:
      *   - if T is derived from Task, the we call the 'Task::configure' method

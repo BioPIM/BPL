@@ -26,18 +26,6 @@ if (NOT DEFINED NR_TASKLETS)
     set (NR_TASKLETS 16)
 endif()
 
-if (NOT DEFINED STACK_SIZE_DEFAULT)
-    MATH(EXPR STACK_SIZE_DEFAULT "(( (65536*90/100) / ${NR_TASKLETS})/8)*8")
-endif()
-
-################################################################################
-
-# We define the list of allowed (log2) sizes for input parameters broadcast.
-#set (BROADCAST_SIZE_MBYTES  "1,2,4,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60")
-set (BROADCAST_SIZE_MBYTES  "1,5,10,20,30,40,50,60")
-set (BROADCAST_SIZE_LIST  ${BROADCAST_SIZE_MBYTES})
-STRING(REPLACE "," ";" BROADCAST_SIZE_LIST ${BROADCAST_SIZE_LIST} )
-
 ################################################################################
 
 ADD_SUBDIRECTORY (host)

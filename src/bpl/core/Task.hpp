@@ -72,6 +72,8 @@ template<typename ARCH, int MUTEX=1> struct Task : TaskBase<Task<ARCH,MUTEX>>
     static constexpr int MUTEX_NB = MUTEX;
 
     cycles_t nbcycles() const  { return 0;     }
+
+    void notify (size_t current, size_t total) {}
 };
 
 template<typename T>
