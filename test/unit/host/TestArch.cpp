@@ -9,7 +9,7 @@
 #include <bpl/arch/ArchMulticore.hpp>
 #include <bpl/arch/ArchUpmem.hpp>
 
-using namespace bpl::arch;
+using namespace bpl;
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("MULTICORE: check properties", "[Arch]" )

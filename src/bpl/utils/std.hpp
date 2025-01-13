@@ -1,13 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <firstinclude.hpp>
 
-#ifndef __BPL_UTILS_STD_HPP__
-#define __BPL_UTILS_STD_HPP__
+#pragma once
 
 // The UPMEM's clang version implies that we use some experimental parts of the std
 // (for instance the 'apply' function)
@@ -19,7 +18,6 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace core {
 ////////////////////////////////////////////////////////////////////////////////
 
 template< class F, class Tuple>
@@ -29,7 +27,5 @@ using directory_entry              = std::experimental::filesystem::directory_en
 using recursive_directory_iterator = std::experimental::filesystem::recursive_directory_iterator;
 
 ////////////////////////////////////////////////////////////////////////////////
-} };  // end of namespace
+};  // end of namespace
 ////////////////////////////////////////////////////////////////////////////////
-
-#endif /* __BPL_UTILS_STD_HPP__ */

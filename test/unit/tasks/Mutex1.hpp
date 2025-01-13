@@ -10,7 +10,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct Mutex1 : bpl::core::Task<ARCH>
+struct Mutex1 : bpl::Task<ARCH>
 {
     USING(ARCH);
 

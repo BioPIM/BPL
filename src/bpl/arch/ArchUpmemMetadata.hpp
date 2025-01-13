@@ -4,9 +4,10 @@
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <firstinclude.hpp>
-
 #pragma once
+
+#include <firstinclude.hpp>
+#include <vector>
 
 ////////////////////////////////////////////////////////////////////////////////
 // STATISTICS
@@ -75,6 +76,7 @@ struct TimeStats : TimeStatsValues<uint32_t>
 struct AllocatorStats
 {
     uint32_t used        = 0;
+    uint32_t pos         = 0;
     uint32_t nbCallsGet  = 0;
     uint32_t nbCallsRead = 0;
 };
@@ -88,8 +90,8 @@ struct MetadataInput
 
     MetadataInput ()  {  for (size_t i=0; i<ARGS_MAX_NUMBER; i++)  {  argsSplitStatus[i] = 0; }  }
 
-    MetadataInput (uint32_t nbtaskunits, uint32_t dpuid, uint32_t bufferSize, uint32_t deltaOnce, uint32_t reset, uint8_t splitStatus[ARGS_MAX_NUMBER])
-    :   nbtaskunits(nbtaskunits), dpuid(dpuid), bufferSize(bufferSize), deltaOnce(deltaOnce), reset(reset)
+    MetadataInput (uint32_t nbtaskunits, uint32_t dpuid, uint32_t bufferSize, uint32_t deltaOnce, uint32_t reset, uint32_t oncePadding, uint8_t splitStatus[ARGS_MAX_NUMBER])
+    :   nbtaskunits(nbtaskunits), dpuid(dpuid), bufferSize(bufferSize), deltaOnce(deltaOnce), reset(reset), oncePadding(oncePadding)
     {
         for (size_t i=0; i<ARGS_MAX_NUMBER; i++)  {  argsSplitStatus[i] = splitStatus[i]; }
     }
@@ -99,6 +101,7 @@ struct MetadataInput
     uint32_t bufferSize  = 0;
     uint32_t deltaOnce   = 0;
     uint32_t reset       = 0;
+    uint32_t oncePadding = 0;
     uint8_t  argsSplitStatus[ARGS_MAX_NUMBER];
 };
 
@@ -114,4 +117,20 @@ struct MetadataOutput
     uint32_t        heap_pointer      = 0;
     uint32_t        heap_pointer_init = 0;
     uint32_t        clocks_per_sec    = 0;
+    uint32_t        stack_size        = 0;
+    uint32_t        input_sizeof      = 0;
+    uint32_t        output_sizeof     = 0;
+
+    struct VectorStats
+    {
+        uint32_t SIZEOF;
+        uint32_t NB_VECTORS_IN_PROTO;
+    	uint32_t CACHE_NB;
+    	uint32_t MEMORY_SIZE;
+    	uint32_t CACHE_NB_ITEMS;
+        uint64_t NBITEMS_MAX;
+        uint32_t MEMTREE_NBITEMS_PER_BLOCK;
+        uint32_t MEMTREE_MAX_MEMORY;
+        uint32_t MEMTREE_LEVEL_MAX;
+    } vstats;
 };

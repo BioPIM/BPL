@@ -1,13 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <firstinclude.hpp>
 
-#ifndef __BPL_ARCH_MULTICORE__
-#define __BPL_ARCH_MULTICORE__
+#pragma once
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <bpl/arch/Arch.hpp>
@@ -33,7 +32,6 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace arch {
 ////////////////////////////////////////////////////////////////////////////////
 
 /** \brief Class that provides methods and types for a multi-core architecture
@@ -47,7 +45,7 @@ namespace arch {
  * It also provides some types that can be used within the execution of the task. By default in
  * this implementation, such types will be mainly std containers from the standard library.
  *
- * \see bpl::core::Launcher
+ * \see bpl::Launcher
  */
 class ArchMulticore : public ArchMulticoreResources
 {
@@ -57,15 +55,17 @@ private:
 
 public:
 
+    // Factory that returns a type with a specific configuration.
+    template<typename CFG=void> using factory = ArchMulticore;
+
     // Shortcut
     using arch_t = ArchMulticore;
 
-
-    class Thread : public core::TaskUnit
+    class Thread : public TaskUnit
     {
     public:
         using arch_t = ArchMulticore;
-        using core::TaskUnit::TaskUnit;
+        using TaskUnit::TaskUnit;
         constexpr static int LEVEL = 1;
         std::size_t getNbUnits() const { return getNbComponents()*1; }
     };
@@ -107,7 +107,7 @@ public:
     auto configure (T&& task, ARGS...args)  {}
 
     template<typename T, typename...ARGS>
-    requires (bpl::core::is_task_v<T>)
+    requires (bpl::is_task_v<T>)
     auto configure (T&& task, ARGS...args)
     {
         task.configure (args...);
@@ -127,7 +127,7 @@ public:
 
         // We determine the result type of the TASK::run method.
         // Note that the TASK type is instantiated with the current ARCH type.
-        using result_t = bpl::core::return_t<decltype(&task_t::operator())>;
+        using result_t = bpl::return_t<decltype(&task_t::operator())>;
 
         // We create the result vector.
         std::vector<result_t> results;
@@ -136,13 +136,18 @@ public:
         {
             task_t task;
 
-            // We may have to configure the task, according to the fact that its class inherits (or not) from bpl:core::Task
-            configure (task, idx,0);
+            // We may have to configure the task, according to the fact that its class inherits (or not) from bpl:Task
+            configure (
+                task,
+                idx, // process unit uid
+                0,   // group uid: only one group for multicore (with idx 0)
+                0
+            );
 
             auto config = prepare<ARGS...>(idx,getProcUnitNumber(),std::tuple<ARGS...> {args...});
 
             // we use 'apply' here to unpack the current tuple in order to feed the 'run' method of the task.
-            return bpl::core::apply ( [&](auto &&... args)  {  return task (args...);  },
+            return bpl::apply ( [&](auto &&... args)  {  return task (args...);  },
                 config
             );
         });
@@ -161,11 +166,11 @@ public:
     template<typename ...ARGS>
     auto prepare (size_t idx, size_t nbitems, const std::tuple<ARGS...>& targs)
     {
-        return bpl::core::transform_each (targs, [&] (auto&& x)
+        return bpl::transform_each (targs, [&] (auto&& x)
         {
             using dtype = std::decay_t<decltype(x)>;
 
-            if constexpr (details::GetSplitStatus<dtype,lowest_level_t>::value > 0)
+            if constexpr (::details::GetSplitStatus<dtype,lowest_level_t>::value > 0)
             {
                 return SplitOperator<dtype>::split (x, idx, nbitems);
             }
@@ -179,32 +184,32 @@ public:
     /** Get statistics.
      * \return the statistics.
      */
-    const core::Statistics& getStatistics() const { return statistics_; }
+    const Statistics& getStatistics() const { return statistics_; }
 
 private:
 
     /** Number of threads usable for this architecture. */
     size_t nbThreads_ = 1;
 
-    core::Statistics statistics_;
+    Statistics statistics_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
-} };  // end of namespace
+};  // end of namespace
 ////////////////////////////////////////////////////////////////////////////////
 
-inline auto operator""_thread (unsigned long long int nb)  {   return bpl::arch::ArchMulticore::Thread{nb};  }
+inline auto operator""_thread (unsigned long long int nb)  {   return bpl::ArchMulticore::Thread{nb};  }
 
 
 #include <bpl/utils/BufferIterator.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////
-namespace bpl  {  namespace core {
+namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 template<>
-class BufferIterator<arch::ArchMulticore>
+class BufferIterator<ArchMulticore>
 {
 public:
     using pointer_t = char*;
@@ -224,8 +229,5 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-} };
+};
 ////////////////////////////////////////////////////////////////////////////////
-
-////////////////////////////////////////////////////////////////////////////////
-#endif // __BPL_ARCH_MULTICORE__

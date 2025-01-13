@@ -6,17 +6,29 @@
 
 #pragma once
 
+#include <bpl/core/Task.hpp>
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct VectorSwap
+struct VectorSwap : bpl::Task<ARCH>
 {
-    USING(ARCH);
+    struct Config
+    {
+        // We need explicitly to define at least two vector caches for 'swap' usage
+        // otherwise a compilation error involving type ErrorOnlyOneCacheForSwapUsage will occur.
+        //
+        // From performance issue, it is better IN GENERAL to use only one cache, and so one makes it
+        // mandatory for the user to declare the intent to use swap through SWAP_USED constant definition.
+        static constexpr bool SWAP_USED = true;
+    };
+
+    USING(ARCH,Config);
 
     using result_t = vector<uint32_t>;
 
-    result_t operator() (uint32_t n)
+    result_t operator() (uint32_t n) const
     {
         result_t result;
 

@@ -12,8 +12,7 @@
 #include <bpl/utils/RangeInt.hpp>
 #include <bpl/utils/tag.hpp>
 
-using namespace bpl::core;
-using namespace bpl::arch;
+using namespace bpl;
 
 #include <tasks/IntegerType.hpp>
 #include <tasks/Once1.hpp>
@@ -22,9 +21,21 @@ using namespace bpl::arch;
 #include <tasks/Global3.hpp>
 #include <tasks/Global4.hpp>
 #include <tasks/Global5.hpp>
+#include <tasks/Global6.hpp>
+#include <tasks/Struct1.hpp>
+#include <tasks/Struct2.hpp>
+#include <tasks/Struct3.hpp>
+#include <tasks/GlobalOnce1.hpp>
+#include <tasks/GlobalOnce2.hpp>
+#include <tasks/GlobalOnce3.hpp>
+#include <tasks/GlobalOnce4.hpp>
+#include <tasks/OncePadding1.hpp>
 
 #include <iostream>
 #include <list>
+
+#include <fmt/core.h>
+#include <fmt/ranges.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("IntegerType", "[Misc]" )
@@ -153,24 +164,41 @@ TEST_CASE ("Global", "[Misc]" )
 struct dosomething
 {
     auto operator() (
-        const once  <std::vector<uint32_t>>& a,
-        const global<std::vector<uint32_t>>& b,
-        int c
+        once  <uint8_t>  a,
+        global<uint16_t> b,
+        int c,
+        once<global<uint32_t>> d,
+        global<once<uint64_t>> e
     )
-    {  return a->size() + b->size() + c;  }
+    {  return 0;  }
 };
 
 TEST_CASE ("Tag1", "[tag]" )
 {
+    using namespace bpl;
+
     using params = task_params_t<dosomething>;
 
-    REQUIRE (hastag_once_v   <std::tuple_element_t<0,params>> == true);
-    REQUIRE (hastag_once_v   <std::tuple_element_t<1,params>> == false);
-    REQUIRE (hastag_once_v   <std::tuple_element_t<2,params>> == false);
+    REQUIRE (hastag_v <once,  std::tuple_element_t<0,params>> == true);
 
-    REQUIRE (hastag_global_v <std::tuple_element_t<0,params>> == false);
-    REQUIRE (hastag_global_v <std::tuple_element_t<1,params>> == true);
-    REQUIRE (hastag_global_v <std::tuple_element_t<2,params>> == false);
+    REQUIRE (hastag_v <once,  std::tuple_element_t<0,params>> == true);
+    REQUIRE (hastag_v <once,  std::tuple_element_t<1,params>> == false);
+    REQUIRE (hastag_v <once,  std::tuple_element_t<2,params>> == false);
+
+    REQUIRE (hastag_v <global, std::tuple_element_t<0,params>> == false);
+    REQUIRE (hastag_v <global, std::tuple_element_t<1,params>> == true);
+    REQUIRE (hastag_v <global, std::tuple_element_t<2,params>> == false);
+
+    REQUIRE (hastag_v <global,std::tuple_element_t<3,params>> == true);
+    REQUIRE (hastag_v <once,  std::tuple_element_t<3,params>> == true);
+
+    REQUIRE (hastag_v <global,std::tuple_element_t<4,params>> == true);
+    REQUIRE (hastag_v <once,  std::tuple_element_t<4,params>> == true);
+
+    static_assert (std::is_same_v<first_non_tag<std::tuple_element_t<0,params>>::type,uint8_t>);
+    static_assert (std::is_same_v<first_non_tag<std::tuple_element_t<1,params>>::type,uint16_t>);
+    static_assert (std::is_same_v<first_non_tag<std::tuple_element_t<3,params>>::type,uint32_t>);
+    static_assert (std::is_same_v<first_non_tag<std::tuple_element_t<4,params>>::type,uint64_t>);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -191,7 +219,8 @@ TEST_CASE ("Once1", "[once]" )
         // We check that we broadcast only once the vector
         size_t bufsize = launcher.getStatistics().getCallNb ("broadcast_size");
 
-        if (n==1)  {  REQUIRE (bufsize == (N*sizeof(uint32_t) + 8 + 8)); }
+        // See 'Once2' for explanation of broadcast buffer size.
+        if (n==1)  {  REQUIRE (bufsize == 8 + (N*sizeof(uint32_t) + 8)*1 ); }
         else       {  REQUIRE (bufsize == 8); }
     }
 }
@@ -205,7 +234,8 @@ TEST_CASE ("Once2", "[once]" )
 
     uint64_t truth = 0;
 
-    size_t N = nbdpu*1000*1000;
+    size_t nbitems = 1000*1000;
+    size_t N = nbdpu*nbitems;
     std::vector<uint32_t> vec(N);  for (size_t i=0; i<N; i++)  {  truth += vec[i] = i+1; }
 
     for (size_t n=1; n<=100; n++)
@@ -217,8 +247,17 @@ TEST_CASE ("Once2", "[once]" )
         // We check that we broadcast only once the vector
         size_t bufsize = launcher.getStatistics().getCallNb ("broadcast_size");
 
-        if (n==1)  {  REQUIRE (bufsize == 8*nbdpu + (N*sizeof(uint32_t) + 8) ); }
-        else       {  REQUIRE (bufsize == 8*nbdpu); }
+        // launcher.getStatistics().dump(true);
+
+        // Here are the broadcast buffer size:
+        //   for n==1:
+        //      -> 8 bytes for the second parameter (same value used for all DPUs)
+        //      -> for each DPU: 8 bytes for the vector length + sizeof(uint32_t)*nbitems
+        //   for n>1:
+        //      -> 8 bytes for the second parameter (same value used for all DPUs)
+
+        if (n==1)  {  REQUIRE (bufsize == 8 + (nbitems*sizeof(uint32_t) + 8)*nbdpu ); }
+        else       {  REQUIRE (bufsize == 8); }
     }
 }
 
@@ -312,4 +351,240 @@ TEST_CASE ("Global5", "[global]" )
     launcher.run<Global5> (split(v));
 
     REQUIRE (true);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("Global6", "[global]" )
+{
+    Launcher<ArchUpmem> launcher {157_dpu, false};
+
+    size_t nbitems = 1000*1000;
+
+    uint64_t truth = 0;
+    std::vector<uint32_t> v (nbitems);
+    for (size_t i=0; i<v.size(); i++) { truth += (v[i] = i+1); }
+
+    for (auto x : launcher.run<Global6> (v))  {  REQUIRE (truth == x);  }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("Struct1", "[global]" )
+{
+    using foo = Struct1<ArchUpmem>::foo;
+
+    Launcher<ArchUpmem> launcher {1_dpu};
+
+    for (auto x : launcher.run<Struct1> (foo {1,2,3,4,5,6,7,8}))
+    {
+        REQUIRE (x.a1==1);  REQUIRE (x.a2==2);  REQUIRE (x.a3==3);  REQUIRE (x.a4==4);
+        REQUIRE (x.a5==5);  REQUIRE (x.a6==6);  REQUIRE (x.a7==7);  REQUIRE (x.a8==8);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("Struct2", "[global]" )
+{
+    using type = Struct2<ArchUpmem>::MyStruct;
+
+    Launcher<ArchUpmem> launcher {1_dpu};
+
+    type t = { {1,2,3} };
+
+    // no split -> each tasklet counts the same thing
+    REQUIRE (launcher.run<Struct2>(t) == 6*launcher.getProcUnitNumber());
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("Struct2b", "[global]" )
+{
+    using type = Struct2<ArchUpmem>::MyStruct;
+
+    Launcher<ArchUpmem> launcher {11_dpu};
+
+    type t = { {1,2,3} };
+
+    // no split -> each tasklet counts the same thing
+    REQUIRE (launcher.run<Struct2>(split(t)) == 6);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("Struct3", "[global]" )
+{
+    using type = Struct3<ArchUpmem>::type;
+
+    Launcher<ArchUpmem> launcher {1_dpu};
+
+    type t = { {1,2,3}, {10,11,12,13}, {100,101,102,103,104} };
+
+    // no split -> each tasklet counts the same thing
+    REQUIRE (launcher.run<Struct3>(t) == (6+46+510)*launcher.getProcUnitNumber() );
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("Struct4", "[global]" )
+{
+    using type = Struct3<ArchUpmem>::type;
+
+    Launcher<ArchUpmem> launcher {1_dpu};
+
+    size_t N=64*1024;
+    std::array<uint64_t,3> truth = {0,0,0};
+
+    int delta = 0;
+    type t;
+    for (size_t i=1; i<=1*N; i++)  { t.a1.push_back (i);  truth[0] += delta + t.a1.back(); }
+    for (size_t i=1; i<=1*N; i++)  { t.a2.push_back (i);  truth[1] += delta + t.a2.back(); }
+    for (size_t i=1; i<=1*N; i++)  { t.a3.push_back (i);  truth[2] += delta + t.a3.back(); }
+
+    // no split -> each tasklet counts the same thing
+    REQUIRE (launcher.run<Struct3>(t) == (truth[0]+truth[1]+truth[2])*launcher.getProcUnitNumber() );
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("Struct5", "[global]" )
+{
+    using type = Struct2<ArchUpmem>::MyStruct;
+
+    Launcher<ArchUpmem> launcher {1_dpu};
+
+    size_t N=1000;
+    uint64_t truth = 0;
+
+    type t;
+    for (size_t i=1; i<=1*N; i++)  { t.a1.push_back (i);  truth += t.a1.back(); }
+
+    REQUIRE (launcher.run<Struct2>(split(t)) == truth);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("GlobalOnce1", "[once]" )
+{
+    Launcher<ArchUpmem> launcher {15_rank};
+
+    using type = typename GlobalOnce1<ArchMulticore>::type;
+
+    type a;
+    uint64_t truth = 0;
+    for (size_t i=0; i<a.size(); i++) { truth += (a[i] = i+1); }
+
+    for (uint32_t nbruns=1; nbruns<=100; nbruns++)
+    {
+        for (auto x : launcher.run<GlobalOnce1> (a, nbruns))
+        {
+            REQUIRE (x == truth+nbruns);
+        }
+
+        // We check that we broadcast only once the arguments tagged with 'global'
+        size_t bufsize = launcher.getStatistics().getCallNb ("broadcast_size");
+
+        if (nbruns==1)  {  REQUIRE (bufsize == sizeof(uint64_t) + sizeof(a) ); }
+        else            {  REQUIRE (bufsize == sizeof(uint64_t)             ); }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("GlobalOnce2", "[once]" )
+{
+    Launcher<ArchUpmem> launcher {10_rank, false};
+
+    using array_t    = typename GlobalOnce2<ArchMulticore>::array_t;
+    using value_type = typename array_t::value_type;
+
+    array_t a;
+    for (uint32_t i=0; i<a.size(); i++) {  a[i] = value_type {i+1,i+1,i+1}; }
+
+    size_t N = a.size();
+
+    for (uint32_t nbruns=1; nbruns<=100; nbruns++)
+    {
+        for (auto res : launcher.run<GlobalOnce2> (a, nbruns))
+        {
+            REQUIRE (res.x == (N*(N+1)/2 + 1*nbruns));
+            REQUIRE (res.y == (N*(N+1)/2 + 2*nbruns));
+            REQUIRE (res.z == (N*(N+1)/2 + 3*nbruns));
+        }
+
+        // We check that we broadcast only once the arguments tagged with 'global'
+        size_t bufsize = launcher.getStatistics().getCallNb ("broadcast_size");
+
+        if (nbruns==1)  {  REQUIRE (bufsize == sizeof(uint64_t) + sizeof(a) ); }
+        else            {  REQUIRE (bufsize == sizeof(uint64_t)             ); }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+template<template <typename> class TASK, typename DATATYPE>
+void GlobalOnce_aux (DATATYPE&& data, size_t nbitems, uint64_t truth)
+{
+    Launcher<ArchUpmem> launcher {10_rank, false};
+
+    for (uint32_t nbruns=1; nbruns<=10; nbruns++)
+    {
+        for (auto res : launcher.template run<TASK> (data, nbruns))
+        {
+            REQUIRE (res == truth*nbruns);
+        }
+
+        // We check that we broadcast only once the arguments tagged with 'global'
+        size_t bufsize = launcher.getStatistics().getCallNb ("broadcast_size");
+        //fmt::println("broadcast_size: {}", bufsize);
+
+        if (nbruns==1)  {  REQUIRE (bufsize == nbitems*sizeof(uint16_t) + 2*sizeof(uint64_t) ); }
+        else            {  REQUIRE (bufsize == sizeof(uint64_t) ); }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("GlobalOnce3", "[once]" )
+{
+    using type = typename GlobalOnce3<ArchMulticore>::type;
+
+    uint64_t truth = 0;
+    type v;
+    for (size_t i=0; i<10000; i++)  { v.push_back(i); truth += v.back(); }
+
+    GlobalOnce_aux<GlobalOnce3> (v, v.size(), truth);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("GlobalOnce4", "[once]" )
+{
+    using type = GlobalOnce4Struct<ArchMulticore>;
+
+    uint64_t truth = 0;
+    type v;
+    for (size_t i=0; i<10000; i++)  { v.data.push_back(i); truth += v.data.back(); }
+
+    GlobalOnce_aux<GlobalOnce4> (v, v.data.size(), truth);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+auto OncePadding1_aux (size_t nbDpu, size_t imax, size_t nbruns=5)
+{
+    std::vector<uint64_t> v1;  for (size_t i=1; i<=imax; i++)  {  v1.push_back (1+v1.size());  }
+    std::vector<uint64_t> v2;  for (size_t i=1; i<=imax; i++)  {  v2.push_back (1+v2.size());  }
+
+    Launcher<ArchUpmem> launcher {ArchUpmem::DPU{nbDpu}, false };
+
+    for (size_t run=0; run<nbruns; run++)
+    {
+        for (auto [len1, sum1, sum2]: launcher.template run<OncePadding1> (split<ArchUpmem::DPU>(v1),v2))
+        {
+            REQUIRE (sum2 == v2.size()*(v2.size()+1)/2 );
+        }
+
+        // we add an item to v2 in order to broadcast a different vector run after run.
+        v2.push_back (1+v2.size());
+    }
+}
+
+TEST_CASE ("OncePadding1", "[once]" )
+{
+    for (size_t nbDpu : {1,2,3,5,8,13,21,34})
+    {
+        for (size_t imax : {11, 111, 1111, 11111})
+        {
+            OncePadding1_aux (nbDpu,imax);
+        }
+    }
 }

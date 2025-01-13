@@ -1,13 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <firstinclude.hpp>
 
-#ifndef __BPL_UTILS_STATISTICS__
-#define __BPL_UTILS_STATISTICS__
+#pragma once
 
 #include <map>
 #include <string>
@@ -15,14 +14,13 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace core {
 ////////////////////////////////////////////////////////////////////////////////
 
 class Statistics
 {
 public:
 
-    core::TimeStamp produceTimestamp (const char* label)  {  return core::TimeStamp (timings[label]);  }
+    TimeStamp produceTimestamp (const char* label)  {  return TimeStamp (timings[label]);  }
 
     void dump(bool force=false) const
     {
@@ -34,19 +32,19 @@ public:
             printf ("   calls  : %ld\n", callsNb.size());
             for (auto entry : callsNb)
             {
-                printf ("       %-25s: %4ld\n", entry.first.c_str(), entry.second);
+                printf ("       %-27s: %4ld\n", entry.first.c_str(), entry.second);
             }
 
             printf ("   timings: %ld\n", timings.size());
             for (auto entry : timings)
             {
-                printf ("       %-25s: %7.4f\n", entry.first.c_str(), entry.second);
+                printf ("       %-27s: %7.4f\n", entry.first.c_str(), entry.second);
             }
 
             printf ("   tags   : %ld\n", tags.size());
             for (const auto& entry: tags)
             {
-                printf ("       %-25s: %s\n", entry.first.c_str(), entry.second.c_str());
+                printf ("       %-27s: %s\n", entry.first.c_str(), entry.second.c_str());
             }
 
         }
@@ -87,7 +85,5 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-} };  // end of namespace
+};  // end of namespace
 ////////////////////////////////////////////////////////////////////////////////
-
-#endif // __BPL_CORE_STATISTICS__

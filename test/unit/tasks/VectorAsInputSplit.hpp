@@ -6,18 +6,20 @@
 
 #pragma once
 
+#include <bpl/core/Task.hpp>
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct VectorAsInputSplit
+struct VectorAsInputSplit : bpl::Task<ARCH>
 {
     USING(ARCH);
 
     using type_t   = uint32_t;
     using vector_t = vector<type_t>;
 
-    auto operator() (const vector_t& input, uint32_t imax)
+    auto operator() (vector_t const& input, uint32_t imax) const
     {
         uint64_t sum = 0;
 
@@ -25,7 +27,7 @@ struct VectorAsInputSplit
         {
             for (auto x : input)  {  sum += x;  }
         }
-
+        
         return sum / imax;
     }
 

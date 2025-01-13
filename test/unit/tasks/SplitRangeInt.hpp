@@ -13,11 +13,11 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct SplitRangeInt : bpl::core::Task<ARCH>
+struct SplitRangeInt : bpl::Task<ARCH>
 {
     USING(ARCH);
 
-    auto operator() (bpl::core::RangeInt range)
+    auto operator() (bpl::RangeInt range)
     {
         lock_guard<mutex> lock (this->get_mutex(0));
 

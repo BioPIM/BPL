@@ -7,7 +7,7 @@
 #include <bpl/core/Task.hpp>
 
 template<class ARCH>
-struct HelloWorld  : bpl::core::Task<ARCH>
+struct HelloWorld  : bpl::Task<ARCH>
 {
     // We use the 'USING' macro for accessing to some resources associated to the architecture.
     // In this snippet, it allows to access to the 'array' type without prefixing by the namespace.

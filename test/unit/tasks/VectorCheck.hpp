@@ -12,7 +12,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct VectorCheck : bpl::core::Task<ARCH>
+struct VectorCheck : bpl::Task<ARCH>
 {
     USING(ARCH);
 

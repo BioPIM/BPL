@@ -24,7 +24,7 @@ public:
 
     using arch_t   = std::conditional_t <
         sizeof...(ARCHS)==0,
-        std::tuple<bpl::arch::ArchUpmem,bpl::arch::ArchMulticore>,
+        std::tuple<bpl::ArchUpmem,bpl::ArchMulticore>,
         std::tuple<ARCHS...>
     >;
 

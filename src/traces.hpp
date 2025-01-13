@@ -1,11 +1,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _BPL_TRACES_HPP_
-#define _BPL_TRACES_HPP_
+#pragma once
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -36,6 +35,10 @@
     #define VERBOSE_VECTOR(a...)      //printf (a)
 #endif
 
-////////////////////////////////////////////////////////////////////////////////
-
-#endif /* _BPL_TRACES_HPP_ */
+#ifdef DPU
+    #define DEBUG_MEMTREE(a...)        //if (me()==0)  printf (a)
+    #define VERBOSE_MEMTREE(a...)      //if (me()==0)  printf (a)
+#else
+    #define DEBUG_MEMTREE(a...)        //printf (a)
+    #define VERBOSE_MEMTREE(a...)      //printf (a)
+#endif

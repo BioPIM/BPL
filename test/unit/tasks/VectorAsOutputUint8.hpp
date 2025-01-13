@@ -10,7 +10,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct VectorAsOutputUint8 : bpl::core::Task<ARCH>
+struct VectorAsOutputUint8 : bpl::Task<ARCH>
 {
     USING(ARCH);
 

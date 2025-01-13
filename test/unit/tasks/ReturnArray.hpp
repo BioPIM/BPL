@@ -12,7 +12,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct ReturnArray : bpl::core::Task<ARCH>
+struct ReturnArray : bpl::Task<ARCH>
 {
     USING(ARCH);
 

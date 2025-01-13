@@ -6,7 +6,7 @@
 
 #pragma once
 
-using namespace bpl::core;
+using namespace bpl;
 
 template<class ARCH>
 struct Checksum5

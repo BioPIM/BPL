@@ -6,16 +6,14 @@
 
 #include <firstinclude.hpp>
 
-#ifndef __BPL_TASK__
-#define __BPL_TASK__
+#pragma once
 
 #include <bpl/utils/metaprog.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace core {
-
 ////////////////////////////////////////////////////////////////////////////////
+
 template <typename T>  struct get_crtp_template;
 
 template <template <typename,int> class TASK, typename ARCH, int NB>
@@ -35,21 +33,27 @@ template<typename DERIVED> struct TaskBase
     static constexpr int MUTEX_NB = get_crtp_template<DERIVED>::MUTEX_NB;
 
     using tuid_t   = uint32_t;
+    using guid_t   = uint32_t;
     using cycles_t = uint32_t;
 
-    tuid_t tuid () const  { return tuid_; }
+    const DERIVED& self() const { return static_cast<const DERIVED&> (*this); }
 
-    void configure (tuid_t tuid, cycles_t t0)
+    auto tuid () const  { return tuid_; }
+    auto guid () const  { return guid_; }
+
+    bool match_tuid (tuid_t value)  const { return self().match_tuid(value); }
+
+    void configure (tuid_t tuid, guid_t guid, cycles_t t0)
     {
         tuid_    = tuid;
+        guid_    = guid;
         t0_      = t0;
     }
 
     cycles_t  elapsed () const  { return self().nbcycles() - t0_; }
 
-    const DERIVED& self() const { return static_cast<const DERIVED&> (*this); }
-
     tuid_t   tuid_;
+    guid_t   guid_;
     cycles_t t0_;
 
     template<typename...ARGS>
@@ -79,8 +83,9 @@ template<typename ARCH, int MUTEX=1> struct Task : TaskBase<Task<ARCH,MUTEX>>
 template<typename T>
 static constexpr bool is_task_v = is_base_of_template_v<TaskBase,T>;
 
-////////////////////////////////////////////////////////////////////////////////
-} };  // end of namespace
-////////////////////////////////////////////////////////////////////////////////
+template<typename TASK,typename T>
+static constexpr bool is_custom_splitable_v = requires(const T& t, size_t idx, size_t total ) { TASK::split(t, idx, total); };
 
-#endif // __BPL_TASK__
+////////////////////////////////////////////////////////////////////////////////
+};  // end of namespace
+////////////////////////////////////////////////////////////////////////////////

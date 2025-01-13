@@ -12,8 +12,7 @@
 #include <bpl/arch/ArchDummy.hpp>
 #include <bpl/utils/split.hpp>
 
-using namespace bpl::core;
-using namespace bpl::arch;
+using namespace bpl;
 
 #include <tasks/Span1.hpp>
 

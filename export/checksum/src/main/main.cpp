@@ -10,8 +10,7 @@
 // We need to know the task we want to run.
 #include <tasks/Checksum.hpp>
 
-using namespace bpl::core;
-using namespace bpl::arch;
+using namespace bpl;
 
 ////////////////////////////////////////////////////////////////////////////////
 struct config_upmem

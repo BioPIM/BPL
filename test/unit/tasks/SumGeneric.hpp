@@ -9,6 +9,8 @@
 template<class ARCH>
 struct SumGeneric
 {
+    USING(ARCH);
+
     int operator() ()
     {
         return 0;

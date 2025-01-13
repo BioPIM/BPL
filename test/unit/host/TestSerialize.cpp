@@ -11,9 +11,9 @@
 
 #include <iostream>
 
-using namespace bpl::core;
+using namespace bpl;
 
-using DEFAULT_ARCH = bpl::arch::ArchMulticore;
+using DEFAULT_ARCH = bpl::ArchMulticore;
 
 USING (DEFAULT_ARCH);
 
@@ -111,6 +111,9 @@ struct MyOtherStruct
 TEST_CASE ("unserialize (specific types)", "[Serialize]" )
 {
     auto check = [] (auto&& x)  {  REQUIRE (x == MySerialize<DEFAULT_ARCH>::identity (x));  };
+
+    static_assert (std::is_class_v<MyStruct>);
+    static_assert (std::is_class_v<MyOtherStruct>);
 
     MyStruct s1 {"MyStruct 1",      {1,2,3,4,5}};
     check (s1);

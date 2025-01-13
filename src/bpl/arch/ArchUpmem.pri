@@ -61,7 +61,7 @@ public:
             struct dpu_set_t dpu;  DPU_FOREACH(handle(), dpu) 
             {  
                 // First pass: redirect to blackhole file -> just interested by return error code
-                auto err = dpu_log_read(dpu, core::BlackHoleFile::get());
+                auto err = dpu_log_read(dpu, bpl::BlackHoleFile::get());
                 if (err == DPU_OK)  {  DPU_ASSERT(dpu_log_read(dpu, stdout));  }
             }
         }

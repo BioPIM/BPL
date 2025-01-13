@@ -9,8 +9,7 @@
 #include <bpl/core/Task.hpp>
 #include <bpl/bank/BankChunk.hpp>
 
-using namespace bpl::core;
-using namespace bpl::bank;
+using namespace bpl;
 
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>

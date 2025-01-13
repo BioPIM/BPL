@@ -9,7 +9,7 @@
 #include <bpl/core/Task.hpp>
 
 template<class ARCH>
-struct Global3 : bpl::core::Task<ARCH>
+struct Global3 : bpl::Task<ARCH>
 {
     USING(ARCH);
 
@@ -26,9 +26,9 @@ struct Global3 : bpl::core::Task<ARCH>
     )
     {
         return make_tuple (
-            bpl::core::accumulate (*v1, uint64_t(0)),
-            bpl::core::accumulate ( v2, uint64_t(0)),
-            bpl::core::accumulate (*v3, uint64_t(0))
+            bpl::accumulate (*v1, uint64_t(0)),
+            bpl::accumulate ( v2, uint64_t(0)),
+            bpl::accumulate (*v3, uint64_t(0))
         );
     }
 

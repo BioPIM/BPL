@@ -12,19 +12,19 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct Span1 : bpl::core::Task<ARCH>
+struct Span1 : bpl::Task<ARCH>
 {
     USING(ARCH);
 
     using type = vector<uint32_t>;
 
-    auto operator() (const span<type>& sp)
+    auto operator() (const type& sp)
     {
         uint32_t res = 0;
-        for (const auto& v : sp)
-        {
-            for (auto x : v)  {  res += x*v.size(); }
-        }
+//        for (const auto& v : sp)
+//        {
+//            for (auto x : v)  {  res += x*v.size(); }
+//        }
         return res;
     }
 

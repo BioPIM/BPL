@@ -19,8 +19,7 @@
 #include <array>
 #include <cstdio>
 
-using namespace bpl::core;
-using namespace bpl::arch;
+using namespace bpl;
 
 #include <tasks/Parrot1.hpp>
 #include <tasks/Parrot2.hpp>
@@ -66,7 +65,7 @@ static auto TestParrot (size_t nbpu, std::tuple<ARGS...>&& answer)
 {
     Launcher<ARCH> launcher;
 
-    auto results = bpl::core::apply ([&] (auto &&... args)
+    auto results = bpl::apply ([&] (auto &&... args)
     {
         return launcher.template run<TASK> (std::forward<ARGS>(args)...);
     }, answer);
@@ -78,11 +77,11 @@ static auto TestParrot (size_t nbpu, std::tuple<ARGS...>&& answer)
 template<class ARCH>
 static auto TestParrot_aux ()
 {
-    using namespace bpl::core;
+    using namespace bpl;
 
     size_t nbpu = 2;
 
-    TestParrot<ARCH,Parrot3> (nbpu, bpl::core::make_params<Parrot3<ARCH>> (
+    TestParrot<ARCH,Parrot3> (nbpu, bpl::make_params<Parrot3<ARCH>> (
         MyData {333, 222, 2.71, 111},
         ARCH::make_pair (12,34),
         'A',
@@ -323,7 +322,7 @@ TEST_CASE ("HelloWorld", "[Launcher]" )
 //////////////////////////////////////////////////////////////////////////////
 //TEST_CASE ("Compare1", "[Bank]" )
 //{
-//    using resources_t = bpl::arch::ArchMulticoreResources;
+//    using resources_t = bpl::ArchMulticoreResources;
 //
 //    const static int NBREF  = Compare1<resources_t>::NBREF;
 //    const static int NBQRY  = Compare1<resources_t>::NBQRY;

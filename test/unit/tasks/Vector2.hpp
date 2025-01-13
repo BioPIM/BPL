@@ -12,7 +12,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifdef DPU
-extern bpl::arch::MRAM::Allocator<false> __MRAM_Allocator_nolock__;
+extern bpl::MRAM::Allocator<false> __MRAM_Allocator_nolock__;
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -21,8 +21,35 @@ class Allocator
 {
 public:
     using address_t = uint64_t;
+    template<int N>  using address_array_t =
+#ifdef DPU
+            __dma_aligned
+#endif
+            address_t [N];
 
-//    static Allocator& singleton () {  static Allocator instance; return instance; }
+    static address_t get (size_t sizeInBytes)
+    {
+        address_t result = {};
+#ifdef DPU
+        result = __MRAM_Allocator_nolock__.get (sizeInBytes);
+#endif
+        return result;
+    }
+
+    static address_t writeAt (void* dest, void* data, size_t sizeInBytes)
+    {
+#ifdef DPU
+        __MRAM_Allocator_nolock__.writeAt (dest,data,sizeInBytes);
+#endif
+        return (address_t) dest;
+    }
+
+    static auto writeAtomic (address_t tgt, address_t const& src)
+    {
+#ifdef DPU
+        __MRAM_Allocator_nolock__.writeAtomic (tgt, src);
+#endif
+    }
 
     static address_t write (void* src, size_t n)
     {
@@ -34,7 +61,7 @@ public:
         return result;
     };
 
-    static address_t* read (address_t src, void* tgt, size_t n)
+    static address_t* read (void* src, void* tgt, size_t n)
     {
 
 #ifdef DPU
@@ -78,9 +105,11 @@ public:
 //
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct Vector2 : bpl::core::Task<ARCH>
+struct Vector2 : bpl::Task<ARCH>
 {
     USING(ARCH);
+
+    struct MutexNull { void lock() {}  void unlock() {}; };
 
     uint32_t operator() (uint32_t N, int K)
     {
@@ -94,7 +123,7 @@ struct Vector2 : bpl::core::Task<ARCH>
         {
             for (int k=1; k<=K; k++)
             {
-                bpl::core::vector <type, Allocator, 8, 3, 10> vec;
+                bpl::vector <type, Allocator, MutexNull, 8, 1, 3, 10> vec;
 
                 for (type i=1; i<=N; i++)  {  vec.push_back (i);  }
 

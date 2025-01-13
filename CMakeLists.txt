@@ -1,6 +1,6 @@
 ################################################################################
 ## BPL, the Process In Memory library for bioinformatics 
-## date  : 2024
+## date  : 2023
 ## author: edrezen
 ################################################################################
 
@@ -32,9 +32,9 @@ ENDIF()
 ################################################################################
 #  DOCUMENTATION 
 ################################################################################
-IF (EXISTS "${PROJECT_SOURCE_DIR}/doc")
-    ADD_SUBDIRECTORY(doc EXCLUDE_FROM_ALL)
-ENDIF()
+#IF (EXISTS "${PROJECT_SOURCE_DIR}/doc")
+#    ADD_SUBDIRECTORY(doc EXCLUDE_FROM_ALL)
+#ENDIF()
 
 ################################################################################
 #  EXPORT 

@@ -9,6 +9,8 @@
 template<class ARCH>
 struct Parrot1
 {
+    USING(ARCH);
+
     auto operator() (int a, int b)
     {
         return a+b;

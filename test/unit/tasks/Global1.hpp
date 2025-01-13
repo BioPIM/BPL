@@ -9,7 +9,7 @@
 #include <bpl/core/Task.hpp>
 
 template<class ARCH>
-struct Global1 : bpl::core::Task<ARCH>
+struct Global1 : bpl::Task<ARCH>
 {
     USING(ARCH);
 
@@ -17,7 +17,7 @@ struct Global1 : bpl::core::Task<ARCH>
 
     auto operator() (global<type> values)
     {
-        return bpl::core::accumulate (*values, uint64_t(0));
+        return bpl::accumulate (*values, uint64_t(0));
     }
 
     static uint64_t reduce (uint64_t a, uint64_t b)  { return a+b; }

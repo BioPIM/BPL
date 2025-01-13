@@ -23,16 +23,15 @@
 #include <tasks/Bank4.hpp>
 #include <tasks/Bank5.hpp>
 
-using namespace bpl::bank;
-using namespace bpl::arch;
+using namespace bpl;
 
-using resources_t = bpl::arch::ArchMulticoreResources;
-using Serializer  = bpl::core::Serialize<resources_t,bpl::core::BufferIterator<resources_t>,8>;
+using resources_t = bpl::ArchMulticoreResources;
+using Serializer  = bpl::Serialize<resources_t,bpl::BufferIterator<resources_t>,8>;
 
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("Bank1", "[Bank]" )
 {
-    using resources_t = bpl::arch::ArchMulticoreResources;
+    using resources_t = bpl::ArchMulticoreResources;
 
     RandomSequenceGenerator<32> generator;
     BankChunk <resources_t, decltype(generator)::SIZE> bankOut (generator);
@@ -52,7 +51,7 @@ TEST_CASE ("Bank1", "[Bank]" )
 template<template<typename> class TASK>
 auto TestBank_aux (size_t nbDPU)
 {
-    using resources_t = bpl::arch::ArchMulticoreResources;
+    using resources_t = bpl::ArchMulticoreResources;
 
     const static int SEQNB  = TASK<resources_t>::SEQNB;
     const static int SEQLEN = TASK<resources_t>::SEQLEN;
@@ -115,7 +114,7 @@ TEST_CASE ("Bank3", "[Bank]" )
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("Bank4", "[Bank]" )
 {
-    using resources_t = bpl::arch::ArchMulticoreResources;
+    using resources_t = bpl::ArchMulticoreResources;
 
     RandomSequenceGenerator<32> generator;
     BankChunk <resources_t,decltype(generator)::SIZE> bankOut (generator);
@@ -128,7 +127,7 @@ TEST_CASE ("Bank4", "[Bank]" )
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("Bank5", "[Bank]" )
 {
-    using resources_t = bpl::arch::ArchMulticoreResources;
+    using resources_t = bpl::ArchMulticoreResources;
 
     RandomSequenceGenerator<32> generator;
     BankChunk <resources_t,decltype(generator)::SIZE> bankOut (generator);
@@ -155,7 +154,7 @@ TEST_CASE ("BankRandom1", "[Bank]" )
 //        buffer.size(),
 //        std::is_trivially_copyable_v<BankRandom>,
 //        std::is_arithmetic_v<BankRandom>,
-//        bpl::core::is_iterable<BankRandom>::value
+//        bpl::is_iterable<BankRandom>::value
 //    );
 }
 

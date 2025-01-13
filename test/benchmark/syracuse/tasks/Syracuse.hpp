@@ -8,7 +8,7 @@
 
 #include <bpl/utils/Range.hpp>
 
-using namespace bpl::core;
+using namespace bpl;
 
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>

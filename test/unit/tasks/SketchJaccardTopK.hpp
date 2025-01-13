@@ -10,7 +10,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct SketchJaccardTopK : bpl::core::Task<ARCH>
+struct SketchJaccardTopK : bpl::Task<ARCH>
 {
     USING(ARCH);
 

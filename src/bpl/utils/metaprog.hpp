@@ -1,22 +1,23 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <firstinclude.hpp>
 
-#ifndef __BPL_METAPROG__
-#define __BPL_METAPROG__
+#pragma once
 
 #include <tuple>
+#include <bit>
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 // FOR THE FUTURE:  #include <boost/hana.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace core {
 ////////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -130,7 +131,7 @@ template < template <typename...> class base,typename derived>
 using is_base_of_template_t = typename is_base_of_template_impl<base,derived>::type;
 
 template < template <typename...> class base,typename derived>
-static constexpr bool is_base_of_template_v = is_base_of_template_t<base,derived>::value;
+inline constexpr bool is_base_of_template_v = is_base_of_template_t<base,derived>::value;
 
 //////////////////////////////////////////////////////////////////////////////////////////
 template<typename T>
@@ -219,47 +220,151 @@ void for_each_in_tuple(std::tuple<Ts...> & tuple, F func)
 // https://gist.github.com/utilForever/1a058050b8af3ef46b58bcfa01d5375d
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template<class T, typename... Args>  decltype(void(T{std::declval<Args>()...}), std::true_type())  test (int);
-template<class T, typename... Args>  std::false_type                                               test (...);
-template<class T, typename... Args> struct is_braces_constructible : decltype(test<T, Args...>(0))  {};
+template< class T, class ...Args >
+inline constexpr bool is_brace_constructible_v = requires { T {std::declval<Args>()...}; };
 
+struct any_type {  template<class T>   constexpr operator T(); /* non explicit */  };
 
-struct any_type {
-  template<class T>
-  constexpr operator T(); // non explicit
-};
-
-template<class T>
-auto to_tuple(T&& object) noexcept
+/** Pass all fields of a given struct/class to a function.
+ * It allows to iterate all the fields of a struct/class or create a tuple from them.
+ * Ugly part: the code can handle up to N fields thanks to a generated code (see python code below).
+ * Actually, this seems to be the only way to get the fields in C++ (ie. no real reflection in C++)
+ * If this limit N is not enough, one should generate the code for a larger value.
+ * [TBD] define the limit N at compilation toolchain -> CMake could generate the code in a .pri file that could be #included here
+ */
+template<class T, typename FUNCTION>
+requires (std::is_class_v<std::decay_t<T>>)
+constexpr auto class_fields_call (T&& object, FUNCTION&& f) noexcept
 {
     using type = std::decay_t<T>;
-    if constexpr(is_braces_constructible<type, any_type, any_type, any_type, any_type>{}) {
-      auto&& [p1, p2, p3, p4] = object;
-      return std::make_tuple(p1, p2, p3, p4);
-    } else if constexpr(is_braces_constructible<type, any_type, any_type, any_type>{}) {
-      auto&& [p1, p2, p3] = object;
-      return std::make_tuple(p1, p2, p3);
-    } else if constexpr(is_braces_constructible<type, any_type, any_type>{}) {
-      auto&& [p1, p2] = object;
-      return std::make_tuple(p1, p2);
-    } else if constexpr(is_braces_constructible<type, any_type>{}) {
-      auto&& [p1] = object;
-      return std::make_tuple(p1);
-    } else {
-        return std::make_tuple();
+    using at   = any_type;
+
+    /************************* PYTHON for code generation *************************
+        N = 15;
+        for i in reversed(range(1,N+1)):
+           s = [];
+           l = ",".join(["p{:d}".format(n) for n in range(1,i+1)]) ;
+           s.append (("else " if i<N else "") + "if constexpr(is_brace_constructible_v<type,{:s}>)".format (",".join(['at']*i)));
+           s.append ("{");
+           s.append ("     auto&& [{:s}] = object;". format(l) );
+           s.append ("     return f({:s});".format(l));
+           s.append ("}");
+           print ("\n".join(s));
+     */
+
+    // BEGIN GENERATED CODE
+    if constexpr(is_brace_constructible_v<type,at,at,at,at,at,at,at,at,at,at,at,at,at,at,at>)
+    {
+         auto&& [p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13,p14,p15] = object;
+         return f(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13,p14,p15);
     }
+    else if constexpr(is_brace_constructible_v<type,at,at,at,at,at,at,at,at,at,at,at,at,at,at>)
+    {
+         auto&& [p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13,p14] = object;
+         return f(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13,p14);
+    }
+    else if constexpr(is_brace_constructible_v<type,at,at,at,at,at,at,at,at,at,at,at,at,at>)
+    {
+         auto&& [p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13] = object;
+         return f(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13);
+    }
+    else if constexpr(is_brace_constructible_v<type,at,at,at,at,at,at,at,at,at,at,at,at>)
+    {
+         auto&& [p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12] = object;
+         return f(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12);
+    }
+    else if constexpr(is_brace_constructible_v<type,at,at,at,at,at,at,at,at,at,at,at>)
+    {
+         auto&& [p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11] = object;
+         return f(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11);
+    }
+    else if constexpr(is_brace_constructible_v<type,at,at,at,at,at,at,at,at,at,at>)
+    {
+         auto&& [p1,p2,p3,p4,p5,p6,p7,p8,p9,p10] = object;
+         return f(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10);
+    }
+    else if constexpr(is_brace_constructible_v<type,at,at,at,at,at,at,at,at,at>)
+    {
+         auto&& [p1,p2,p3,p4,p5,p6,p7,p8,p9] = object;
+         return f(p1,p2,p3,p4,p5,p6,p7,p8,p9);
+    }
+    else if constexpr(is_brace_constructible_v<type,at,at,at,at,at,at,at,at>)
+    {
+         auto&& [p1,p2,p3,p4,p5,p6,p7,p8] = object;
+         return f(p1,p2,p3,p4,p5,p6,p7,p8);
+    }
+    else if constexpr(is_brace_constructible_v<type,at,at,at,at,at,at,at>)
+    {
+         auto&& [p1,p2,p3,p4,p5,p6,p7] = object;
+         return f(p1,p2,p3,p4,p5,p6,p7);
+    }
+    else if constexpr(is_brace_constructible_v<type,at,at,at,at,at,at>)
+    {
+         auto&& [p1,p2,p3,p4,p5,p6] = object;
+         return f(p1,p2,p3,p4,p5,p6);
+    }
+    else if constexpr(is_brace_constructible_v<type,at,at,at,at,at>)
+    {
+         auto&& [p1,p2,p3,p4,p5] = object;
+         return f(p1,p2,p3,p4,p5);
+    }
+    else if constexpr(is_brace_constructible_v<type,at,at,at,at>)
+    {
+         auto&& [p1,p2,p3,p4] = object;
+         return f(p1,p2,p3,p4);
+    }
+    else if constexpr(is_brace_constructible_v<type,at,at,at>)
+    {
+         auto&& [p1,p2,p3] = object;
+         return f(p1,p2,p3);
+    }
+    else if constexpr(is_brace_constructible_v<type,at,at>)
+    {
+         auto&& [p1,p2] = object;
+         return f(p1,p2);
+    }
+    else if constexpr(is_brace_constructible_v<type,at>)
+    {
+         auto&& [p1] = object;
+         return f(p1);
+    }    // END GENERATED CODE
+}
+
+/** Iterate the fields of a struct/class. Each field is given as argument to a provided functor.
+ * This function relies on 'class_fields_call'.
+ */
+template<class T, typename FUNCTION>
+auto class_fields_iterate (T&& object, FUNCTION&& fct) noexcept
+{
+    class_fields_call (std::forward<T>(object), [fct] (auto&&...args) { ( fct(std::forward<decltype(args)>(args)), ...); });
+}
+
+/** Return a tuple made of all the fields of a given object.
+ */
+template<class T>
+constexpr auto to_tuple (T&& object) noexcept
+{
+    return class_fields_call (std::forward<T>(object),  [] (auto&&...args) {  return std::make_tuple(std::forward<decltype(args)>(args)...); });
+}
+
+/** Return the number of fields.
+ */
+template<class T>
+constexpr auto get_nb_fields (T&& object) noexcept
+{
+    std::size_t result = 0;
+    bpl::class_fields_iterate (object, [&] (auto&& field)  {  result++;  });
+    return result;
 }
 
 namespace details
 {
-
-template< typename result_type, typename ...types, std::size_t ...indices >
-result_type
-make_struct(std::tuple< types... > t, std::index_sequence< indices... >) // &, &&, const && etc.
-{
-    return {std::get< indices >(t)...};
-}
-
+    template< typename result_type, typename ...types, std::size_t ...indices >
+    result_type
+    make_struct(std::tuple< types... > t, std::index_sequence< indices... >) // &, &&, const && etc.
+    {
+        return {std::get< indices >(t)...};
+    }
 }
 
 template< typename result_type, typename ...types >
@@ -273,10 +378,10 @@ make_struct(std::tuple< types... > t) // &, &&, const && etc.
 
 template<class TASK, bool DECAY=true>
 using task_params_t = std::conditional_t<DECAY,
-    bpl::core::decay_tuple <
-        typename bpl::core::FunctionSignatureParser<decltype(&TASK::operator())>::args_tuple
+    bpl::decay_tuple <
+        typename bpl::FunctionSignatureParser<decltype(&TASK::operator())>::args_tuple
     >,
-    typename bpl::core::FunctionSignatureParser<decltype(&TASK::operator())>::args_tuple
+    typename bpl::FunctionSignatureParser<decltype(&TASK::operator())>::args_tuple
 >;
 
 template<class TASK>
@@ -288,7 +393,7 @@ template<class TASK, typename ...ARGS>
 auto  make_params (ARGS... args) {  return task_params_t<TASK> (std::forward<ARGS>(args)...); }
 
 ////////////////////////////////////////////////////////////////////////////////
-template<int N>  int roundUp(int numToRound)  {  return (numToRound + N - 1) & -N; }
+template<int N>  constexpr int roundUp(int numToRound)  {  return (numToRound + N - 1) & -N; }
 
 ////////////////////////////////////////////////////////////////////////////////
 template<typename T>  struct ClassName  { static constexpr char name[] = "?";    };
@@ -344,10 +449,12 @@ using TuplePadding_t = typename TuplePadding<PADDING,ARGS...>::type;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <int x>
-struct Log2 { static const int value = 1 + Log2<x/2>::value ; };
+template <int x>  struct Log2    { static const int value = 1 + Log2<x/2>::value ; };
+template <>       struct Log2<1> { static const int value = 0 ; };
 
-template <> struct Log2<1> { static const int value = 1 ; };
+// Here a specific handle when the argument is 0 -> return conventionally 0 in such a case
+template <int x>  struct Log2Ext    { static const int value = Log2<x>::value ; };
+template <>       struct Log2Ext<0> { static const int value = 0 ; };
 
 ////////////////////////////////////////////////////////////////////////////////
 // Get the index of the type in a tuple that fulfills some predicate.
@@ -480,7 +587,7 @@ template <class Range, class T> T accumulate (Range&& r, T init)
     auto last  = r.end();
     while (first!=last)
     {
-        init = init + *first;
+        init = std::move(init) + *first;
         ++first;
     }
   return init;
@@ -584,6 +691,12 @@ struct pack_create_mask<PREDICATE>
 {
   static constexpr unsigned long long value = 0;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+template<template <typename> class PREDICATE, typename ...ARGS>
+static constexpr int count_predicate_match_v =
+    std::popcount(pack_create_mask<PREDICATE, std::decay_t<ARGS>...>::value);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -720,7 +833,7 @@ struct array_wrapper
     {
         return [&]<std::size_t...Is>(std::index_sequence<Is...>)
         {
-            return  bpl::core::array_wrapper<T,N> {{ T (source[Is] )... }};
+            return  bpl::array_wrapper<T,N> {{ T (source[Is] )... }};
         }
         (std::make_index_sequence<N>());
     }
@@ -833,7 +946,119 @@ struct compare_tuples<COMPARATOR,std::tuple<A...>, std::tuple<B...>>
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-} };  // end of namespace
+// https://stackoverflow.com/questions/78922921/type-trait-providing-the-static-member-of-a-struct-class-if-available?noredirect=1#comment139150964_78922921
+#define DEFINE_GETTER(NAME)                                                                 \
+  template<typename T, int DEFAULT>                                                         \
+  static inline constexpr int get_##NAME##_v =  []() -> decltype(auto)                      \
+  {                                                                                         \
+      if constexpr (requires { T::NAME; }) {  return T::NAME;  } else {  return DEFAULT;  } \
+  }();
+
+
 ////////////////////////////////////////////////////////////////////////////////
 
-#endif // __BPL_METAPROG__
+template <class Key, class Value>
+struct KeyValue { Key   key;  Value value;  };
+
+// https://stackoverflow.com/questions/61281843/creating-compile-time-key-value-map-in-c
+template <class Key, class Value, int N>
+class CTMap
+{
+public:
+
+    using KV = KeyValue<Key,Value>;
+
+    constexpr Value  operator[](Key key) const  {  return Get(key);  }
+
+private:
+    constexpr Value  Get(Key key, int i = 0) const
+    {
+        return i == N ?  KeyNotFound() :  pairs[i].key == key ? pairs[i].value : Get(key, i + 1);
+    }
+
+    static Value KeyNotFound()  {  return {};  }
+
+public:
+
+    static constexpr int size = N;
+
+    std::array<KV,N>  pairs;
+};
+
+template <class Key, class Value, int N,int M>
+constexpr static auto merge (const CTMap<Key,Value,N>& a, const CTMap<Key,Value,M>& b)
+{
+    CTMap<Key, Value, N+M> result;
+
+    std::copy (a.pairs.cbegin(), a.pairs.cend(), result.pairs.begin());
+    std::copy (b.pairs.cbegin(), b.pairs.cend(), result.pairs.begin() + N);
+
+    return result;
+}
+
+// special cases
+template <int N>  using IntMap = CTMap<std::string_view, int, N>;
+
+using Properties = CTMap<std::string_view, int, 16>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+// For such a type, we can analyze recursively its attributes.
+template<typename T>
+struct is_parseable : std::false_type {};
+
+//template<typename T>  inline constexpr bool has_parseable_field_v = requires { T::parseable; };
+//template<typename T>  constexpr bool is_not_parseable_v    = requires { T::parseable == false; };
+
+template<typename T> concept is_not_parseable = T::parseable == false;
+
+template<typename T>
+requires (std::is_class_v<T> and  not is_not_parseable<T> )
+struct is_parseable<T> : std::true_type {};
+
+template<typename T>
+static constexpr bool is_parseable_v = is_parseable<T>::value;
+
+////////////////////////////////////////////////////////////////////////////////
+
+
+// We need a trait that counts the occurrence of a predicate matched for a given type.
+// For instance, we may want to get the number of vectors in a tuple, a struct or a
+// recursive definition of both tuple/struct
+
+template<template<typename> class PREDICATE, typename...ARGS>
+struct CounterTrait  : std::integral_constant<int, (0 + ... + CounterTrait<PREDICATE,ARGS>::value)> {};
+
+template<template<typename> class PREDICATE, typename T>
+struct CounterTrait<PREDICATE,T>  : std::integral_constant<int, (PREDICATE<std::decay_t<T>>::value ? 1 : 0)> {};
+
+template<template<typename> class PREDICATE, typename T>
+static inline constexpr bool CounterTrait_v = CounterTrait<PREDICATE,T>::value;
+
+template<template<typename> class PREDICATE, typename T>
+requires (is_parseable_v<T>)
+struct CounterTrait<PREDICATE,T>
+{
+    static constexpr int value = class_fields_call (T{}, [] (auto&&...args)
+    {
+        return CounterTrait<PREDICATE,decltype(std::forward<decltype(args)>(args))...>::value;
+    });
+};
+
+template<template<typename> class PREDICATE, typename...ARGS>
+struct CounterTrait<PREDICATE,std::tuple<ARGS...>>
+{
+    static constexpr int value = CounterTrait<PREDICATE,ARGS...>::value;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+template <typename T>
+using static_not = typename std::conditional<
+    T::value,
+    std::false_type,
+    std::true_type
+>::type;
+
+////////////////////////////////////////////////////////////////////////////////
+};  // end of namespace
+////////////////////////////////////////////////////////////////////////////////

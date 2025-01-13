@@ -16,7 +16,7 @@ struct VectorOfVectors
 
     using type = vector<uint32_t>;
 
-    auto operator() (const span<type>& v) const
+    auto operator() (const type& v) const
     {
         return 0;
     }

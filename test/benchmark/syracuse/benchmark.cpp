@@ -14,10 +14,9 @@
 #include <tasks/Benchmark2.hpp>
 #include <tasks/Syracuse.hpp>
 
-using namespace bpl::core;
-using namespace bpl::arch;
+using namespace bpl;
 
-using resources_t = bpl::arch::ArchMulticoreResources;
+using resources_t = bpl::ArchMulticoreResources;
 
 ////////////////////////////////////////////////////////////////////////////////
 //

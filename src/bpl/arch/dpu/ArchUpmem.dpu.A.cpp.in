@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -17,6 +17,10 @@
 //    @TASKTEMPLATE@    Extra template information (with the ARCH) for task
 //
 ////////////////////////////////////////////////////////////////////////////////
+
+// A default implementation (an empty one) is defined in firstinclude.hpp.
+// Here we redefined it for UPMEM
+#define ARCH_ALIGN __dma_aligned
 
 extern "C"
 {
@@ -54,14 +58,60 @@ extern "C"
 //#define WITH_FAKE_ARGUMENTS
 
 ////////////////////////////////////////////////////////////////////////////////
-// We set the target architecture, here Upmem
-using resources_t = bpl::arch::ArchUpmemResources;
+struct ResourcesManager
+{
+    // We define the task with generic resources (i.e. without configuration)
+    using task_generic_t = @TASKNAME@ <bpl::ArchUpmemResources<>  @TASKTEMPLATE@>;
 
+    // We define the generic arch retrieved from the USING macro 
+    using resources_generic_t = task_generic_t::arch_t;
+
+    using raw_params_t = bpl::task_params_t<task_generic_t>;
+    
+    // We get the parameters (still without specific configuration) after removing potential tags
+    using params_t = bpl::transform_tuple_t <
+        raw_params_t,
+        bpl::removetag_once,
+        bpl::removetag_global
+    >;
+    
+    // We count how many vectors we have in the parameters
+    static constexpr int nbvectors_in_proto_v = bpl::CounterTrait<bpl::is_vector, raw_params_t>::value;  
+
+    // We compute the new config with the adaptation of some constants.
+    // NB: we inherits from the struct holding default values (from the USING macro) and we override the required constants
+    struct config : resources_generic_t::config_t
+    {
+        static constexpr int VECTOR_MEMORY_SIZE_LOG2 = 
+            resources_generic_t::constants_t::VECTOR_MEMORY_SIZE_LOG2
+            - bpl::Log2Ext<nbvectors_in_proto_v>::value;
+
+        static constexpr int MEMTREE_MAX_MEMORY_LOG2 = 
+            resources_generic_t::constants_t::MEMTREE_MAX_MEMORY_LOG2 
+            - bpl::Log2Ext<nbvectors_in_proto_v>::value;
+        
+        static constexpr int MEMTREE_NBITEMS_PER_BLOCK_LOG2 = 
+            resources_generic_t::constants_t::MEMTREE_NBITEMS_PER_BLOCK_LOG2 
+            - (MEMTREE_MAX_MEMORY_LOG2<6 ? 1 : 0);
+
+		// We may have to set SHARED_ITER_CACHE in case we have at least one global vector in the prototype            
+        static constexpr int SHARED_ITER_CACHE = 
+        	bpl::CounterTrait_v<bpl::is_vector, raw_params_t> < bpl::CounterTrait_v<bpl::is_vector, params_t> 
+        	? 0 : 1;
+    };
+
+    // We define the actual resources and task types 
+    using resources_t = bpl::ArchUpmemResources<config>;
+    using      task_t = @TASKNAME@ <resources_t @TASKTEMPLATE@>;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 // And we set the type of the task with the target architecture.
 // Note that we also have template parameters through the @TASKTEMPLATE@ item;
 // these parameters come from the CMake definition and make it possible to provide
 // some type information at the task level.
-using task_t      = @TASKNAME@ <resources_t @TASKTEMPLATE@>;
+using resources_t = ResourcesManager::resources_t;
+using task_t      = ResourcesManager::task_t;
 
 ////////////////////////////////////////////////////////////////////////////////
 // TYPES DEFINITIONS
@@ -81,29 +131,31 @@ using task_t      = @TASKNAME@ <resources_t @TASKTEMPLATE@>;
 #ifdef WITH_GLOBAL_ARGUMENTS
 
 // We split the parameters in two partitions: those who have a 'global' tag and the others.
-using global_params_partition = bpl::core::pack_predicate_partition_t <
-    bpl::core::hastag_global, 
-    bpl::core::task_params_t<task_t>
+using global_params_partition = bpl::pack_predicate_partition_t <
+    bpl::hastag_global, 
+    bpl::task_params_t<task_t>
 >;
 
 // We get a boolean mask holding information about 'global' and non 'global' types in the tuple
-static constexpr size_t params_partition_mask = bpl::core::tuple_create_mask <
-    bpl::core::hastag_global, 
-    bpl::core::task_params_t<task_t>
+static constexpr size_t params_partition_mask = bpl::tuple_create_mask <
+    bpl::hastag_global, 
+    bpl::task_params_t<task_t>
 >::value;
 
 // Tuple holding the types tagged with 'global'  (we remove tags now)
-using task_params_global_t = bpl::core::transform_tuple_t <
+//      (1) we remove the tags first
+//      (2) we modify some types with 'global_converter'
+using task_params_global_t = bpl::transform_tuple_t <
     global_params_partition::first_type,
-    bpl::core::removetag_once,
-    bpl::core::removetag_global
+    bpl::removetag_global,
+    bpl::removetag_once
 >;
 
 // Tuple holding the types not tagged with 'global'   (we remove tags now)
-using task_params_stack_t  = bpl::core::transform_tuple_t <
+using task_params_stack_t  = bpl::transform_tuple_t <
     global_params_partition::second_type,
-    bpl::core::removetag_once,
-    bpl::core::removetag_global
+    bpl::removetag_global,
+    bpl::removetag_once
 >;
 
 // We declare a 'global' tuple (ie not declared in a stack of one tasklet)
@@ -112,10 +164,10 @@ __dma_aligned task_params_global_t globalParams;
 #endif // WITH_GLOBAL_ARGUMENTS
 
 // Tuple holding all the incoming types regardless they are tagged with 'global' or not.
-using task_parameters = bpl::core::transform_tuple_t <
-    bpl::core::task_params_t<task_t>, 
-    bpl::core::removetag_once,
-    bpl::core::removetag_global
+using task_parameters = bpl::transform_tuple_t <
+    bpl::task_params_t<task_t>, 
+    bpl::removetag_once,
+    bpl::removetag_global
 >;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -125,11 +177,11 @@ using task_parameters = bpl::core::transform_tuple_t <
 // We get the number of mutexes allowed for task_t. By default the number is 0.
 template<typename TASK>  constexpr int getNbMutex () {  return 0;  }
 
-// On the other hand, if the task inherits from bpl::core::Task<ARCH>, we get some
+// On the other hand, if the task inherits from bpl::Task<ARCH>, we get some
 // new functionalities like mutex management. So here we define a specialization
 // of 'getNbMutex' that allows to have access to some mutex at the task instance level.
 template<typename TASK>
-requires (bpl::core::is_task_v<TASK>)
+requires (bpl::is_task_v<TASK>)
 constexpr int getNbMutex ()  {  return TASK::MUTEX_NB;  }
 
 // Shortcut providing the number of mutexes available.
@@ -141,10 +193,10 @@ static constexpr int MUTEX_NB = getNbMutex<task_t>();
 static uint8_t __atomic_bit  atomicMutexes[MUTEX_NB];
 
 // We need some machinery in order to declare an array of mutexes with proper construction call.
-using TaskBase_t   = bpl::core::TaskBase<bpl::core::Task<resources_t,MUTEX_NB>>;
-using ArrayMutex_t = bpl::core::array_wrapper<TaskBase_t::mutex_t,MUTEX_NB>;
+using TaskBase_t   = bpl::TaskBase<bpl::Task<resources_t,MUTEX_NB>>;
+using ArrayMutex_t = bpl::array_wrapper<TaskBase_t::mutex_t,MUTEX_NB>;
         
-// initialization of the static member of CRTP class bpl::core::TaskBase
+// initialization of the static member of CRTP class bpl::TaskBase
 template<>  ArrayMutex_t TaskBase_t::mutexes = ArrayMutex_t::init_from <uint8_t> (atomicMutexes);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -174,8 +226,8 @@ __host MetadataOutput  __metadata_output__;                                 // D
 BARRIER_INIT(my_barrier, NR_TASKLETS);
 
 MUTEX_INIT(__MRAM_Allocator_mutex__);
-bpl::arch::MRAM::Allocator<true>  __MRAM_Allocator_lock__;
-bpl::arch::MRAM::Allocator<false> __MRAM_Allocator_nolock__;
+bpl::MRAM::Allocator<true>  __MRAM_Allocator_lock__;
+bpl::MRAM::Allocator<false> __MRAM_Allocator_nolock__;
 
 __host std::size_t totalSize  = 0;
 __host std::size_t taskletIdx = 0;
@@ -187,7 +239,7 @@ __host std::size_t cumulOffsets[NR_TASKLETS];
 //
 // Some shortcuts for the Serialization process.
 ////////////////////////////////////////////////////////////////////////////////
-using Serializer = bpl::core::Serialize<resources_t,bpl::core::BufferIterator<resources_t>,8>;
+using Serializer = bpl::Serialize<resources_t,bpl::BufferIterator<resources_t>,8>;
 
 ////////////////////////////////////////////////////////////////////////////////
 // DEBUG stuff
@@ -241,7 +293,7 @@ auto configure (T&& task, ARGS...args)
 }
 
 template<typename T, typename...ARGS>
-requires (bpl::core::is_task_v<T>)
+requires (bpl::is_task_v<T>)
 auto configure (T&& task, ARGS...args)
 {
     task.configure (args...); 
@@ -252,7 +304,7 @@ auto configure (T&& task, ARGS...args)
 ////////////////////////////////////////////////////////////////////////////////
 // We define a function that can post process the result of a task
 // The default implementation does nothing; 
-// only the specialization for bpl::core::vector (directly or not) does something
+// only the specialization for bpl::vector (directly or not) does something
 template<typename T> 
 void postprocess (T& result) 
 {
@@ -263,15 +315,22 @@ template<typename...ARGS>
 void postprocess (std::tuple<ARGS...>& result)
 {
     DEBUG0 ("postprocess tuple\n");
-    bpl::core::for_each_in_tuple (result, [&] (auto&& p)
+    bpl::for_each_in_tuple (result, [&] (auto&& p)
     {
         postprocess (p);
     });
 }
 
-template<typename T, int DATABLOCK_SIZE_LOG2,int MEMTREE_NBITEMS_PER_BLOCK_LOG2, int MAX_MEMORY_LOG2>
-void postprocess (
-    resources_t::vector<T,DATABLOCK_SIZE_LOG2,MEMTREE_NBITEMS_PER_BLOCK_LOG2, MAX_MEMORY_LOG2>& result
+
+template<
+    typename T, 
+    int DATABLOCK_SIZE_LOG2,
+    int CACHE_NB_LOG2,
+    int MEMTREE_NBITEMS_PER_BLOCK_LOG2, 
+    int MAX_MEMORY_LOG2
+>
+void postprocess ( 
+    resources_t::vector<T,DATABLOCK_SIZE_LOG2,CACHE_NB_LOG2,MEMTREE_NBITEMS_PER_BLOCK_LOG2, MAX_MEMORY_LOG2>& result
 ) 
 {
     DEBUG0 ("postprocess vector\n");
@@ -321,9 +380,10 @@ int main()
             __MRAM_Allocator_lock__.reset();
         }
 
-        DEBUG0 ("__metadata_input__:  bufferSize=%d  deltaOnce=%d  reset=%d  nbtaskunits=%3d  dpuid=%3d  @__args__=%ld  @metadata=[%ld,%ld]  DPU_MRAM_HEAP_POINTER=%ld  heap_pointer=%ld\n", 
+        DEBUG0 ("__metadata_input__:  bufferSize=%d  deltaOnce=%3d  oncePadding=%d  reset=%d  nbtaskunits=%3d  dpuid=%3d  @__args__=%ld  @metadata=[%ld,%ld]  DPU_MRAM_HEAP_POINTER=%ld  heap_pointer=%ld\n", 
             __metadata_input__.bufferSize, 
             __metadata_input__.deltaOnce, 
+            __metadata_input__.oncePadding,
             __metadata_input__.reset, 
             __metadata_input__.nbtaskunits, 
             __metadata_input__.dpuid,
@@ -337,7 +397,9 @@ int main()
         // Trace for dumping the incoming buffer.
         VERBOSE0 ("INCOMING BUFFER '__args__'\n");
         for (size_t idx=0; idx<std::min(size_t(512),ARGS_SIZE); idx++)  {  VERBOSE0 ("%3d%c", __args__[idx], (idx%32==31 ? '\n' : (idx%4==3 ? '|' : ' ')));  }   VERBOSE0 ("\n");        
-    }
+    
+    } // end of if (tuid==0) 
+    
     barrier_wait(&my_barrier);
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -363,9 +425,9 @@ int main()
     __dma_aligned task_params_stack_t localParams;
 
     // We declare a tuple of references on parameters hold in the two tuples (global and local) 
-    __dma_aligned auto argsAsTuple = bpl::core::merge_tuples<params_partition_mask> (globalParams, localParams);
+    __dma_aligned auto argsAsTuple = bpl::merge_tuples<params_partition_mask> (globalParams, localParams);
 
-    static_assert (std::is_same_v <bpl::core::decay_tuple<decltype(argsAsTuple)>, task_parameters>);
+   // can't do this anymore because of global_converter:   static_assert (std::is_same_v <bpl::decay_tuple<decltype(argsAsTuple)>, task_parameters>);
 
 #else
     __dma_aligned task_parameters argsAsTuple;
@@ -376,7 +438,7 @@ int main()
         banner("UNSERIALIZE PROCESS");
 
         // We need a way to iterate the raw buffer of the input arguments.
-        bpl::core::BufferIterator<resources_t> iter (__args__, CACHE, CACHE_SIZE);
+        bpl::BufferIterator<resources_t> iter (__args__ + __metadata_input__.oncePadding, CACHE, CACHE_SIZE);
 
         DEBUG0("Retrieving input parameters from incoming buffer from host...  #tuple=%d  sizeof(tuple)=%d  @tuple=%ld\n", 
             std::tuple_size_v<decltype(argsAsTuple)>, sizeof(argsAsTuple), uint64_t(&argsAsTuple)
@@ -384,9 +446,11 @@ int main()
 
         // We un-serialize each item of the params tuple.
         size_t argIdx = 0;
-        bpl::core::for_each_in_tuple (argsAsTuple, [&] (auto& x)  
+        bpl::for_each_in_tuple (argsAsTuple, [&] (auto& x)  
         {
             int isGlobal = 0;
+            
+			__metadata_output__.input_sizeof = sizeof(x);
             
 #ifdef WITH_GLOBAL_ARGUMENTS
             // WARNING !!! we comment this for the moment => doesn't work otherwise (to be investigated)
@@ -434,21 +498,19 @@ int main()
         banner("SPLIT PROCESS");
 
         int idx=0;
-        bpl::core::for_each_in_tuple (argsAsTuple, [&] (auto&& p)
+        bpl::for_each_in_tuple (argsAsTuple, [&] (auto&& p)
         {
             // we get the split status for the current argument
             uint8_t level = __metadata_input__.argsSplitStatus[idx];
 
-            VERBOSE0 ("tuid: %3d  arg[%2d]:  split=%1d  sizeof=%5d  address: %5ld\n", tuid, idx, level, sizeof(p), uint64_t(&p));
-            
+            VERBOSE0 ("tuid: %3d  arg[%2d]:  split=%1d  sizeof=%5d  address: %5ld   splitable: %d \n", 
+                tuid, idx, level, sizeof(p), uint64_t(std::addressof(p)), is_splitable_v<std::decay_t<decltype(p)>>
+            );
+
             // We may have to split the current argument, one split per tasklet
             if (level>=3)  
-            {  
-                p = SplitOperator<std::decay_t<decltype(p)>>::split (
-                    p,  
-                    tuid,        //index(level,puid), 
-                    NR_TASKLETS  //index(level,__nbtaskunits__)
-                );
+            {
+                split_assign <std::decay_t<decltype(p)>, task_t> (p, tuid, NR_TASKLETS);
             }
             
             idx++;
@@ -465,7 +527,7 @@ int main()
     // TASK EXECUTION
     ////////////////////////////////////////////////////////////////////////////////
 
-    using result_type = bpl::core::return_t<decltype(&task_t::operator())>;
+    using result_type = bpl::return_t<decltype(&task_t::operator())>;
 
     // We call the 'run' method with 'puid' and the deserialized input arguments.
     auto fct = [&] (auto &&... args) -> result_type  
@@ -474,7 +536,7 @@ int main()
         task_t task;
 
         // We may have to configure the task with some values.
-        configure (task, puid, perfcounter_config (COUNT_CYCLES, true));
+        configure (task, puid, __metadata_input__.dpuid, perfcounter_config (COUNT_CYCLES, true));
 
         return task (std::forward<decltype(args)>(args)...);
     };
@@ -489,8 +551,10 @@ int main()
     result_type result = result_type ();
 #endif
 
+ 	__metadata_output__.output_sizeof = sizeof(result);
+
     // We may need some post process on the result.
-    // For instance, instances of bpl::core::vector may need to be 'flushed' if they are
+    // For instance, instances of bpl::vector may need to be 'flushed' if they are
     // in dirty state.
     postprocess (result); 
     
@@ -571,6 +635,7 @@ int main()
     if (tuid==0)  
     {  
         __metadata_output__.allocator_stats.used        = __MRAM_Allocator_lock__.used();
+        __metadata_output__.allocator_stats.pos         = __MRAM_Allocator_lock__.pos();
         __metadata_output__.allocator_stats.nbCallsGet  = __MRAM_Allocator_lock__.nbCallsGet;
         __metadata_output__.allocator_stats.nbCallsRead = __MRAM_Allocator_lock__.nbCallsRead;
         
@@ -607,7 +672,22 @@ int main()
             );
         }
     }
-    
+ 
+ 	__metadata_output__.stack_size = STACK_SIZE_DEFAULT;
+ 
+ 	// static information for a uint32_t vector
+ 	using vtype_sample = uint32_t;
+ 	
+	__metadata_output__.vstats.NB_VECTORS_IN_PROTO       = ResourcesManager::nbvectors_in_proto_v;
+	__metadata_output__.vstats.SIZEOF                    = sizeof(resources_t::vector<vtype_sample>);
+	__metadata_output__.vstats.CACHE_NB                  = resources_t::vector<vtype_sample>::CACHE_NB;
+	__metadata_output__.vstats.MEMORY_SIZE               = resources_t::vector<vtype_sample>::MEMORY_SIZE;
+	__metadata_output__.vstats.CACHE_NB_ITEMS            = resources_t::vector<vtype_sample>::CACHE_NB_ITEMS;
+    __metadata_output__.vstats.NBITEMS_MAX               = resources_t::vector<vtype_sample>::NBITEMS_MAX;
+	__metadata_output__.vstats.MEMTREE_NBITEMS_PER_BLOCK = resources_t::vector<vtype_sample>::MEMTREE_NBITEMS_PER_BLOCK;
+	__metadata_output__.vstats.MEMTREE_MAX_MEMORY        = resources_t::vector<vtype_sample>::MAX_MEMORY;
+    __metadata_output__.vstats.MEMTREE_LEVEL_MAX         = resources_t::vector<vtype_sample>::memorytree_t::LEVEL_MAX;
+
     __metadata_output__.nb_cycles [tuid].all = Perf::since (initial_time);
     
     banner("END");

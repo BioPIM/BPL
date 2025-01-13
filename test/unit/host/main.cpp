@@ -15,7 +15,7 @@
 // initialize static data
 ////////////////////////////////////////////////////////////////////////////////
 
-using resources_t = bpl::arch::ArchMulticore;
-using TaskBase_t  = bpl::core::TaskBase<bpl::core::Task<resources_t,1>>;
+using resources_t = bpl::ArchMulticore;
+using TaskBase_t  = bpl::TaskBase<bpl::Task<resources_t,1>>;
 
 template<>  decltype(TaskBase_t::mutexes)  TaskBase_t::mutexes = { std::mutex{} };

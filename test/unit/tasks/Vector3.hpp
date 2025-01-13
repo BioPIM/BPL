@@ -15,7 +15,7 @@ int check_stack();
 }
 
 #ifdef DPU
-extern bpl::arch::MRAM::Allocator<true> __MRAM_Allocator_lock__;
+extern bpl::MRAM::Allocator<true> __MRAM_Allocator_lock__;
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -25,7 +25,37 @@ class MyAllocator
 public:
     using address_t = uint64_t;
 
+    template<int N>  using address_array_t =
+#ifdef DPU
+            __dma_aligned
+#endif
+            address_t [N];
+
     static constexpr bool is_freeable = false;
+
+    static address_t get (size_t sizeInBytes)
+    {
+        address_t result = {};
+#ifdef DPU
+        result = __MRAM_Allocator_lock__.get (sizeInBytes);
+#endif
+        return result;
+    }
+
+    static address_t writeAt (void* dest, void* data, size_t sizeInBytes)
+    {
+#ifdef DPU
+        __MRAM_Allocator_lock__.writeAt (dest,data,sizeInBytes);
+#endif
+        return (address_t) dest;
+    }
+
+    static auto writeAtomic (address_t tgt, address_t const& src)
+    {
+#ifdef DPU
+        __MRAM_Allocator_lock__.writeAtomic (tgt, src);
+#endif
+    }
 
     static address_t write (void* src, size_t n)
     {
@@ -36,7 +66,7 @@ public:
         return result;
     };
 
-    static address_t* read (address_t src, void* tgt, size_t n)
+    static address_t* read (void* src, void* tgt, size_t n)
     {
 
 #ifdef DPU
@@ -67,13 +97,15 @@ public:
 //
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct Vector3 : bpl::core::Task<ARCH>
+struct Vector3 : bpl::Task<ARCH>
 {
     USING(ARCH);
 
+    struct MutexNull { void lock() {}  void unlock() {}; };
+
     using type_t   = uint32_t;
 
-    using vector_t = bpl::core::vector<type_t,MyAllocator,8,3,9>;
+    using vector_t = bpl::vector<type_t,MyAllocator,MutexNull,8,1,3,9>;
 
     uint64_t operator() (size_t nbtasks, uint32_t nbitems)
     {

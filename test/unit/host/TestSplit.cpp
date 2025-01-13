@@ -5,6 +5,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <catch2/catch_test_macros.hpp>
+#include <fmt/core.h>
 
 #include <bpl/core/Launcher.hpp>
 #include <bpl/core/Task.hpp>
@@ -19,9 +20,13 @@
 #include <tasks/Checksum5.hpp>
 #include <tasks/IterableSplit.hpp>
 #include <tasks/SplitRangeInt.hpp>
+#include <tasks/SplitDifferentSizes.hpp>
+#include <tasks/VectorSplitDpu.hpp>
 
-using namespace bpl::core;
-using namespace bpl::arch;
+#include <fmt/core.h>
+#include <fmt/ranges.h>
+
+using namespace bpl;
 
 //////////////////////////////////////////////////////////////////////////////
 void testRangeSplit (size_t usedRanks)
@@ -248,6 +253,97 @@ TEST_CASE ("SplitOperator", "[Split]" )
             {
                 SplitOperator_aux (nbItems, nbSplits1, nbSplits2);
             }
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+template<typename A, typename B, typename C> struct foo {  const A& a; };
+
+template<typename A, typename B, typename C>
+struct SplitOperator<foo<A,B,C>>
+{
+    static auto split (const foo<A,B,C>& t, std::size_t idx, std::size_t total)  { return t; }
+};
+
+TEST_CASE ("is_splitable", "[Split]" )
+{
+    static_assert (is_splitable_v<int>                 == false);
+    static_assert (is_splitable_v<std::array<int,4>>   == false);
+    static_assert (is_splitable_v<std::vector<int>>    == true);
+    static_assert (is_splitable_v<std::span<int>>      == true);
+    static_assert (is_splitable_v<std::pair<int,int>>  == true);
+
+    using t1 = ::details::SplitProxy <::details::DummyLevel, SplitKind::CONT, std::pair<int,int>>;
+    static_assert (is_splitable_v<t1> == true);
+
+    static_assert (is_splitable_v<foo<char,int,long>>  == true);
+
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+template<class ARCH>
+struct SplitOperator<std::vector<DummyStruct<ARCH>>>
+{
+    static decltype(auto) split_view (std::vector<DummyStruct<ARCH>> const& t, std::size_t idx, std::size_t total)
+    {
+        return t[idx];
+    }
+};
+
+TEST_CASE ("SplitDifferentSizes", "[Split]" )
+{
+    size_t nbdpus  = 16*64;
+    size_t nbitems = 1000;
+
+    using type = DummyStruct<ArchMulticore>;
+
+    std::vector<type> vdata(nbdpus);
+
+    // We fill several SplitDifferentSizes::type with varying number of items.
+    for (size_t i=0; i<vdata.size(); i++)
+    {
+        auto& item = vdata[i];
+        item.data.resize (nbitems*(i+1));
+        for (size_t j=0; j<item.data.size(); j++) { item.data[j]=j+1; }
+    }
+
+    Launcher<ArchUpmem> launcher { ArchUpmem::DPU(nbdpus) };
+
+    // guid is the group id, ie the group of several process units (either threads for MC or tasklets for UPMEM)
+
+    for (auto&& [guid,res] : launcher.run<SplitDifferentSizes> (split<ArchUpmem::DPU>(vdata)))
+    {
+        size_t   actualNbitems = nbitems * (guid+1);
+        uint64_t truth         = uint64_t(actualNbitems)*(actualNbitems+1)/2;
+        REQUIRE (res == truth);
+        //fmt::println ("res: {}  truth: {}  guid: {}", res, truth, guid);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+auto VectorSplitDpu_aux (size_t nbDpu, size_t imax)
+{
+    std::vector<uint64_t> v1;  for (size_t i=1; i<=imax; i++)  {  v1.push_back (i);  }
+    std::vector<uint64_t> v2;  for (size_t i=1; i<=imax; i++)  {  v2.push_back (i);  }
+
+    Launcher<ArchUpmem> launcher {ArchUpmem::DPU{nbDpu} };
+
+    for ([[maybe_unused]] auto res : launcher.template run<VectorSplitDpu> (split<ArchUpmem::DPU>(v1),v2))
+    {
+        REQUIRE (res.second == imax*(imax+1)/2 );
+    }
+}
+
+TEST_CASE ("VectorSplitDpu", "[once]" )
+{
+    for (size_t nbDpu : {1,2,3,5,8,13,21,34})
+    {
+        for (size_t imax : {11, 111, 1111, 11111})
+        {
+            VectorSplitDpu_aux (nbDpu,imax);
         }
     }
 }

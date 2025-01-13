@@ -29,18 +29,18 @@ extern "C"
 // one without name collision.
 namespace _@TASKNAME@_ 
 {
-    using globalparams_t = bpl::core::transform_tuple_t <
-        typename bpl::core::pack_predicate_partition_t <
-            bpl::core::hastag_global,
-            bpl::core::task_params_t<@TASKNAME@ <bpl::arch::ArchUpmemResources @TASKTEMPLATE@>>
+    using globalparams_t = bpl::transform_tuple_t <
+        typename bpl::pack_predicate_partition_t <
+            bpl::hastag_global,
+            bpl::task_params_t<@TASKNAME@ <bpl::ArchUpmemResources<> @TASKTEMPLATE@>>
         >::first_type,
-        bpl::core::removetag_once,
-        bpl::core::removetag_global
+        bpl::removetag_once,
+        bpl::removetag_global
     >;
     
     static const globalparams_t object;
     
     // https://stackoverflow.com/questions/78580764/retrieving-from-gcc-clang-a-value-known-at-compilation-time/78580978#78580978
     template<auto> class error;
-    error<bpl::core::sum_sizeof (object)> print;
+    error<bpl::sum_sizeof (object)> print;
 };

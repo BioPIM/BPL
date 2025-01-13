@@ -8,7 +8,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct RangeSplit : bpl::core::Task<ARCH>
+struct RangeSplit : bpl::Task<ARCH>
 {
     USING(ARCH);
 
@@ -21,16 +21,6 @@ struct RangeSplit : bpl::core::Task<ARCH>
         type r4
     )
     {
-////if (this->tuid()==0)
-//{
-//    printf ("%5d [%ld %ld]  [%ld %ld]  [%ld %ld]  [%ld %ld]   SP\n",
-//        this->tuid(),
-//        r1.first, r1.second,
-//        r2.first, r2.second,
-//        r3.first, r3.second,
-//        r4.first, r4.second
-//    );
-//}
         return make_tuple (r1, r2, r3, r4);
     }
 };

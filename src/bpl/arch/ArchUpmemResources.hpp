@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -8,13 +8,13 @@
 
 #ifdef DPU  // THIS PART SHOULD BE COMPILED ONLY FOR DPU
 
-#ifndef __BPL_ARCH_UPMEM_RESOURCES__
-#define __BPL_ARCH_UPMEM_RESOURCES__
+
+#pragma once
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <bpl/utils/metaprog.hpp>
 #include <bpl/utils/serialize.hpp>
-#include <bpl/utils/split.hpp>
+#include <bpl/utils/splitter.hpp>
 #include <bpl/utils/Range.hpp>
 #include <bpl/utils/BufferIterator.hpp>
 #include <bpl/utils/vector.hpp>
@@ -25,13 +25,13 @@
 #include <mram.h>
 #include <algorithm>
 
-extern bpl::arch::MRAM::Allocator<true>  __MRAM_Allocator_lock__;
+#include <span>
+
+extern bpl::MRAM::Allocator<true>  __MRAM_Allocator_lock__;
 
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace arch {
-
 namespace impl {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -73,6 +73,8 @@ namespace impl {
     template <typename T, int N>
     struct array
     {
+        static constexpr bool parseable = false;
+
         // IMPORTANT: use __dma_aligned here
         __dma_aligned T val_[N];
         static constexpr int SIZE=N;
@@ -116,6 +118,9 @@ class VectorAllocator
 public:
     using address_t = MRAM::address_t;
 
+    template<int N>
+    using address_array_t = __dma_aligned address_t [N];
+
     static constexpr bool is_freeable = false;
 
     static address_t get (size_t sizeInBytes)
@@ -128,12 +133,17 @@ public:
         return __MRAM_Allocator_lock__.write (src, n);
     };
 
-    static address_t writeAt (address_t dest, void* data, size_t sizeInBytes)
+    static address_t writeAt (void* dest, void* data, size_t sizeInBytes)
     {
         return __MRAM_Allocator_lock__.writeAt (dest, data, sizeInBytes);
     }
 
-    static address_t* read (address_t src, void* tgt, size_t n)
+    static auto writeAtomic (address_t tgt, address_t const& src)
+    {
+        return __MRAM_Allocator_lock__.writeAtomic(tgt,src);
+    }
+
+    static address_t* read (void* src, void* tgt, size_t n)
     {
         __MRAM_Allocator_lock__.read (src, tgt, n);
         return (address_t*) tgt;
@@ -147,9 +157,55 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-////////////////////////////////////////////////////////////////////////////////
+namespace details
+{
+    struct DefaultConfig
+    {
+        struct gmutex { void lock() {}  void unlock() {};  };
+    };
+}
+
+template<class T>  struct gmutex_trait {  using type = typename details::DefaultConfig::gmutex;  };
+
+template<class T>  requires requires { typename T::gmutex; }
+struct gmutex_trait<T> {  using type = typename T::gmutex; };
+
+template<typename CONFIG=details::DefaultConfig>
 struct ArchUpmemResources
 {
+    using config_t = CONFIG;
+
+    // Factory that returns a type with a specific configuration.
+    // We test whether the CONFIG template parameter provided to ArchUpmemResources is void or not.
+    //   - if void,     we use the config provided to the 'factory' template.
+    //   - if not void, we use the config provided to the 'ArchUpmemResources' template
+    template<typename CFG=details::DefaultConfig> using factory =
+        std::conditional_t<
+            std::is_same_v <config_t, details::DefaultConfig>,
+            ArchUpmemResources<CFG>,
+            ArchUpmemResources<config_t>
+    >;
+
+    // We define the actual mutex type used for vector synchronization (when 'global' used for instance)
+    using gmutex_t = typename gmutex_trait<config_t>::type;
+
+    struct constants_t
+    {
+        DEFINE_GETTER (VECTOR_MEMORY_SIZE_LOG2);
+        DEFINE_GETTER (VECTOR_CACHE_NB_LOG2);
+        DEFINE_GETTER (MEMTREE_NBITEMS_PER_BLOCK_LOG2);
+        DEFINE_GETTER (MEMTREE_MAX_MEMORY_LOG2);
+        DEFINE_GETTER (SWAP_USED);
+        DEFINE_GETTER (SHARED_ITER_CACHE);
+
+        static constexpr int SWAP_USED                      = get_SWAP_USED_v                       <config_t,0>;
+        static constexpr int VECTOR_MEMORY_SIZE_LOG2        = get_VECTOR_MEMORY_SIZE_LOG2_v         <config_t,8>;
+        static constexpr int VECTOR_CACHE_NB_LOG2           = get_VECTOR_CACHE_NB_LOG2_v            <config_t,SWAP_USED==0 ? 0 : 1>;
+        static constexpr int MEMTREE_NBITEMS_PER_BLOCK_LOG2 = get_MEMTREE_NBITEMS_PER_BLOCK_LOG2_v  <config_t,3>;
+        static constexpr int MEMTREE_MAX_MEMORY_LOG2        = get_MEMTREE_MAX_MEMORY_LOG2_v         <config_t,8>;
+        static constexpr int SHARED_ITER_CACHE              = get_SHARED_ITER_CACHE_v               <config_t,1>;
+    };
+
     template<typename T, typename S> using pair = std::pair<T,S>;
 
     template<typename T, typename S>  static auto make_pair (T t, S s) { return pair<T,S>(t,s); }
@@ -159,17 +215,35 @@ struct ArchUpmemResources
     template<typename T, std::size_t N> using array  = impl::array<T,N>;
 
     template<typename T,
-        int DATABLOCK_SIZE_LOG2             = 9 - core::Log2<sizeof(T)>::value,
-        int MEMTREE_NBITEMS_PER_BLOCK_LOG2  = 3,
-        int MAX_MEMORY_LOG2                 = 8
-    > using vector  = bpl::core::vector<T,VectorAllocator, DATABLOCK_SIZE_LOG2, MEMTREE_NBITEMS_PER_BLOCK_LOG2, MAX_MEMORY_LOG2>;
+        int MEMORY_SIZE_LOG2                = constants_t::VECTOR_MEMORY_SIZE_LOG2 - bpl::Log2<sizeof(T)>::value,
+        int CACHE_NB_LOG2                   = constants_t::VECTOR_CACHE_NB_LOG2,
+        int MEMTREE_NBITEMS_PER_BLOCK_LOG2  = constants_t::MEMTREE_NBITEMS_PER_BLOCK_LOG2,
+        int MEMTREE_MAX_MEMORY_LOG2         = constants_t::MEMTREE_MAX_MEMORY_LOG2
+    > using vector  = bpl::vector <
+        T,
+        VectorAllocator,
+        gmutex_t,
+        MEMORY_SIZE_LOG2,
+        CACHE_NB_LOG2,
+        MEMTREE_NBITEMS_PER_BLOCK_LOG2,
+        MEMTREE_MAX_MEMORY_LOG2
+    >;
 
 
     template<typename T> using span = std::span<T>;
 
     template<typename T,
-        int DATABLOCK_SIZE_LOG2             = 9 - core::Log2<sizeof(T)>::value
-    >                using vector_view = bpl::core::vector_view<T,VectorAllocator, DATABLOCK_SIZE_LOG2>;
+        int MEMORY_SIZE_LOG2   = constants_t::VECTOR_MEMORY_SIZE_LOG2 - bpl::Log2<sizeof(T)>::value,
+        int CACHE_NB_LOG2      = constants_t::VECTOR_CACHE_NB_LOG2,
+        bool SHARED_ITER_CACHE = constants_t::SHARED_ITER_CACHE
+    >   using vector_view = bpl::vector_view<
+        T,
+        VectorAllocator,
+        gmutex_t,
+        MEMORY_SIZE_LOG2,
+        CACHE_NB_LOG2,
+        SHARED_ITER_CACHE
+    >;
 
                                 struct string {};
 
@@ -190,10 +264,10 @@ struct ArchUpmemResources
     template <typename ...Args>
     static void info (const char * format, Args ...args)  {  printf(format, args...);  }
 
-    static auto round (int n)  {  return core::roundUp<8>(n); }
+    static auto round (int n)  {  return bpl::roundUp<8>(n); }
 
-    template<typename T> using once   = bpl::core::once<T>;
-    template<typename T> using global = bpl::core::global<T>;
+    template<typename T> using once   = bpl::once<T>;
+    template<typename T> using global = bpl::global<T>;
 
     struct mutex
     {
@@ -205,8 +279,8 @@ struct ArchUpmemResources
 
         constexpr mutex (type& value)   : handle_(&value) {}
 
-        void lock  () { mutex_lock   (handle()); }
-        void unlock() { mutex_unlock (handle()); }
+        void lock  () { mutex_lock   (handle()); /*printf ("lock\n");  */ }
+        void unlock() { mutex_unlock (handle()); /*printf ("unlock\n");*/ }
 
     private:
         handle_t handle_;
@@ -220,22 +294,67 @@ struct ArchUpmemResources
         ~lock_guard ()  { mut_.unlock(); }
     };
 
-    template <class T> static void swap ( T& a, T& b ) {  T c(a); a=b; b=c; }
-};
+    template<int VALUE>  struct ErrorOnlyOneCacheForSwapUsage     {  auto operator() () {}       };
+    template<>           struct ErrorOnlyOneCacheForSwapUsage<0>  { /* we remove the operator. */};
+
+    template <class T> static void swap ( T& a, T& b )
+    {
+        ErrorOnlyOneCacheForSwapUsage<constants_t::VECTOR_CACHE_NB_LOG2>() ();
+        T c(a); a=b; b=c;
+    }
+
+}; // end of ArchUpmemResources
 
 ////////////////////////////////////////////////////////////////////////////////
-} };  // end of namespace
+template<typename T>  struct is_vector : std::false_type {};
+
+template<typename T, typename MUTEX,
+    int MEMORY_SIZE_LOG2,
+    int CACHE_NB_LOG2,
+    int MEMTREE_NBITEMS_PER_BLOCK_LOG2,
+    int MAX_MEMORY_LOG2
+>
+struct is_vector<bpl::vector<T,VectorAllocator,MUTEX,MEMORY_SIZE_LOG2,CACHE_NB_LOG2,MEMTREE_NBITEMS_PER_BLOCK_LOG2,MAX_MEMORY_LOG2>>
+    : std::true_type {};
+
+template<typename T, typename MUTEX,
+    int MEMORY_SIZE_LOG2,
+    int CACHE_NB_LOG2,
+    bool SHARED
+>
+struct is_vector<bpl::vector_view<T,VectorAllocator,MUTEX,MEMORY_SIZE_LOG2,CACHE_NB_LOG2,SHARED>>
+    : std::true_type {};
+
+// We need a specialization for tag 'global' => we don't count a vector if encaspulated by such a tag.
+template<typename T> struct is_vector<bpl::global<T>> : std::false_type {};
+
+// We need a specialization for tag 'once'
+template<typename T> struct is_vector<bpl::once  <T>> : is_vector<typename bpl::once  <T>::type> {};
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+};  // end of namespace
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace bpl { namespace core {
+namespace bpl {
 
-    template<>
-    class BufferIterator<bpl::arch::ArchUpmemResources>
+    struct Config4Global
+    {
+        // synchro when using random access with operator[]
+        using gmutex  = ArchUpmemResources<>::mutex;
+
+        // no synchro but specific cache for each tasklet when using iterator objects
+        static constexpr bool SHARED_ITER_CACHE = false;
+    };
+
+    template<typename CONFIG>
+    class BufferIterator<bpl::ArchUpmemResources<CONFIG>>
     {
     public:
         using type_t    = char;
         using pointer_t = type_t*;
         using size_type = uint32_t;
+        using address_t = bpl::MRAM::address_t;
 
         BufferIterator (__mram_ptr void* buf_MRAM, pointer_t cache_WRAM, size_type size)
             : source_MRAM_(buf_MRAM), start_WRAM_(cache_WRAM), size_(size)
@@ -271,7 +390,7 @@ namespace bpl { namespace core {
 
             while (size > 0)
             {
-                mram_read  (source_MRAM_, target, step);
+                __MRAM_Allocator_lock__.reader_ ((pointer_t)source_MRAM_, (void*)target, step);
                 source_MRAM_ = (__mram_ptr void*) ( (pointer_t)source_MRAM_ + step);
 
                 target += step;
@@ -286,7 +405,7 @@ namespace bpl { namespace core {
         void read (void* target, size_type size)
         {
             debug ("read");
-            mram_read  (source_MRAM_, target, size);
+            __MRAM_Allocator_lock__.reader_ ((pointer_t)source_MRAM_, (void*)target, size);
             readNext(size);
         }
 
@@ -321,7 +440,7 @@ namespace bpl { namespace core {
             source_MRAM_ = (__mram_ptr void*) ((pointer_t)source_MRAM_+offset);
 
             // We read some bytes from MRAM to WRAM
-            mram_read  (source_MRAM_, start_WRAM_, size_);
+            __MRAM_Allocator_lock__.reader_ ((pointer_t)source_MRAM_, (void*)start_WRAM_, size_);
 
             // We reset the cursor reading the WRAM
             loop_WRAM_ = start_WRAM_;
@@ -339,24 +458,63 @@ namespace bpl { namespace core {
     // We provide a specialization for 'global' whose type is a bpl vector_view.
     // In such a case, we make sure that the iterator cache is an external one,
     // so we don't have issue by sharing the same iter cache between tasklet
-    template<typename T, typename ALLOCATOR, int DATABLOCK_SIZE_LOG2, bool SHARED_ITER_CACHE>
+    template<typename T, typename MUTEX, int DATABLOCK_SIZE_LOG2, int  CACHE_NB_LOG2, bool SHARED_ITER_CACHE>
     struct global_converter <
-        bpl::core::vector_view <T,ALLOCATOR,DATABLOCK_SIZE_LOG2,SHARED_ITER_CACHE>
+        bpl::vector_view <T,bpl::VectorAllocator,MUTEX,DATABLOCK_SIZE_LOG2,CACHE_NB_LOG2,SHARED_ITER_CACHE>
     >
     {
-    	// We force to use an external cache for vector_view iteration.
-        using type = bpl::core::vector_view <T, ALLOCATOR, DATABLOCK_SIZE_LOG2, false>;
+        using mutex_t = ArchUpmemResources<>::mutex;
+
+        // We force to use an external cache for vector_view iteration.
+        using type = bpl::vector_view <T, bpl::VectorAllocator, mutex_t, DATABLOCK_SIZE_LOG2, CACHE_NB_LOG2, false>;
     };
 
-} };
+    // We provide a specialization for 'global' whose type is a bpl vector -> transform it into a vector_view
+    template<
+        typename T,
+        typename MUTEX,
+        int MEMORY_SIZE_LOG2,
+        int CACHE_NB_LOG2,             // log2 of the number of caches
+        int MEMTREE_NBITEMS_PER_BLOCK_LOG2,
+        int MAX_MEMORY_LOG2
+    >
+    struct global_converter <
+        bpl::vector <T,bpl::VectorAllocator,MUTEX,MEMORY_SIZE_LOG2,CACHE_NB_LOG2,MEMTREE_NBITEMS_PER_BLOCK_LOG2,MAX_MEMORY_LOG2>
+    >
+    {
+        using mutex_t = ArchUpmemResources<>::mutex;
+
+        // We force to use an external cache for vector_view iteration.
+        using type = bpl::vector_view <T, bpl::VectorAllocator, mutex_t, MEMORY_SIZE_LOG2, CACHE_NB_LOG2, false>;
+    };
+
+    template<template<typename> typename T, typename CFG>
+    struct global_converter < T<ArchUpmemResources<CFG>> >
+    {
+        // We want to replace the provided ARCH by another architecture.
+        // In particular, we want to use mutex protection, which can be done by providing a specific configuration.
+        using type = T <ArchUpmemResources<Config4Global>>;
+
+        // By the way, Config4Global has to be defined outside this struct, otherwise compiler may do strange things.
+        // (should be investigated, maybe a compiler bug...)
+    };
+};
 
 ////////////////////////////////////////////////////////////////////////////////
-#endif // __BPL_ARCH_UPMEM_RESOURCES__
 
-namespace bpl { namespace core {
+namespace bpl {
 
     template<typename T>
-    struct serializable<arch::ArchUpmemResources::vector<T>> : std::true_type
+    struct is_parseable<std::span<T>> : std::false_type {};
+
+    template<typename T,
+        typename MUTEX,
+        int MEMORY_SIZE_LOG2,
+        int CACHE_NB_LOG2,
+        int MEMTREE_NBITEMS_PER_BLOCK_LOG2,
+        int MAX_MEMORY_LOG2
+    >
+    struct serializable<bpl::vector<T,bpl::VectorAllocator,MUTEX,MEMORY_SIZE_LOG2,CACHE_NB_LOG2,MEMTREE_NBITEMS_PER_BLOCK_LOG2,MAX_MEMORY_LOG2>> : std::true_type
     {
         template<class ARCH, class BUFITER, int ROUNDUP, typename TYPE, typename FCT>
         static auto iterate (bool transient, int depth, const TYPE& t, FCT fct, void* context)
@@ -374,21 +532,28 @@ namespace bpl { namespace core {
                     Serialize<ARCH,BUFITER,ROUNDUP>::iterate (false, depth+1, x, fct, context);
                 }
             }
+#if 0  // NOT USED RIGHT NOW
             else
             {
                 // We get the memory size of the cache of the vector.
-                const int SIZEOF = std::remove_reference_t<decltype(t)>::SIZEOF_DATABLOCK;
+                constexpr int SIZEOF = std::remove_reference_t<decltype(t)>::SIZEOF_DATABLOCK;
+                static_assert (SIZEOF>=8);
 
                 // We rely on the memory tree for the serialization.
                 // The idea is to be able to serialize a full block instead of item after item.
-                t.getMemoryTree().leaves ([&] (auto&& address)
+
+                using memtree_t = std::remove_reference_t<decltype (t.getMemoryTree())>;
+                const int nbread = memtree_t::BLOCK_SIZEOF;
+
+                for (auto address : t.getMemoryTree())
                 {
                     // We copy the block from the MRAM to the provided WRAM cache (as 'context')
-                    mram_read ((__mram_ptr void*) address, context,  SIZEOF);
+                    __MRAM_Allocator_lock__.reader_ ((void*)address, (void*)context, nbread);
 
-                    fct (true, depth+1, context, SIZEOF, roundUp<ROUNDUP> (SIZEOF));
-                });
+                    fct (false, depth+1, context, nbread, roundUp<ROUNDUP> (nbread));
+                }
             }
+#endif
         }
 
         template<class ARCH, class BUFITER, int ROUNDUP, typename TYPE>
@@ -398,7 +563,7 @@ namespace bpl { namespace core {
             it.read (&n, roundUp<ROUNDUP> (sizeof(n)) );
 
             // We have already the data in MRAM, but we need to build a MemoryTree whose nodes point to the different data blocks in MRAM.
-            result.fill ((arch::VectorAllocator::address_t) it.pos(), n, sizeof(T));
+            result.fill ((bpl::VectorAllocator::address_t) it.pos(), n, sizeof(T));
 
             // We advance the buf iterator.
             it.readNext (roundUp<ROUNDUP>(n*sizeof(T)));
@@ -406,8 +571,8 @@ namespace bpl { namespace core {
     };
 
 
-    template<typename T,typename ALLOCATOR,int DATABLOCK_SIZE_LOG2,bool SHARED_ITER_CACHE>
-    struct serializable<bpl::core::vector_view<T,ALLOCATOR,DATABLOCK_SIZE_LOG2,SHARED_ITER_CACHE>>
+    template<typename T,typename MUTEX, int DATABLOCK_SIZE_LOG2,int CACHE_NB_LOG2, bool SHARED_ITER_CACHE>
+    struct serializable<bpl::vector_view<T,bpl::VectorAllocator,MUTEX,DATABLOCK_SIZE_LOG2,CACHE_NB_LOG2,SHARED_ITER_CACHE>>
     {
         static constexpr int value = true;
 
@@ -433,7 +598,7 @@ namespace bpl { namespace core {
             it.read (&n, roundUp<ROUNDUP> (sizeof(n)) );
 
             // We have already the data in MRAM, but we need to build a MemoryTree whose nodes point to the different data blocks in MRAM.
-            result.fill ((arch::VectorAllocator::address_t) it.pos(), n, sizeof(T));
+            result.fill ((bpl::VectorAllocator::address_t) it.pos(), n, sizeof(T));
 
             // We advance the buf iterator.
             it.readNext (roundUp<ROUNDUP>(n*sizeof(T)));
@@ -441,7 +606,7 @@ namespace bpl { namespace core {
     };
 
     template<typename T, int N>
-    struct serializable<arch::ArchUpmemResources::array<T,N>>
+    struct serializable<bpl::ArchUpmemResources<>::array<T,N>>
     {
         static constexpr int value = true;
 
@@ -458,7 +623,7 @@ namespace bpl { namespace core {
             it.memcpy ((char*)&result, roundUp<ROUNDUP>(N*sizeof(T)));
         }
     };
-}};
+};
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
@@ -468,7 +633,11 @@ auto getSplitRange (std::size_t length, std::size_t idx, std::size_t total)
     auto range   = std::make_pair (0, length);
     auto [i0,i1] = SplitOperator<decltype(range)>::split (std::make_pair (0, length), idx, total);
 
-    // WARNING!!! we must be sure that the computed address is a modulo of 8
+#if 0
+    // UPDATE: we remove this static check since we can now handle address_t on uint32_t.
+    // --> maybe we should now check whether the computed address is a multiple of 4.
+
+    // WARNING!!! we must be sure that the computed address is a multiple of 8
     // Since we suppose that the initial address fulfills this requirement,
     // we hence must ensure that i0*sizeof(T) is a modulo of 8
 
@@ -477,11 +646,12 @@ auto getSplitRange (std::size_t length, std::size_t idx, std::size_t total)
         ( (sizeof(T) % 8) == 0),
         "alignment requirements not fulfilled for split."
     );
+#endif
 
     constexpr int DIV = sizeof(T)<=8 ?  (8 / sizeof(T)) :  1;
 
-    if ((i0*sizeof(T) % 8)!=0 )  {  i0 = bpl::core::roundUp<DIV>(i0);  }
-    if ((i1*sizeof(T) % 8)!=0 )  {  i1 = bpl::core::roundUp<DIV>(i1);  }
+    if ((i0*sizeof(T) % 8)!=0 )  {  i0 = bpl::roundUp<DIV>(i0);  }
+    if ((i1*sizeof(T) % 8)!=0 )  {  i1 = bpl::roundUp<DIV>(i1);  }
 
     // NB: we allow only for the last part to be not aligned
     if (idx+1 == total)  {  i1 = length;  }
@@ -490,27 +660,30 @@ auto getSplitRange (std::size_t length, std::size_t idx, std::size_t total)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-template<typename T>
-struct SplitOperator<bpl::arch::ArchUpmemResources::vector<T>>
+template<typename T, typename MUTEX, 
+    int MEMORY_SIZE_LOG2,
+    int CACHE_NB_LOG2,
+    int MEMTREE_NBITEMS_PER_BLOCK_LOG2,
+    int MAX_MEMORY_LOG2
+>
+struct SplitOperator<bpl::vector<T,bpl::VectorAllocator,MUTEX,MEMORY_SIZE_LOG2,CACHE_NB_LOG2,MEMTREE_NBITEMS_PER_BLOCK_LOG2,MAX_MEMORY_LOG2>>
 {
-    static auto split (const bpl::arch::ArchUpmemResources::vector<T>& x, std::size_t idx, std::size_t total)
+    static auto split (const bpl::vector<T,bpl::VectorAllocator,MUTEX,MEMORY_SIZE_LOG2,CACHE_NB_LOG2,MEMTREE_NBITEMS_PER_BLOCK_LOG2,MAX_MEMORY_LOG2>& x, std::size_t idx, std::size_t total)
     {
+        using vector_t = std::decay_t<decltype(x)>;
+
         auto [i0,i1] = getSplitRange<T> (x.size(), idx, total);
 
-        bpl::arch::ArchUpmemResources::vector<T> result;
-
-        printf ("[DPU] me: %2d  #x: %3d  split:  filled: %d  idx: %2d  total: %2d =>  [%3d,%3d]  %d \n",
-            me(), x.size(), x.hasBeenFilled(), idx, total, i0, i1, i1-i0
-        );
+        vector_t result;
 
         if (not x.hasBeenFilled())
         {
             // NOT OPTIMAL AT ALL !!! The split process could be done during unserialization.
             // Even worse here: we read the full vector for each tasklet...
-            size_t i=0;
-            for (const auto& item : ( bpl::arch::ArchUpmemResources::vector<T>&) x)
+            int i=0;
+            for (const auto& item : ( vector_t&) x)
             {
-                if (i0<=i and i<i1)  { result.push_back (item); }
+                if (int(i0)<=i and i<int(i1))  { result.push_back (item); }
                 i++;
             }
 
@@ -518,7 +691,7 @@ struct SplitOperator<bpl::arch::ArchUpmemResources::vector<T>>
         }
         else
         {
-            bpl::arch::VectorAllocator::address_t a = x.getFillAddress() + i0*sizeof(T);
+            bpl::VectorAllocator::address_t a = x.getFillAddress() + i0*sizeof(T);
             result.fill (a, i1-i0, sizeof(T));
         }
 
@@ -527,16 +700,16 @@ struct SplitOperator<bpl::arch::ArchUpmemResources::vector<T>>
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////
-template<typename T,typename ALLOCATOR,int DATABLOCK_SIZE_LOG2,bool SHARED_ITER_CACHE>
-struct SplitOperator<bpl::core::vector_view<T,ALLOCATOR,DATABLOCK_SIZE_LOG2,SHARED_ITER_CACHE>>
+template<typename T,typename MUTEX, int DATABLOCK_SIZE_LOG2,bool SHARED_ITER_CACHE>
+struct SplitOperator<bpl::vector_view<T,bpl::VectorAllocator,MUTEX,DATABLOCK_SIZE_LOG2,SHARED_ITER_CACHE>>
 {
-    using type = bpl::core::vector_view<T,ALLOCATOR,DATABLOCK_SIZE_LOG2,SHARED_ITER_CACHE>;
+    using type = bpl::vector_view<T,bpl::VectorAllocator,MUTEX,DATABLOCK_SIZE_LOG2,SHARED_ITER_CACHE>;
 
     static auto split (const type& x, std::size_t idx, std::size_t total)
     {
         auto [i0,i1] = getSplitRange<T> (x.size(), idx, total);
 
-        bpl::arch::VectorAllocator::address_t a = x.getFillAddress() + i0*sizeof(T);
+        bpl::VectorAllocator::address_t a = x.getFillAddress() + i0*sizeof(T);
 
         type result;
         result.fill (a, i1-i0, sizeof(T));
@@ -547,12 +720,13 @@ struct SplitOperator<bpl::core::vector_view<T,ALLOCATOR,DATABLOCK_SIZE_LOG2,SHAR
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
-namespace bpl  { namespace core {
+namespace bpl  {
 
-template<int MUTEX_NB>
-struct Task <arch::ArchUpmemResources,MUTEX_NB> : TaskBase <Task<arch::ArchUpmemResources,MUTEX_NB>>
+template<int MUTEX_NB, typename CONFIG>
+struct Task <bpl::ArchUpmemResources<CONFIG>,MUTEX_NB> : TaskBase <Task<bpl::ArchUpmemResources<CONFIG>,MUTEX_NB>>
 {
-    using parent_t = TaskBase<Task<arch::ArchUpmemResources,MUTEX_NB>>;
+    using parent_t = TaskBase<Task<bpl::ArchUpmemResources<CONFIG>,MUTEX_NB>>;
+
     using tuid_t   = typename parent_t::tuid_t;
     using cycles_t = typename parent_t::cycles_t;
 
@@ -560,14 +734,16 @@ struct Task <arch::ArchUpmemResources,MUTEX_NB> : TaskBase <Task<arch::ArchUpmem
 
     void notify (size_t current, size_t total) {}
 
+    bool match_tuid (tuid_t value) const  { return (value%NR_TASKLETS) == (this->tuid()%NR_TASKLETS); }
+
 //    static auto& get_mutex (int idx)
 //    {
-//        static typename arch::ArchUpmemResources::mutex  mutexes[MUTEX_NB];
+//        static typename bpl::ArchUpmemResources::mutex  mutexes[MUTEX_NB];
 //        return  mutexes[idx];
 //    }
 
 };
 
-}} // namespaces
+} // namespaces
 
 #endif  // #ifdef DPU

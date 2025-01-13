@@ -1,13 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <firstinclude.hpp>
 
-#ifndef __BPL_UTILS_LFSR_HPP__
-#define __BPL_UTILS_LFSR_HPP__
+#pragma once
 
 #include <cstdint>
 
@@ -32,5 +31,3 @@ inline uint32_t lfsr_next (uint32_t next_val, uint8_t n)
    return next_val;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-#endif /* __BPL_UTILS_LFSR_HPP__ */

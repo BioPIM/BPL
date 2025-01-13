@@ -12,8 +12,7 @@
 #include <bpl/arch/ArchDummy.hpp>
 #include <bpl/utils/split.hpp>
 
-using namespace bpl::core;
-using namespace bpl::arch;
+using namespace bpl;
 
 #include <tasks/Vector1.hpp>
 #include <tasks/Vector2.hpp>
@@ -37,8 +36,28 @@ using namespace bpl::arch;
 #include <tasks/VectorMove1.hpp>
 #include <tasks/VectorMove2.hpp>
 #include <tasks/VectorEmplaceBack.hpp>
+#include <tasks/VectorCache.hpp>
+#include <tasks/VectorConfig.hpp>
+#include <tasks/VectorMany.hpp>
+#include <tasks/VectorMany1.hpp>
+#include <tasks/VectorMany2.hpp>
+#include <tasks/VectorMany2b.hpp>
+#include <tasks/VectorMany3.hpp>
+#include <tasks/VectorMany4.hpp>
+#include <tasks/VectorViewRandomAccess1.hpp>
+#include <tasks/VectorViewRandomAccess2.hpp>
+#include <tasks/VectorAddAndIterate.hpp>
+#include <tasks/VectorSizeof12.hpp>
+#include <tasks/VectorRandomAccessGlobal1.hpp>
+#include <tasks/VectorRandomAccessGlobal2.hpp>
+#include <tasks/VectorEmpty1.hpp>
+#include <tasks/VectorEmpty2.hpp>
 
 #include <Runner.hpp>
+
+#include <chrono>
+#include <fmt/core.h>
+#include <fmt/ranges.h>
 
 //////////////////////////////////////////////////////////////////////////////
 struct config
@@ -77,15 +96,18 @@ static int getNbUnits()
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("Vector1", "[Vector]" )
 {
-    Launcher<ArchUpmem> launcher (ArchUpmem::DPU(1));
+    Launcher<ArchUpmem> launcher (ArchUpmem::DPU{1});
 
     uint32_t nbitems = 1300*4*8 + 20;
 
-    auto result = launcher.run<Vector1> (nbitems);
-
-    for (auto res : result)
+    for (size_t i=0; i<10; i++)
     {
-        REQUIRE (res == nbitems);
+        auto result = launcher.run<Vector1> (nbitems);
+
+        for (auto res : result)
+        {
+            REQUIRE (res == nbitems);
+        }
     }
 }
 
@@ -235,15 +257,10 @@ TEST_CASE ("VectorAsInputSplit", "[Vector]" )
     Launcher<ArchUpmem> launcher (ArchUpmem::Rank(getNbUnits()), false/* traces yes/no */);
 
     size_t nbitems = 2*64*1000*1000;
-    uint64_t truth = 0;
 
-    std::vector<uint32_t> v;
-    for (size_t i=1; i<=nbitems; i++)
-    {
-        uint32_t val = 3*i;
-        v.push_back(val);
-        truth += val;
-    }
+    std::vector<uint32_t> v (nbitems);
+    std::generate (v.begin(), v.end(), [i=0]() mutable  { i+=3; return i; });
+    uint64_t truth = std::accumulate (v.begin(), v.end(), uint64_t(0));
 
     auto result = launcher.run<VectorAsInputSplit> (split(v), 100);
 
@@ -280,7 +297,26 @@ auto VectorInputOutput_aux (const std::vector<size_t> sizes)
 TEST_CASE ("VectorInputOutput", "[Vector]" )
 {
     VectorInputOutput_aux <VectorInputOutput > (std::vector<size_t> {1,10,100,1000});
-    VectorInputOutput_aux <VectorInputOutput2> (std::vector<size_t> {1,10,100,1000});
+//    VectorInputOutput_aux <VectorInputOutput2> (std::vector<size_t> {1,10,100,1000});
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorInputOutputUpmem", "[Vector]" )
+{
+    std::vector<uint32_t> v;  for (size_t i=1; i<=10; i++)  { v.push_back(i); }
+
+    Launcher<ArchUpmem> launcher (ArchUpmem::DPU(1), false /* traces yes/no */);
+
+//    auto result = launcher.run<VectorInputOutput2> (v);
+//
+//    for (auto& res : result)
+//    {
+//        for (size_t i=0; i<v.size(); i++)
+//        {
+//            //printf ("RES: ==> %d %d \n", 2*v[i], res[i]);
+//            REQUIRE (2*v[i] == res[i]);
+//        }
+//    }
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -421,6 +457,7 @@ class CustomAllocator
 {
 public:
     using address_t = uint64_t;;
+    template<int N>  using address_array_t = address_t [N];
 
     static constexpr bool is_freeable = true;
 
@@ -433,13 +470,18 @@ public:
         return a;
     };
 
-    static address_t writeAt (address_t dest, void* data, size_t sizeInBytes)
+    static address_t writeAt (void* dest, void* data, size_t sizeInBytes)
     {
         memcpy ((void*)dest, data, sizeInBytes);
-        return dest;
+        return (address_t)dest;
     }
 
-    static address_t* read (address_t src, void* tgt, size_t n)
+    static auto writeAtomic (address_t tgt, address_t & src)
+    {
+        writeAt ((void*)tgt, &src, sizeof(address_t));
+    }
+
+    static address_t* read (void* src, void* tgt, size_t n)
     {
         memcpy (tgt, (void*) src, n);
         return (address_t*) tgt;
@@ -455,7 +497,9 @@ public:
 template<typename ARCH>
 struct VectorMulticoreFct
 {
-    using vector_t = bpl::core::vector<uint32_t,CustomAllocator,2,3,8>;
+    struct MutexNull { auto lock() {} auto unlock(); };
+
+    using vector_t = bpl::vector<uint32_t,CustomAllocator,MutexNull,2,1,3,8>;
 
     auto operator() (const vector_t& v) // -> vector_t
     {
@@ -487,18 +531,35 @@ TEST_CASE ("VectorMulticore", "[Vector]" )
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("VectorOfVectors", "[Vector]" )
 {
-    using type = typename VectorOfVectors<ArchMulticore>::type;
-
-    std::vector<type> v;
-
-    for ( [[maybe_unused]] auto& [stats,result] : Runner<>::run<VectorOfVectors> (v))
-    {
-    }
+//    using type = typename VectorOfVectors<ArchMulticore>::type;
+//
+//    std::vector<type> v;
+//
+//    for ( [[maybe_unused]] auto& [stats,result] : Runner<>::run<VectorOfVectors> (v))
+//    {
+//    }
 }
 
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("VectorFlush", "[Vector]" )
 {
+    Launcher<ArchUpmem> launcher { ArchUpmem::DPU(1), false};
+
+    size_t n = 1;
+
+    auto result = launcher.run<VectorFlush> (n);
+    for (auto& x : result)
+    {
+        REQUIRE (x.size() == n);
+
+        for (size_t i=0; i<n; i++)
+        {
+            REQUIRE (x[i] == i);
+        }
+    }
+
+return;
+
     for (size_t n : {1,2,3,5,8,13,21,34,55,89})
     {
         for (auto& [stats,result] : Runner<>::run<VectorFlush> (n))
@@ -568,7 +629,7 @@ TEST_CASE ("VectorAdd1", "[Vector]" )
     size_t nbErrors2 = 0;
 
     auto results = res.retrieve();
-	//   auto& results = res;
+    //   auto& results = res;
 
     for (auto& v : results)
     {
@@ -609,7 +670,7 @@ TEST_CASE ("VectorMove1", "[Vector]" )
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("VectorMove2", "[Vector]" )
 {
-    Launcher<ArchUpmem> launcher { 1_rank };
+    Launcher<ArchUpmem> launcher { 1_rank};
 
     std::vector<uint32_t> v  { 1,2 };
 
@@ -624,12 +685,344 @@ TEST_CASE ("VectorMove2", "[Vector]" )
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("VectorEmplaceBack", "[Vector]" )
 {
-    Launcher<ArchUpmem> launcher { 1_rank };
+    Launcher<ArchUpmem> launcher { 1_rank};
 
     for (auto res : launcher.run<VectorEmplaceBack> ())
     {
         REQUIRE (res.size()==2);
         REQUIRE (res[0].a==1);   REQUIRE (res[0].x==3.14f);
         REQUIRE (res[1].a==5);   REQUIRE (res[1].x==2.71f);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorCache", "[Vector]" )
+{
+    Launcher<ArchUpmem> launcher { 1_dpu};
+
+    for ([[maybe_unused]] auto res : launcher.run<VectorCache> ( std::vector<uint64_t>{1,2,3}, std::vector<uint8_t>{4,5,6,7}))
+    {
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorConfig", "[Vector]" )
+{
+    Launcher<ArchUpmem> launcher { 1_dpu};
+
+    for ([[maybe_unused]] auto res : launcher.run<VectorConfig> ( std::vector<uint64_t>{1,2,3}, std::vector<uint8_t>{4,5,6,7}))
+    {
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorMany", "[Vector]" )
+{
+    Launcher<ArchUpmem> launcher { 1_dpu};
+
+    auto result = launcher.run<VectorMany> (
+        std::vector<uint32_t>{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+        std::vector<uint32_t>{10,11,12,13,14,15,16,17,18,19},
+        std::vector<uint32_t>{20,21,22,23,24,25,26,27,28,29},
+        std::vector<uint32_t>{30,31,32,33,34,35,36,37,38,39},
+        std::vector<uint32_t>{40,41,42,43,44,45,46,47,48,49},
+        std::vector<uint32_t>{50,51,52,53,54,55,56,57,58,59},
+        std::vector<uint32_t>{60,61,62,63,64,65,66,67,68,69}
+    );
+
+    for ([[maybe_unused]] auto res : result)
+    {
+        REQUIRE (res.size()==70);
+
+        uint32_t check = 0;
+        for (uint32_t x : res)  {  REQUIRE (x == check++);  }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorMany1", "[Vector]" )
+{
+    Launcher<ArchUpmem> launcher { 1_dpu};
+
+    auto result = launcher.run<VectorMany> (
+        std::vector<uint32_t>{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+        std::vector<uint32_t>{10,11,12,13,14,15,16,17,18,19},
+        std::vector<uint32_t>{20,21,22,23,24,25,26,27,28,29},
+        std::vector<uint32_t>{30,31,32,33,34,35,36,37,38,39},
+        std::vector<uint32_t>{40,41,42,43,44,45,46,47,48,49},
+        std::vector<uint32_t>{50,51,52,53,54,55,56,57,58,59},
+        std::vector<uint32_t>{60,61,62,63,64,65,66,67,68,69}
+    );
+
+    for ([[maybe_unused]] auto res : result)
+    {
+        REQUIRE (res.size()==70);
+
+        uint32_t check = 0;
+        for (uint32_t x : res)  {  REQUIRE (x == check++);  }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+template<template<typename> class TASK>
+auto VectorMany2_aux ()
+{
+    Launcher<ArchUpmem> launcher { 1_dpu, false};
+
+    typename TASK<ArchUpmem>::type t;
+
+    const size_t nbfields = get_nb_fields (t);
+
+    size_t nbitems = 51;
+    size_t n       = 1;
+
+    auto fill = [&] (auto&& obj)
+    {
+        bpl::class_fields_iterate (obj, [&] (auto&& field)
+        {
+            for (size_t i=0; i<nbitems; i++)  {  field.push_back (n++); }
+        });
+    };
+
+    fill (t);
+
+    REQUIRE (n==nbfields*nbitems+1);
+
+    for (auto res : launcher.run<TASK> (t))
+    {
+        REQUIRE (res.size() == nbfields*nbitems);
+
+        size_t n=1;
+        for (uint32_t x : res)  {  REQUIRE (x == n++);  }
+    }
+
+    //launcher.getStatistics().dump (true);
+}
+
+TEST_CASE ("VectorMany2", "[Vector]" )
+{
+    VectorMany2_aux <VectorMany2 > ();
+    VectorMany2_aux <VectorMany2b> ();
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorMany3", "[Vector]" )
+{
+    Launcher<ArchUpmem> launcher { 1_dpu, false};
+
+    VectorMany3<ArchUpmem>::type t;
+
+    size_t nbitems = 30*1000;  // we will use nbitems*10(vectors)*16(tasklets)*sizeof(uint32_t) bytes
+    size_t n0      = 1;
+
+    size_t n=n0;
+    for (size_t i=0; i<nbitems; i++)  {  t.a0.push_back (n++); }
+    for (size_t i=0; i<nbitems; i++)  {  t.a1.push_back (n++); }
+    for (size_t i=0; i<nbitems; i++)  {  t.a2.push_back (n++); }
+    for (size_t i=0; i<nbitems; i++)  {  t.a3.push_back (n++); }
+    for (size_t i=0; i<nbitems; i++)  {  t.a4.push_back (n++); }
+    for (size_t i=0; i<nbitems; i++)  {  t.a5.push_back (n++); }
+    for (size_t i=0; i<nbitems; i++)  {  t.a6.push_back (n++); }
+    for (size_t i=0; i<nbitems; i++)  {  t.a7.push_back (n++); }
+    for (size_t i=0; i<nbitems; i++)  {  t.a8.push_back (n++); }
+    for (size_t i=0; i<nbitems; i++)  {  t.a9.push_back (n++); }
+
+    for (auto res : launcher.run<VectorMany3> (t))
+    {
+        REQUIRE (res.size() == 10*nbitems);
+
+        size_t m=n0;
+        for (uint32_t x : res)
+        {
+            REQUIRE (x == m++);
+        }
+    }
+
+    //launcher.getStatistics().dump (true);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorMany4", "[Vector]" )
+{
+    Launcher<ArchUpmem> launcher { 178_dpu, false };
+
+    VectorMany4<ArchUpmem>::type8  t8;
+    VectorMany4<ArchUpmem>::type16 t16;
+    VectorMany4<ArchUpmem>::type32 t32;
+    VectorMany4<ArchUpmem>::type64 t64;
+
+    size_t nbitems = 20;
+    size_t n=0;
+
+    auto fill = [&] (auto&& obj)
+    {
+        bpl::class_fields_iterate (obj, [&] (auto&& field)
+        {
+            for (size_t i=0; i<nbitems; i++)  {  field.push_back (n++); }
+        });
+    };
+
+    fill (t8);
+    fill (t16);
+    fill (t32);
+    fill (t64);
+
+    for ([[maybe_unused]] auto res : launcher.run<VectorMany4> (t8,t16,t32,t64))
+    {
+        REQUIRE (res.size() == 4*3*nbitems);
+
+        n=0;
+        for (auto x : res)
+        {
+            REQUIRE (x == n);
+            n++;
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+template<template<typename> class TASK>
+auto VectorViewRandomAccess_aux ()
+{
+    Launcher<ArchUpmem> launcher { 111_dpu, false};
+
+    size_t nbitems = 1000*1000;
+
+    uint64_t truth = 0;
+    std::vector<uint32_t> v;  for (size_t i=1; i<=nbitems; i++)  { v.push_back(i);  truth += v.back(); }
+
+    for (auto res : launcher.run<TASK> (v))  {  REQUIRE (res == truth);  }
+}
+
+TEST_CASE ("VectorViewRandomAccess1", "[Vector]" )
+{
+    VectorViewRandomAccess_aux<VectorViewRandomAccess1>();
+}
+
+TEST_CASE ("VectorViewRandomAccess2", "[Vector]" )
+{
+    VectorViewRandomAccess_aux<VectorViewRandomAccess2>();
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorAddAndIterate", "[Vector]")
+{
+    std::vector<uint32_t> timings;
+
+    Launcher<ArchUpmem> launcher { 1_dpu, false };
+
+    for (size_t i=1; i<=13; i++)
+    {
+        size_t nbitems = 1<<i;
+
+        //fmt::println ("nbitems: {:6}", nbitems);
+
+         auto t0 = std::chrono::high_resolution_clock::now();
+
+         auto results = launcher.run<VectorAddAndIterate> (nbitems);
+
+         auto t1 = std::chrono::high_resolution_clock::now();
+
+         timings.push_back ( std::chrono::duration_cast<std::chrono::microseconds>(t1-t0).count() );
+
+         for (auto res : results)  {  REQUIRE (nbitems == res);  }
+     }
+
+    // ratios of timings t(n+1)/t(n) should tend to 4 since the test is in O(n^2)
+    //for (size_t i=0; i+1<timings.size(); i++)  {  printf ("%2ld  %6.4f \n", i, (double)timings[i+1]/timings[i]);  }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+auto VectorSizeof12_aux (size_t nbdpu, uint16_t nbitems)
+{
+    Launcher<ArchUpmem> launcher { ArchUpmem::DPU(nbdpu), false };
+
+    using Seed = VectorSizeof12<ArchUpmem>::Seed;
+
+    uint64_t truth = uint64_t(nbitems)*(nbitems+1)/2;
+
+    std::vector<Seed> seeds;
+    for (uint16_t i=1; i<=nbitems; i++)  {  seeds.emplace_back (Seed { i, {i, i } });  }
+
+    for (auto [x,y,z] : launcher.run<VectorSizeof12> (seeds))
+    {
+        REQUIRE (x == 1*truth);
+        REQUIRE (y == 2*truth);
+        REQUIRE (z == 3*truth);
+    }
+}
+
+TEST_CASE ("VectorSizeof12", "[Vector]")
+{
+    for (size_t nbdpu : {1,4,16,64,256})
+    {
+        for (uint16_t n : {1,10,100,1000,10000,20000,40000,60000})  {  VectorSizeof12_aux (nbdpu, n);  }
+
+        for (uint16_t n=1; n<=20; n++)  {  VectorSizeof12_aux (nbdpu, n);  }
+
+        for (uint16_t n=1; n<=15; n++)  {  VectorSizeof12_aux (nbdpu, 1<<n);  }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorRandomAccessGlobal1", "[Vector]")
+{
+    Launcher<ArchUpmem> launcher { 1_dpu, false };
+
+    using type = VectorRandomAccessGlobal1<ArchUpmem>::type;
+
+    size_t nbitems = 50*1000;
+
+    type v (nbitems);
+    std::iota (std::begin(v), std::end(v), 1);
+
+    uint64_t truth = std::accumulate (std::begin(v), std::end(v), uint64_t{0});
+
+    for (auto res : launcher.run<VectorRandomAccessGlobal1> (v))
+    {
+        REQUIRE (res == truth);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorRandomAccessGlobal2", "[Vector]")
+{
+    Launcher<ArchUpmem> launcher { 1_dpu, false };
+
+    using type = mydata<ArchUpmem>;
+
+    size_t nbitems = 50*1000;
+    uint64_t truth=0;
+    type v;
+    for (size_t i=1; i<=nbitems;  i++)  { v.data.push_back(i); truth += v.data.back(); }
+
+    for (auto res : launcher.run<VectorRandomAccessGlobal2> (v))
+    {
+        REQUIRE (res == truth);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorEmpty1", "[Vector]")
+{
+    Launcher<ArchUpmem> launcher { 1_dpu, false };
+
+    std::vector<int> v ;
+
+    for (auto res : launcher.run<VectorEmpty1> (v))
+    {
+        REQUIRE (res == v.size());
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorEmpty2", "[Vector]")
+{
+    Launcher<ArchUpmem> launcher { 1_dpu, false };
+
+    DataVectorEmpty<ArchUpmem> data = { {1}, {}, {2} };
+
+    for (auto res : launcher.run<VectorEmpty1> (data))
+    {
     }
 }

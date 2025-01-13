@@ -23,6 +23,8 @@ struct EvenInts
 template<typename SEQ>
 struct IntegerSequence
 {
+    static constexpr bool parseable = false;
+
     using value_t = uint32_t;
 
     std::pair<int,int> range_;
@@ -48,10 +50,16 @@ struct IntegerSequence
 
 ////////////////////////////////////////////////////////////////////////////////
 template<typename SEQUENCE>
-IntegerSequence<SEQUENCE> split (const IntegerSequence<SEQUENCE>& t, std::size_t idx, std::size_t total)
+struct SplitOperator<IntegerSequence<SEQUENCE>>
 {
-    return  IntegerSequence<SEQUENCE> (split(t.range_, idx, total));
-}
+    static auto split (const IntegerSequence<SEQUENCE>& t, std::size_t idx, std::size_t total)
+    {
+        return  IntegerSequence<SEQUENCE> (SplitOperator<decltype(t.range_)>::split(t.range_, idx, total));
+    }
+
+    static auto split_view (const IntegerSequence<SEQUENCE>& t, std::size_t idx, std::size_t total)
+    {  return split (t, idx, total);  }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>

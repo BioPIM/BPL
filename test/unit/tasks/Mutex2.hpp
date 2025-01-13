@@ -10,7 +10,7 @@
 #include <bpl/utils/Shared.hpp>
 #include <bpl/utils/Reducer.hpp>
 
-using namespace bpl::core;
+using namespace bpl;
 
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>

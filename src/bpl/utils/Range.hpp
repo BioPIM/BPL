@@ -1,13 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <firstinclude.hpp>
 
-#ifndef __BPL_UTILS_RANGE_HPP__
-#define __BPL_UTILS_RANGE_HPP__
+#pragma once
 
 #include <bpl/utils/split.hpp>
 #include <bpl/utils/lfsr.hpp>
@@ -15,7 +14,6 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace core {
 ////////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -144,14 +142,14 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-} };  // end of namespace
+};  // end of namespace
 ////////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////////////////////
 template <>
-struct SplitOperator<bpl::core::Range>
+struct SplitOperator<bpl::Range>
 {
-    static auto split (const bpl::core::Range& r, std::size_t idx, std::size_t total)
+    static auto split (const bpl::Range& r, std::size_t idx, std::size_t total)
     {
         if (total==0)  { return r; }
         auto diff = *r.end() - *r.begin();
@@ -162,34 +160,17 @@ struct SplitOperator<bpl::core::Range>
 //    uint64_t(123456789)
 //);
 
-        return bpl::core::Range (*r.begin() + diff * idx / total, *r.begin() + diff * (idx + 1) / total);
+        return bpl::Range (*r.begin() + diff * idx / total, *r.begin() + diff * (idx + 1) / total);
     }
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////
 template <>
-struct SplitOperator<bpl::core::RakeRange>
+struct SplitOperator<bpl::RakeRange>
 {
-    static auto split (const bpl::core::RakeRange& r, std::size_t idx, std::size_t total)
+    static auto split (const bpl::RakeRange& r, std::size_t idx, std::size_t total)
     {
         if (total==0)  { return r; }
-        return bpl::core::RakeRange (*r.begin()+idx, *r.end(), total);
+        return bpl::RakeRange (*r.begin()+idx, *r.end(), total);
     }
 };
-
-//inline auto split<bpl::core::Range> (const bpl::core::Range& r, std::size_t idx, std::size_t total)
-//{
-//    if (total==0)  { return r; }
-//    auto diff = *r.end() - *r.begin();
-//    return bpl::core::Range (*r.begin() + diff * idx / total, *r.begin() + diff * (idx + 1) / total);
-//}
-
-//////////////////////////////////////////////////////////////////////////////////////////
-//template<>
-//inline auto split<bpl::core::RakeRange> (const bpl::core::RakeRange& r, std::size_t idx, std::size_t total)
-//{
-//    if (total==0)  { return r; }
-//    return bpl::core::RakeRange (*r.begin()+idx, *r.end(), total);
-//}
-
-#endif /* __BPL_UTILS_RANGE_HPP__ */

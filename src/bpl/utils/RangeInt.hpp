@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -13,12 +13,13 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace core {
 ////////////////////////////////////////////////////////////////////////////////
 
 class RangeInt
 {
 public:
+
+    static constexpr bool parseable = false;
 
     using size_type = uint32_t;
 
@@ -68,22 +69,22 @@ struct serializable<RangeInt> : std::true_type
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-} };  // end of namespace
+};  // end of namespace
 ////////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////////////////////
 template<>
-struct SplitOperator<bpl::core::RangeInt>
+struct SplitOperator<bpl::RangeInt>
 {
-    static auto split (const bpl::core::RangeInt& x, std::size_t idx, std::size_t total)
+    static auto split (const bpl::RangeInt& x, std::size_t idx, std::size_t total)
     {
         size_t i0 = x.size() * (idx+0) / total;
         size_t i1 = x.size() * (idx+1) / total;
 
-        return bpl::core::RangeInt (x.first() + i0, x.first() + i1);
+        return bpl::RangeInt (x.first() + i0, x.first() + i1);
     }
 
-    static auto split2 (const bpl::core::RangeInt& x, std::size_t idx, std::size_t total)
+    static auto split_view (const bpl::RangeInt& x, std::size_t idx, std::size_t total)
     {  return split (x, idx, total);  }
 };
 

@@ -1,25 +1,25 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <firstinclude.hpp>
 
-#ifndef _BPL_BANK_CHUNK_HPP_
-#define _BPL_BANK_CHUNK_HPP_
+#pragma once
 
 #include <bpl/bank/Sequence.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace bank {
 ////////////////////////////////////////////////////////////////////////////////
 
 template<class ARCH, int SEQSIZE=32, int SEQNB=64>
 class BankChunk
 {
 public:
+
+    static constexpr bool parseable = false;
 
     USING(ARCH);
 
@@ -54,13 +54,13 @@ public:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-} };  // end of namespace
+};  // end of namespace
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace bpl { namespace core {
-
+namespace bpl
+{
     template<typename ARCHI, int SEQSIZE, int SEQNB>
-    struct serializable<bpl::bank::BankChunk<ARCHI,SEQSIZE,SEQNB>>
+    struct serializable<bpl::BankChunk<ARCHI,SEQSIZE,SEQNB>>
     {
         // we tell that our structure can be serialized
         static constexpr int value = true;
@@ -77,8 +77,5 @@ namespace bpl { namespace core {
             Serialize<ARCH,BUFITER,ROUNDUP>::restore (it, result.sequences_);
         }
     };
-}};
+};
 
-////////////////////////////////////////////////////////////////////////////////
-
-#endif /* _BPL_BANK_CHUNK_HPP_ */

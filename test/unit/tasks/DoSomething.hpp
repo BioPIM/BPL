@@ -7,7 +7,7 @@
 #include <bpl/core/Task.hpp>
 
 template<class ARCH>
-struct DoSomething : bpl::core::Task<ARCH>
+struct DoSomething : bpl::Task<ARCH>
 {
     USING(ARCH);
 

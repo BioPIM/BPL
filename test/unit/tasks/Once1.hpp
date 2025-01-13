@@ -11,10 +11,10 @@ struct Once1
 {
     USING(ARCH);
 
-    auto operator() (once<vector<uint32_t>> v, uint32_t a)
+    auto operator() (once<vector<uint32_t> const&> v, uint32_t a)
     {
-        static_assert (bpl::core::hastag_once_v<decltype(v)> == true);
+        static_assert (bpl::hastag_once_v<decltype(v)> == true);
 
-        return bpl::core::accumulate (*v, uint64_t(0));
+        return bpl::accumulate (*v, uint64_t(0));
     }
 };

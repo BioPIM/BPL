@@ -12,7 +12,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct VectorAsInput : bpl::core::Task<ARCH>
+struct VectorAsInput : bpl::Task<ARCH>
 {
     USING(ARCH);
 

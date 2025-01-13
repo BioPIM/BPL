@@ -1,25 +1,20 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <firstinclude.hpp>
 
-#ifndef __BPL_UTILS_SERIALIZATION_HPP__
-#define __BPL_UTILS_SERIALIZATION_HPP__
+#pragma once
 
 #include <bpl/utils/metaprog.hpp>
 #include <bpl/utils/tag.hpp>
+#include <bpl/utils/splitter.hpp>
 #include <bpl/arch/Arch.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace core {
-////////////////////////////////////////////////////////////////////////////////
-
-////////////////////////////////////////////////////////////////////////////////
-
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef DPU
@@ -57,7 +52,7 @@ struct Serialize
     using pointer_t = typename BUFITER::pointer_t;
 
     ////////////////////////////////////////////////////////////////////////////////
-    static auto round (int n)  {  return roundUp<ROUNDUP>(n); }
+    constexpr static auto round (int n)  {  return roundUp<ROUNDUP>(n); }
 
     ////////////////////////////////////////////////////////////////////////////////
     // SERIALIZABLE
@@ -103,7 +98,7 @@ struct Serialize
 
         it.advance (round(sizeof(T)) );
     }
-
+#if 0
     ////////////////////////////////////////////////////////////////////////////////
     // (std::is_trivially_copyable_v<T> and not (std::is_arithmetic_v<T> or is_serializable_v<T>))
     ////////////////////////////////////////////////////////////////////////////////
@@ -126,23 +121,26 @@ struct Serialize
 
         it.advance (round(sizeof(T)) );
     }
-
+#endif
     ////////////////////////////////////////////////////////////////////////////////
     // std::is_class_v<T> and not (std::is_trivially_copyable_v<T> or is_serializable_v<T>)
     ////////////////////////////////////////////////////////////////////////////////
     template<typename T, typename FCT>
     static auto iterate (bool transient, int depth, const T& t, FCT fct, void* context=nullptr)
-    requires (std::is_class_v<T> and not (std::is_trivially_copyable_v<T> or is_serializable_v<T>))
+    requires (std::is_class_v<T> and not (/*std::is_trivially_copyable_v<T> or*/ is_serializable_v<T>))
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "not is_trivially_copyable and is_class", (uint32_t) sizeof(T));
 
-        // We convert the incoming class into a tuple.
-        iterate (transient, depth, to_tuple(t), fct, context);
+        // We serialize each field of the incoming struct/class
+        class_fields_iterate (t, [&] (auto&& field)
+        {
+            iterate (transient, depth, field, fct, context);
+        });
     }
 
     template<typename T>
     static auto restore (iter_t& it, T& result)
-    requires (std::is_class_v<T> and not (std::is_trivially_copyable_v<T> or is_serializable_v<T>))
+    requires (std::is_class_v<T> and not (/*std::is_trivially_copyable_v<T> or*/ is_serializable_v<T>))
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, 0, "restore", "not is_trivially_copyable and is_class", (uint32_t) sizeof(T));
 
@@ -151,33 +149,7 @@ struct Serialize
         // => the main drawback was the necessary copy.
         // The possible choice is to restore directly each field of the struct, without using a tuple.
         // The consequence is that the code is not so pretty but we can avoid some unwanted copies then.
-        using type = std::decay_t<T>;
-
-        if constexpr(is_braces_constructible<type, any_type, any_type, any_type, any_type, any_type>{})
-        {
-          auto& [p1, p2, p3, p4, p5] = result;
-          restore (it, p1);  restore (it, p2); restore (it, p3); restore (it, p4); restore (it, p5);
-        }
-        if constexpr(is_braces_constructible<type, any_type, any_type, any_type, any_type>{})
-        {
-          auto& [p1, p2, p3, p4] = result;
-          restore (it, p1);  restore (it, p2); restore (it, p3); restore (it, p4);
-        }
-        else if constexpr(is_braces_constructible<type, any_type, any_type, any_type>{})
-        {
-          auto& [p1, p2, p3] = result;
-          restore (it, p1);  restore (it, p2); restore (it, p3);
-        }
-        else if constexpr(is_braces_constructible<type, any_type, any_type>{})
-        {
-          auto& [p1, p2] = result;
-          restore (it, p1);  restore (it, p2);
-
-        }
-        else if constexpr(is_braces_constructible<type, any_type>{})
-        {
-          auto& [p1] = result;  restore (it, p1);
-        }
+        class_fields_iterate (result, [&] (auto&& x)  { restore(it,x); });
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -353,7 +325,17 @@ struct Serialize
         typename vector<T>::size_type n = t.size();
         iterate (true, depth, n,fct, context);
 
-        fct (transient, depth, (void*)t.data(), sizeof(T)*t.size(), round(sizeof(T)*t.size()));
+        if (n>0)
+        {
+            fct (transient, depth, (void*)t.data(), sizeof(T)*n, round(sizeof(T)*n));
+        }
+        else
+        {
+            // in case the vector is empty, we still provide some data in order not to have an nullptr.
+            static char dummy[8] = {};
+            static const size_t N = sizeof(dummy)/sizeof(dummy[0]);
+            fct (transient, depth, dummy, N, round(N));
+        }
     }
 
     template<typename T>
@@ -598,7 +580,7 @@ struct Serialize
                         // some information through a callback.
 
                         // We invoke the callback for the current part.
-                        cbk (idxDPU, idxBlock, actualPtr, roundedSize);
+                        cbk (idxDPU, idxArg, idxBlock, actualPtr, roundedSize);
 
                         offsetLocal  += roundedSize;
                         offsetGlobal += roundedSize;
@@ -617,7 +599,7 @@ struct Serialize
 
                     for (size_t idxBlock = nbPartsPerArgOffset[idxArg]; idxBlock<nbPartsPerArgOffset[idxArg+1]; idxBlock++)
                     {
-                        cbk (idxDPU, idxBlock, nullptr, 0);
+                        cbk (idxDPU, idxArg, idxBlock, nullptr, 0);
                     }
                 }
 
@@ -636,6 +618,8 @@ struct Serialize
             // In particular, we are interested to know whether it has to be split or not.
             auto [level, isSplit, nbUnits] = info (idxArg, std::forward<decltype(itemTuple)>(itemTuple));
 
+            DEBUG_SERIALIZATION ("[tuple_to_buffer  ]  level: %d   isSplit: %d  nbUnits: %ld \n", level, isSplit, nbUnits);
+
             // According to the split status, we don't have the same action.
             if (not isSplit)
             {
@@ -645,10 +629,17 @@ struct Serialize
             }
             else
             {
-                // Split -> several items will be created (one per split part)
-                for (auto&& [status,itemRef] : transfo(idxArg, std::forward<decltype(itemTuple)>(itemTuple)))
+                // We need a static check here -> avoid to call this code for non 'splitable' types (otherwise compil error).
+                // This is actually not very satisfying and should be improved.
+                if constexpr(is_splitable_v<decltype(itemTuple)>)
                 {
-                    fct (status, std::forward<decltype(itemRef)>(itemRef));
+                    bool status = true;
+
+                    // Split -> several items will be created (one per split part)
+                    for (auto&& itemRef : transfo(idxArg, std::forward<decltype(itemTuple)>(itemTuple)))
+                    {
+                        fct (status, std::forward<decltype(itemRef)>(itemRef));
+                    }
                 }
             }
 
@@ -702,7 +693,7 @@ struct Serialize
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-} };  // end of namespace
+};  // end of namespace
 ////////////////////////////////////////////////////////////////////////////////
 
 
@@ -710,8 +701,8 @@ struct Serialize
 #include <bpl/utils/splitter.hpp>
 
 // We need to make SplitProxy a serializable -> just forward to the inner attribute '_t'
-template<typename L, bpl::core::SplitKind K, typename TT>
-struct bpl::core::serializable<details::SplitProxy<L,K,TT>>
+template<typename L, bpl::SplitKind K, typename TT>
+struct bpl::serializable<details::SplitProxy<L,K,TT>>
 {
     // we tell that our structure can be serialized
     static constexpr int value = true;
@@ -733,7 +724,7 @@ struct bpl::core::serializable<details::SplitProxy<L,K,TT>>
 #include <bpl/utils/Range.hpp>
 
 template<>
-struct bpl::core::serializable<bpl::core::Range>
+struct bpl::serializable<bpl::Range>
 {
     // we tell that our structure can be serialized
     static constexpr int value = true;
@@ -759,7 +750,7 @@ struct bpl::core::serializable<bpl::core::Range>
 
 
 template<>
-struct bpl::core::serializable<bpl::core::RakeRange>
+struct bpl::serializable<bpl::RakeRange>
 {
     // we tell that our structure can be serialized
     static constexpr int value = true;
@@ -788,7 +779,7 @@ struct bpl::core::serializable<bpl::core::RakeRange>
 
 ////////////////////////////////////////////////////////////////////////////////
 template<typename T>
-struct bpl::core::serializable<bpl::core::once<T>> : std::true_type
+struct bpl::serializable<bpl::once<T>> : std::true_type
 {
     template<class ARCH, class BUFITER, int ROUNDUP, typename TYPE, typename FCT>
     static auto iterate (bool transient, int depth, const TYPE& t, FCT fct, void* context=nullptr)
@@ -802,6 +793,3 @@ struct bpl::core::serializable<bpl::core::once<T>> : std::true_type
         Serialize<ARCH,BUFITER,ROUNDUP>::restore (it, *result);
     }
 };
-
-
-#endif // __BPL_UTILS_SERIALIZATION_HPP__

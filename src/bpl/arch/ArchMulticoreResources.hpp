@@ -1,14 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <firstinclude.hpp>
 
-#ifndef __BPL_ARCH_MULTICORE_RESOURCES__
-#define __BPL_ARCH_MULTICORE_RESOURCES__
-////////////////////////////////////////////////////////////////////////////////
+#pragma once
 
 #include <array>
 #include <vector>
@@ -21,11 +19,15 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace arch {
 ////////////////////////////////////////////////////////////////////////////////
 
 struct ArchMulticoreResources
 {
+    using config_t = void;
+
+    // Factory that returns a type with a specific configuration.
+    template<typename CFG=void> using factory = ArchMulticoreResources;
+
     template<typename T, typename S=T> using pair = std::pair<T,S>;
 
     template<typename T, int N> using array  = std::array<T,N>;
@@ -62,14 +64,10 @@ struct ArchMulticoreResources
 
     template <class T> static void swap ( T& a, T& b ) {  std::swap(a,b);  }
 
-    template<typename T> using once   = bpl::core::once<T>;
-    template<typename T> using global = bpl::core::global<T>;
+    template<typename T> using once   = bpl::once<T>;
+    template<typename T> using global = bpl::global<T>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-} };
+};
 ////////////////////////////////////////////////////////////////////////////////
-
-
-////////////////////////////////////////////////////////////////////////////////
-#endif // __BPL_ARCH_MULTICORE_RESOURCES__

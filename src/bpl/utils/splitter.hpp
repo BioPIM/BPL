@@ -1,19 +1,17 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <firstinclude.hpp>
 
-#ifndef __BPL_UTILS_SPLITTER_HPP__
-#define __BPL_UTILS_SPLITTER_HPP__
+#pragma once
 
 #include <bpl/utils/metaprog.hpp>
-#include <bpl/utils/split.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////
-namespace bpl { namespace core {
+namespace bpl {
 ////////////////////////////////////////////////////////////////////////////////
 
     // Enumeration holding different parallelization schemes.
@@ -26,7 +24,7 @@ namespace bpl { namespace core {
     };
 
 ////////////////////////////////////////////////////////////////////////////////
-}}
+}
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace details
@@ -47,7 +45,7 @@ namespace details
      * \param KIND : a split scheme
      * \param TYPE : the type of the proxied object
      */
-    template<typename L, bpl::core::SplitKind KIND, typename TYPE>
+    template<typename L, bpl::SplitKind KIND, typename TYPE>
     struct SplitProxy
     {
         constexpr static int LEVEL = L::LEVEL;
@@ -89,7 +87,7 @@ namespace details
      *   - the level of the SplitProxy in case this is not the dummy level
      *   - the default provided level
      */
-    template<typename L, bpl::core::SplitKind K, typename T,typename DEFAULT>
+    template<typename L, bpl::SplitKind K, typename T,typename DEFAULT>
     struct GetSplitStatus<SplitProxy<L,K,T>,DEFAULT>
     {
         static const int value = SplitProxy<L,K,T>::LEVEL == details::DummyLevel::LEVEL ?
@@ -100,16 +98,79 @@ namespace details
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// We define a class intended to be specialized, in particular with a 'split' method telling how to split T.
+// Such specializations are provided for types such as 'vector' for instance (either for std nor bpl).
+template <typename T>  struct SplitOperator  {};
+
+// A type is 'splitable' if it provides a 'split' method
+template<typename T>
+static constexpr bool is_splitable_v = requires(const T& t, size_t idx, size_t total ) { SplitOperator<std::decay_t<T>>::split(t, idx, total); };
+
+template<typename T, typename TASK>
+static constexpr bool is_custom_splitable_v = requires(const T& t, size_t idx, size_t total ) { TASK::split(t, idx, total); };
+
+template<typename T,typename TASK=void>
+requires (is_splitable_v<T>)
+auto split (const T& t, size_t idx, size_t total)  {  return SplitOperator<T>::split (t,idx,total);  }
+
+template<typename T,typename TASK>
+requires (is_custom_splitable_v<T,TASK>)
+auto split (const T& t, size_t idx, size_t total)  {  return TASK::split (t,idx,total); }
+
+////////////////////////////////////////////////////////////////////////////////
+template<typename T, typename TASK>
+auto split_assign (T& t, size_t idx, size_t total)  {}
+
+template<typename T, typename TASK>
+requires (is_splitable_v<T>)
+auto split_assign (T& t, size_t idx, size_t total)  {  t = split<T> (t, idx, total);  }
+
+template<typename T, typename TASK>
+requires (is_custom_splitable_v<T, TASK>)
+auto split_assign (T& t, size_t idx, size_t total)  {  t = split<T,TASK> (t,idx,total); }
+
+////////////////////////////////////////////////////////////////////////////////
+
+// This class can choose the correct 'split' function to be called according to the provided
+// template type information:
+//
+template<typename T, typename RESULT, typename TASK>
+struct SplitChoice {};
+
+template<typename T, typename RESULT, typename TASK>
+inline constexpr bool has_split_view_v = requires(T t, size_t idx, size_t total) { SplitOperator<RESULT>::split_view (t,idx,total); };
+
+template<typename T, typename RESULT, typename TASK>
+requires (has_split_view_v<T,RESULT,TASK>)
+struct SplitChoice<T,RESULT,TASK>
+{
+    static decltype(auto) split_view (const T& t, size_t idx, size_t total)  {  return SplitOperator<RESULT>::split_view (t, idx, total); }
+    static decltype(auto) split      (const T& t, size_t idx, size_t total)  {  return SplitOperator<RESULT>::split      (t, idx, total); }
+};
+
+template<typename T, typename RESULT, typename TASK>
+inline constexpr bool has_split_request_v = requires(T t, size_t idx, size_t total) { TASK::split (t,idx,total); };
+
+template<typename T, typename RESULT, typename TASK>
+requires (has_split_request_v<T,RESULT,TASK>)
+struct SplitChoice<T,RESULT,TASK>
+{
+    static decltype(auto) split (const T& t, size_t idx, size_t total)  {  return TASK::split(t, idx, total); }
+    static decltype(auto) split_view (const T& t, size_t idx, size_t total)  {  return TASK::split_view(t, idx, total); }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 /** Method that encapsulates an incoming object of type T.
  * \param LEVEL : the level type
  * \param TYPE  : the type of the object
  * \return a SplitProxy instance that proxies the incoming object
  */
 template<typename LEVEL, typename TYPE>
-requires (is_splitable_v<TYPE>)
+//requires (is_splitable_v<TYPE>)
 auto split (TYPE& t)
 {
-    return details::SplitProxy<LEVEL,bpl::core::SplitKind::CONT,TYPE> (t);
+    return details::SplitProxy<LEVEL,bpl::SplitKind::CONT,TYPE> (t);
 }
 
 /** Method that encapsulates an incoming object of type T.
@@ -118,10 +179,10 @@ auto split (TYPE& t)
  * \return a SplitProxy instance that proxies the incoming object
  */
 template<typename LEVEL, typename TYPE>
-requires (is_splitable_v<TYPE>)
+//requires (is_splitable_v<TYPE>)
 auto  split (const TYPE& t)
 {
-    return details::SplitProxy<LEVEL,bpl::core::SplitKind::CONT,TYPE> (t);
+    return details::SplitProxy<LEVEL,bpl::SplitKind::CONT,TYPE> (t);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -130,6 +191,7 @@ auto  split (const TYPE& t)
  * \return a SplitProxy instance that proxies the incoming object
  */
 template<typename TYPE>
+//requires (is_splitable_v<TYPE>)
 auto  split (TYPE& t)
 {
     return split<details::DummyLevel,TYPE> (t);
@@ -140,6 +202,7 @@ auto  split (TYPE& t)
  * \return a SplitProxy instance that proxies the incoming object
  */
 template<typename TYPE>
+//requires (is_splitable_v<TYPE>)
 auto  split (const TYPE& t)
 {
     return split<details::DummyLevel,TYPE> (t);
@@ -153,7 +216,7 @@ auto  split (const TYPE& t)
 template<typename T>  struct is_splitter : std::false_type {};
 
 /** Type trait specialization in case the incoming type is a SplitProxy  */
-template<typename L, bpl::core::SplitKind K, typename T>
+template<typename L, bpl::SplitKind K, typename T>
 struct is_splitter<details::SplitProxy<L,K,T>> : std::true_type {};
 
 /** Type trait value's getter.  */
@@ -166,7 +229,7 @@ template<typename T>  inline constexpr bool is_splitter_v = is_splitter<T>::valu
 template<typename T>  struct remove_splitter {  using type = T;  };
 
 /** Type trait specialization in case the incoming type is a SplitProxy  */
-template<typename L, bpl::core::SplitKind K, typename T>
+template<typename L, bpl::SplitKind K, typename T>
 struct remove_splitter<details::SplitProxy<L,K,T>> {  using type = T;  };
 
 /** Type trait value's getter.  */
@@ -199,10 +262,9 @@ void retrieveSplitStatus (uint8_t status[32])
     int i=0;   ( (status[i] = details::GetSplitStatus<ARGS,DEFAULT>::value, i++), ...);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 /** Type trait specialization in case the incoming type is a SplitProxy */
-template<typename LEVEL, bpl::core::SplitKind KIND, typename TYPE>
+template<typename LEVEL, bpl::SplitKind KIND, typename TYPE>
 struct SplitOperator<details::SplitProxy<LEVEL,KIND,TYPE>>
 {
     /** Compute the ith partition of a given object
@@ -217,11 +279,3 @@ struct SplitOperator<details::SplitProxy<LEVEL,KIND,TYPE>>
         return SplitOperator<TYPE>::split (t, idx, total);
     }
 };
-
-////////////////////////////////////////////////////////////////////////////////
-// WARNING!!! we make std::array not splitable since it is not possible to
-// reduce its size at runtime.
-template <typename T, size_t N>
-struct splitable<std::array<T,N>> {  static constexpr int value = false;  };
-
-#endif /* __BPL_UTILS_SPLITTER_HPP__ */

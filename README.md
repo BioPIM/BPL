@@ -30,8 +30,10 @@ The project has the following directories structure:
 - doc: documentation of the library (doxygen for the source code, slides explaining the library)
 - export: holds the "Hello World" project
 - scripts: a few scripts for day-by-day project management
+- snippets: code snippets used for testing some technical points not directly connected to the global project.
 - src: holds the source code for the library
 - test: tests for the library (unit/functional/benchmark tests)
+- thirdparty: some thirdparties useful for the library
 
 ## Philosophy of the library 
 

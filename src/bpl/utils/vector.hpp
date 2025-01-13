@@ -1,11 +1,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef __BPL_UTILS_VECTOR__
-#define __BPL_UTILS_VECTOR__
+#pragma once
 
 #include <cstdint>
 
@@ -14,7 +13,6 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace core {
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace impl {
@@ -40,16 +38,27 @@ struct Cache
     Cache& operator= (      Cache&& other) = default;
     Cache& operator= (const Cache&  other) = delete;
 
-    void read   (address_t a)  { address_=a;   ALLOCATOR::read    (address_, (void*)datablock_, sizeof(datablock_));  }
-    auto update ()             {        return ALLOCATOR::writeAt (address_, (void*)datablock_, sizeof(datablock_));  }
-    auto write  ()             {     address_= ALLOCATOR::write   (          (void*)datablock_, sizeof(datablock_)); return address_; }
+    auto read   (address_t a)  { dump("READ");     address_= a;  ALLOCATOR::read    ((void*)address_, (void*)datablock_, sizeof(datablock_)); }
+    auto update  ()            { dump("UPDATE");          return ALLOCATOR::writeAt ((void*)address_, (void*)datablock_, sizeof(datablock_));  }
+    auto write   ()            { dump("WRITE");        address_= ALLOCATOR::write   (                 (void*)datablock_, sizeof(datablock_)); return address_; }
+    auto acquire ()            { dump("ACQUIRE");      address_= ALLOCATOR::get( sizeof(datablock_));  for (int i=0; i<NB_ITEMS; i++) { datablock_[i] = {}; } return address_; }
 
     T& operator [] (size_type  idx) const  {  return datablock_[idx & MASK];  }
 
     bool isFull (size_type  idx) const { return (idx & MASK) == MASK; }
 
+    auto address() const { return address_; }
+
+    auto dump (const char* msg)
+    {
+        DEBUG_VECTOR ("[%s 0x%04lx:  ", msg, uint64_t(address_));
+        for (int i=0; i<NB_ITEMS; i++)  {   DEBUG_VECTOR ("%3ld ", uint64_t(datablock_[i])); }
+        DEBUG_VECTOR ("]\n");
+    }
+
+    ARCH_ALIGN mutable T datablock_[NB_ITEMS];
+
     address_t address_ = 0;
-    mutable T datablock_ [NB_ITEMS];
 
     static constexpr int SIZEOF_DATABLOCK = sizeof(datablock_);
 };
@@ -73,13 +82,13 @@ struct Cache
  *
  * The view holds a memory address and the number of items available at this address.
  * However, the items can not be iterated directly from this address: a subset of items
- * must be retrieved first into a cache (of size DATABLOCK_SIZE). This is necessary in the
+ * must be retrieved first into a cache (of size MEMORY_SIZE). This is necessary in the
  * context of ArchUpmem for instance since the whole vector is kept in MRAM, but the viewable
  * part (ie. the cache) must be in WRAM.
  *
  * NOTE: full copy is not allowed (constructor and operator=)  but move copy is supported.
  * This is intended for having a low WRAM footprint because each instance of vector takes
- * SIZEOF_DATABLOCK bytes in WRAM. Actually, the template parameter DATABLOCK_SIZE_LOG2 that
+ * SIZEOF_DATABLOCK bytes in WRAM. Actually, the template parameter MEMORY_SIZE_LOG2 that
  * determines the stack footprint of a vector_view instance has to be computed at a higher level.
  * (see for instance ArchUpmemResources). We nevertheless put here a static assert that forbids
  * the possibility to have T taking too much stack memory.
@@ -91,25 +100,42 @@ struct Cache
  *
  *  \tparam T the type of objects hold in the vector
  *  \tparam ALLOCATOR the allocator class used for memory management
- *  \tparam DATABLOCK_SIZE_LOG2 (log2 of) number of items in the data cache.
+ *  \tparam MEMORY_SIZE_LOG2 (log2 of) number of items in the data cache.
  */
 template<
     typename T,
     typename ALLOCATOR,
-    int DATABLOCK_SIZE_LOG2,
-    bool SHARED_ITER_CACHE = true
+    typename MUTEX,
+    int  MEMORY_SIZE_LOG2,          // log2 of the (stack) memory size available for an instance of this class
+    int  CACHE_NB_LOG2,             // log2 of the number of caches
+    bool SHARED_ITER_CACHE = true   // true means that only one iterator can be used at the same time
 >
 class vector_view
 {
 protected:
-    template<class REFERENCE> struct iterator;  // forward declaration.
+public:
+template<class REFERENCE> struct iterator;  // forward declaration.
 
 public:
 
-    static constexpr int DATABLOCK_SIZE = 1 << DATABLOCK_SIZE_LOG2;
-    static constexpr int DATABLOCK_MASK = (DATABLOCK_SIZE - 1);
+    static constexpr bool parseable = false;
 
-    static_assert (Log2<sizeof(T)>::value <= 9);  // can't cope with T type taking too much memory
+    using type = T;
+
+    static constexpr int MEMORY_SIZE      = 1 << MEMORY_SIZE_LOG2;  // memory size (in bytes) available for one instance
+    static constexpr int MEMORY_SIZE_MASK = (MEMORY_SIZE - 1);
+
+//    static_assert (Log2(sizeof(T)) <= 9);  // can't cope with T type taking too much memory
+
+    // the number of caches
+    static constexpr int CACHE_NB = 1 << CACHE_NB_LOG2;
+    static_assert ( (CACHE_NB_LOG2 >= 0) && (CACHE_NB_LOG2 <= 1));
+
+    // (log2) the memory available for one cache
+    static constexpr int CACHE_MEMORY_SIZE_LOG2  = MEMORY_SIZE_LOG2 - CACHE_NB_LOG2;
+
+    // the number of items per cache
+    static constexpr int CACHE_NB_ITEMS = 1 << CACHE_MEMORY_SIZE_LOG2;
 
     using value_type  = T;
     using size_type   = uint32_t;
@@ -133,6 +159,9 @@ public:
      * \param other: the instance we get the resources from
      */
     vector_view& operator= (vector_view&& other) = default;
+
+    /** Forbid to get the address. */
+    auto* operator& () = delete;
 
     /** Get the number of items in the vector.
      * \return the number of items. */
@@ -169,14 +198,29 @@ public:
      */
     bool hasBeenFilled () const { return getFillAddress()!=0; }
 
-protected:
+    value_type const& operator[] (size_type idx) const
+    {
+        // We may need synchronization. Note that 'empty' impl won't do any synchronization.
+        mutex_.lock();
 
-    // The cache size is the total number of items per block divided by a power of 2
-    static constexpr int CACHE_DIV_LOG2 = 1;
-    static constexpr int CACHE_ITEMS_NB_LOG2  = DATABLOCK_SIZE_LOG2 - CACHE_DIV_LOG2;
-    static constexpr int CACHE_ITEMS_NB       = 1 << CACHE_ITEMS_NB_LOG2;
+        // we get the block index where the required item should be.
+        auto block = idx >> CACHE_MEMORY_SIZE_LOG2;
 
-    using cache_t = impl::Cache < T, ALLOCATOR,  CACHE_ITEMS_NB>;
+        if (block != currentBlock_)
+        {
+            // we remember the current block.
+            currentBlock_ = block;
+
+            // we read the new block from the memory
+            this->cache().read (this->getFillAddress() + currentBlock_*SIZEOF_DATABLOCK);
+        }
+
+        mutex_.unlock();
+
+        return this->cache() [idx];
+    }
+
+    using cache_t = impl::Cache < T, ALLOCATOR,  CACHE_NB_ITEMS>;
 
     // We need a tool that provides a cache:
     //    1: a specific one or
@@ -213,13 +257,11 @@ protected:
     template<class REFERENCE>
     struct iterator
     {
-
         iterator (const REFERENCE* ref, size_type idx)  : ref_(ref), idx_(idx)
         {
             if (ref_->hasBeenFilled())
             {
-                a_ = ref_->getFillAddress() + (idx_ >> DATABLOCK_SIZE_LOG2)*SIZEOF_DATABLOCK;
-                cache().read (a_);
+                a_ = ref_->getFillAddress() + (idx_ >> MEMORY_SIZE_LOG2)*SIZEOF_DATABLOCK;
             }
         }
 
@@ -235,8 +277,7 @@ protected:
         {
             if (cache().isFull(idx_++))
             {
-                // We have iterated all the items available in the cache -> we must
-                // fill the cache with the next data.
+                // We have iterated all the items available in the cache -> we must fill the cache with the next data.
                 a_ += SIZEOF_DATABLOCK;
 
                 cache().read (a_);
@@ -244,39 +285,33 @@ protected:
             return *this;
         }
 
-        iterator operator+ (size_t nbItems)
+        iterator operator+ (size_t nbItems) const
         {
-            iterator result { *this };
-
-            result.a_   += (nbItems >> CACHE_ITEMS_NB_LOG2) * SIZEOF_DATABLOCK;
-            result.idx_ += nbItems;
-
-            cache().read (a_);
-
-            return result;
+            return iterator (this->ref_, nbItems + this->idx_);
         }
 
-              cache_t& cache()       { return cache_.get(ref_); }
-        const cache_t& cache() const { return cache_.get(ref_); }
+              cache_t& cache()       { decltype(auto) res = cache_.get(ref_);  if (first_) { first_=false; res.read (a_); } return res; }
+        const cache_t& cache() const { decltype(auto) res = cache_.get(ref_);  if (first_) { first_=false; ((cache_t&)res).read (a_); } return res; }
 
-        const REFERENCE* ref_;
         iterator_cache<REFERENCE,SHARED_ITER_CACHE> cache_;
-        size_type  idx_ = 0;
-        address_t  a_   = 0;
+        const REFERENCE* ref_   = nullptr;
+        size_type        idx_   = 0;
+        address_t        a_     = 0;
+        mutable bool     first_ = true;
     };
 
-    static_assert (Log2<sizeof(T)>::value <= 9);  // can't cope with T type taking too much memory
-
     // WARNING!!! order of attributes is important here
-    size_type datablockIdx_  = -1;
-    address_t fillAddress_   =  0;
-
-    mutable cache_t cache_[1<<CACHE_DIV_LOG2];
+    ARCH_ALIGN mutable cache_t cache_[CACHE_NB];
+    ARCH_ALIGN size_type datablockIdx_  = -1;
+    ARCH_ALIGN address_t fillAddress_   =  0;
+    ARCH_ALIGN mutable size_type currentBlock_  = -1;
+    ARCH_ALIGN mutable MUTEX mutex_;
 
     cache_t& cache(int idx=0) const { return cache_[idx]; }
 
     static constexpr int SIZEOF_DATABLOCK = cache_t::SIZEOF_DATABLOCK;
-};
+
+}; // end of vector_view
 
 /******************************************************************************************
 #     #  #######   #####   #######  #######  ######
@@ -291,7 +326,7 @@ protected:
 /** The 'vector' implementation inherits from 'vector_view' and provides also 'push_back' support.
  *
  * WARNING: this implementation doesn't follow the requirement that the data is contiguous in memory.
- * The data is indeed split in chunks of DATABLOCK_SIZE elements and a tree structure is used for keeping
+ * The data is indeed split in chunks of MEMORY_SIZE elements and a tree structure is used for keeping
  * track of the order of these data chunks. This design allows to reach some kind of dynamic allocation
  * that is not so easy to support for the UPMEM architecture.
  *
@@ -300,33 +335,42 @@ protected:
 template<
     typename T,
     typename ALLOCATOR,
-    int DATABLOCK_SIZE_LOG2,
+    typename MUTEX,
+    int MEMORY_SIZE_LOG2,
+    int CACHE_NB_LOG2,             // log2 of the number of caches
     int MEMTREE_NBITEMS_PER_BLOCK_LOG2,
     int MAX_MEMORY_LOG2
 >
-class vector : public vector_view<T,ALLOCATOR,DATABLOCK_SIZE_LOG2>
+class vector : public vector_view<T,ALLOCATOR,MUTEX,MEMORY_SIZE_LOG2,CACHE_NB_LOG2>
 {
 private:
 
-    using parent_t     = vector_view<T,ALLOCATOR,DATABLOCK_SIZE_LOG2>;
-    using memorytree_t = MemoryTree <ALLOCATOR, MEMTREE_NBITEMS_PER_BLOCK_LOG2, MAX_MEMORY_LOG2>;
-
+    using parent_t     = vector_view<T,ALLOCATOR,MUTEX,MEMORY_SIZE_LOG2, CACHE_NB_LOG2>;
 public:
+
+    using memorytree_t = MemoryTree <ALLOCATOR, MEMTREE_NBITEMS_PER_BLOCK_LOG2, MAX_MEMORY_LOG2>;
 
     static constexpr int SIZEOF_DATABLOCK = parent_t::SIZEOF_DATABLOCK;
 
     static constexpr int MEMTREE_NBITEMS_PER_BLOCK  = 1 << MEMTREE_NBITEMS_PER_BLOCK_LOG2;
     static constexpr int MAX_MEMORY                 = 1 << MAX_MEMORY_LOG2;
 
-    static constexpr int DATABLOCK_SIZE             = parent_t::DATABLOCK_SIZE;
-    static constexpr int DATABLOCK_MASK             = parent_t::DATABLOCK_MASK;
+    static constexpr int CACHE_NB                = parent_t::CACHE_NB;
+    static constexpr int MEMORY_SIZE             = parent_t::MEMORY_SIZE;
+    static constexpr int MEMORY_SIZE_MASK        = parent_t::MEMORY_SIZE_MASK;
+    static constexpr int CACHE_NB_ITEMS          = parent_t::CACHE_NB_ITEMS;
+
+    static constexpr uint64_t NBITEMS_MAX = memorytree_t::NBLEAVES_MAX *  CACHE_NB_ITEMS;
 
     using value_type  = typename parent_t::value_type;
     using size_type   = typename parent_t::size_type;
 
     using address_t = typename ALLOCATOR::address_t;
 
-    vector()  {  DEBUG_VECTOR ("[vector:: vector]  this: %p\n", this);  }
+    constexpr vector()
+    {
+        for (size_t i=0; i<CACHE_NB; i++)  { previousBlockIdx_[i] = ~size_type(0); }
+    }
 
     // We don't allow to copy a vector.
     vector(const vector& other) = delete;
@@ -336,19 +380,19 @@ public:
        dirty_               (other.dirty_),
        memoryTree_          (std::move(other.memoryTree_))
     {
-        DEBUG_VECTOR ("[vector:: vector (move)]  this: %p  src: %p\n", this, &other);
+        DEBUG_VECTOR ("[vector:: vector (move)]  this: %p  src: %p\n", this, std::addressof(other));
 
-        for (size_t i=0; i<sizeof(previousBlockIdx_)/sizeof(previousBlockIdx_[0]); i++)  { previousBlockIdx_[i] = other.previousBlockIdx_[i]; }
+        for (size_t i=0; i<CACHE_NB; i++)  { previousBlockIdx_[i] = other.previousBlockIdx_[i]; }
     }
 
     vector& operator= (vector&& other)
     {
-        DEBUG_VECTOR ("[vector::operator=(move)]  this: %p  src: %p\n", this, &other);
-        if (this != &other)
+        DEBUG_VECTOR ("[vector::operator=(move)]  this: %p  src: %p\n", this, std::addressof(other));
+        if (this != std::addressof(other))
         {
             parent_t::operator=(std::move(other));
             dirty_            = other.dirty_;
-            for (size_t i=0; i<sizeof(previousBlockIdx_)/sizeof(previousBlockIdx_[0]); i++)  { previousBlockIdx_[i] = other.previousBlockIdx_[i]; }
+            for (size_t i=0; i<CACHE_NB; i++)  { previousBlockIdx_[i] = other.previousBlockIdx_[i]; }
             memoryTree_       = std::move(other.memoryTree_);
         }
         return *this;
@@ -357,41 +401,34 @@ public:
     // For the moment, we avoid to copy assign vectors.
     vector& operator= (const vector& other) = delete;
 
-    ~vector()
-    {
-        DEBUG_VECTOR ("[vector::~vector]  this: %p\n", this);
+    constexpr ~vector() = default;
 
-        if (ALLOCATOR::is_freeable == true)
-        {
-            memoryTree_.DFS ([&] (int8_t depth, address_t value)
-            {
-                // we deallocate each leaf node through a DFS traversal.
-                if (depth==0)  {  ALLOCATOR::free (value);  }
-            });
-        }
-    }
+    /** Forbid to get the address. */
+    auto* operator& () = delete;
 
-    void push_back (const T& item)
+    NOINLINE void push_back (const T& item)
     {
-        VERBOSE_VECTOR ("[vector::push_back]  idx before: %d   cachefull: %d \n", this->datablockIdx_,
-            this->cache().isFull(this->datablockIdx_)
+        VERBOSE_VECTOR ("[vector::push_back]  idx before: %d   cachefull: %d  idxCache_: %ld  previousBlockIdx_[idxCache_]: %ld \n", this->datablockIdx_,
+            this->cache(idxCache_).isFull(this->datablockIdx_),
+            uint64_t(idxCache_),
+            uint64_t(previousBlockIdx_[idxCache_])
         );
 
         // We check that we the current data block is not full
-        if (this->cache().isFull(this->datablockIdx_))
+        if (this->cache(idxCache_).isFull(this->datablockIdx_))
         {
             // We flush the vector (cache + memtree).
             flush_block (true);
 
             // We also remember the block id for a possible call to the operator []
-            previousBlockIdx_[0] = (this->datablockIdx_+1) >> parent_t::CACHE_ITEMS_NB_LOG2;
+            previousBlockIdx_[idxCache_] = (this->datablockIdx_+1) >> parent_t::CACHE_MEMORY_SIZE_LOG2;
         }
 
         // we increase the index
         this->datablockIdx_++;
 
         // we add the provided item in the datablock
-        this->cache()[this->datablockIdx_] = item;
+        this->cache(idxCache_)[this->datablockIdx_] = item;
 
         this->dirty_ = true;
     }
@@ -409,82 +446,92 @@ public:
      * attributes need to be mutable
      */
 
-	mutable size_t idxCache_ = 0;
+    mutable size_t idxCache_ = 0;
 
     value_type& operator[] (size_type idx) const
     {
-        this->flush_block ();
-
-        bool a = (idx >> parent_t::CACHE_ITEMS_NB_LOG2) != previousBlockIdx_[0];
-        bool b = (idx >> parent_t::CACHE_ITEMS_NB_LOG2) != previousBlockIdx_[1];
-
-        VERBOSE_VECTOR ("[vector::operator[]  this: %p  idx: %3d   (a,b): (%d,%d) \n", this, idx, a,b);
-
-        [[maybe_unused]] size_type keep[] = { previousBlockIdx_[0], previousBlockIdx_[1]} ;
+        VERBOSE_VECTOR ("[vector::operator[%4ld]  CACHE_MEMORY_SIZE_LOG2: %ld  CACHE_NB: %ld  this: 0x%lx \n",
+            (uint64_t)idx,
+            (uint64_t)parent_t::CACHE_MEMORY_SIZE_LOG2,
+            (uint64_t)parent_t::CACHE_NB,
+            (uint64_t)this
+        );
 
         // We need to get the address where the datablock needs to be retrieved from.
         address_t address = 0;
+        size_t& actualIdxCache = idxCache_;
 
-        if (    a and not b)  { idxCache_ = 1; }  // cache[1] is already available
-        if (not a and     b)  { idxCache_ = 0; }  // cache[0] is already available
-        if (    a and     b)  // no cache available for required block idx
+        // We look for a cache that already holds the required information
+        size_t look=0;
+        for (look=0; look<CACHE_NB; look++)
         {
-            // We are going to use the next cache.
-            idxCache_ = (idxCache_+1) % 2;
+            if ((idx >> parent_t::CACHE_MEMORY_SIZE_LOG2) == previousBlockIdx_[look])  { break; }
+        }
 
-            // we first update the current concent of this cache.
-            if (previousBlockIdx_[idxCache_] != size_type(-1))
-            {
-                // We may have to flush the cache since we are going to import new data into it.
-                if (idxCache_==0 and isDirty())  {  ((vector*)this)->flush();  }
+        [[maybe_unused]] bool changed = look==CACHE_NB;
 
-                this->cache(idxCache_).update();
-            }
+        if (look==CACHE_NB)
+        {
+            // We found no cache with the required index -> we are going to use the next cache.
+            // NB: we must take care of the actual number of caches.
+            actualIdxCache = (idxCache_+1) % parent_t::CACHE_NB;
 
-            previousBlockIdx_[idxCache_] = idx >> parent_t::CACHE_ITEMS_NB_LOG2;
+            previousBlockIdx_[actualIdxCache] = idx >> parent_t::CACHE_MEMORY_SIZE_LOG2;
 
             if (this->hasBeenFilled())
             {
                 // If the vector was filled (ie. call to 'fill'), we know that the blocks are
                 // contiguous in memory, so we don't need to use the memory tree then.
-                address = this->getFillAddress() + this->previousBlockIdx_[idxCache_]*SIZEOF_DATABLOCK;
+                address = this->getFillAddress() + this->previousBlockIdx_[actualIdxCache]*SIZEOF_DATABLOCK;
             }
             else
             {
                 // from the memory tree, we get the address of the block to be used
-                address = memoryTree_[previousBlockIdx_[idxCache_]];
+                address = memoryTree_[previousBlockIdx_[actualIdxCache]];
             }
 
+            VERBOSE_VECTOR ("vector::operator[]  actualIdxCache: %ld  update 0x%lx  and read 0x%lx\n",
+                uint64_t(actualIdxCache), uint64_t(this->cache(actualIdxCache).address()),
+                uint64_t(address)
+            );
+
+            if (this->cache(actualIdxCache).address()!=0)  {  this->cache(actualIdxCache).update();  }
+
             // we read the new block from the memory
-            this->cache(idxCache_).read(address);
+            this->cache(actualIdxCache).read(address);
+        }
+        else
+        {
+            // We found a cache with the required index.
+            actualIdxCache = look;
         }
 
-        VERBOSE_VECTOR ("[vector::operator[]  this: %p  idx: %3d   (a,b): (%d,%d)  requiredBlock: %d   prevBlockIdx_: (%2d,%2d)   idxCache: %2d   DB_SIZ_L2: %d   dirty: %d  [%c] address: %ld => %3d\n",
-            this, idx,
-            a,b,
-            (idx >> parent_t::CACHE_ITEMS_NB_LOG2),
-            keep[0], keep[1],
-            idxCache_,
-            DATABLOCK_SIZE_LOG2,
-            isDirty(),
-            a and b ? 'X' : ' ',
-                address,
-            this->cache(idxCache_) [idx]
+        VERBOSE_VECTOR ("vector::operator[%4ld] block: %ld  look: %ld  address: [0x%08lx,0x%08lx]   actualIdxCache: %ld   previousBlockIdx_: [%ld,%ld] -----------------> changed [%c]  val: %ld\n",
+            (uint64_t)idx,
+            (uint64_t)(idx >> parent_t::CACHE_MEMORY_SIZE_LOG2),
+            uint64_t(look),
+            (uint64_t)(this->cache(0).address()),
+            (uint64_t)(this->cache(1).address()),
+            uint64_t(actualIdxCache),
+            (uint64_t)previousBlockIdx_[0],
+            (uint64_t)previousBlockIdx_[1],
+            changed ? 'X' : ' ',
+            (uint64_t)this->cache(actualIdxCache) [idx]
         );
 
-        return this->cache(idxCache_) [idx];
+        return this->cache(actualIdxCache) [idx];
     }
 
     /** */
     value_type& back () const  {  return (*this) [this->size()-1]; }
 
     /** */
-    size_type max_size () const { return memoryTree_.max_size()*DATABLOCK_SIZE; }
+    size_type max_size () const { return memoryTree_.max_size()*MEMORY_SIZE; }
 
     template<class REFERENCE>
     struct iterator : parent_t::template iterator<REFERENCE>
     {
-        using vector_t = vector <T, ALLOCATOR, DATABLOCK_SIZE_LOG2, MEMTREE_NBITEMS_PER_BLOCK_LOG2,MAX_MEMORY_LOG2>;
+        using vector_t = vector <T, ALLOCATOR, MUTEX, MEMORY_SIZE_LOG2, CACHE_NB_LOG2, MEMTREE_NBITEMS_PER_BLOCK_LOG2,MAX_MEMORY_LOG2>;
 
         iterator (const REFERENCE* ref, size_type idx, typename memorytree_t::leaves_iterator it)
             : parent_t::template iterator<REFERENCE>(ref,idx), it_(it)
@@ -496,6 +543,11 @@ public:
                 this->a_ = *it_;
 
                 ref->cache().read (this->a_);
+
+                DEBUG_VECTOR ("[vector::iterator]  this: 0x%lx  a_: 0x%lx \n",
+                    uint64_t(this),
+                    uint64_t(this->a_)
+                );
             }
 
             // the 'else' part should have already been handled by the parent constructor
@@ -519,13 +571,24 @@ public:
 
     auto begin()  const
     {
-        ((vector*)this)->flush();
+        ((vector*)this)->update ();
         return iterator<vector> (this,0,this->memoryTree_.begin());
     }
 
     auto end  ()  const
     {
         return size_t (this->size());
+    }
+
+    static auto dump ()
+    {
+        DEBUG_VECTOR (
+            "[vector]   sizeof: %d  MEMORY_SIZE_LOG2: %d  CACHE_NB_LOG2: %d  CACHE_NB_ITEMS: %d  NBITEMS_MAX: %ld "
+            "[memtree]  sizeof: %d  MEMTREE_NBITEMS_PER_BLOCK_LOG2: %d  MAX_MEMORY_LOG2: %d  LEVEL_MAX: %d  NBLEAVES_MAX: %ld  "
+            "\n",
+            sizeof (vector),       MEMORY_SIZE_LOG2, CACHE_NB_LOG2, CACHE_NB_ITEMS, NBITEMS_MAX,
+            sizeof (memorytree_t), MEMTREE_NBITEMS_PER_BLOCK_LOG2,MAX_MEMORY_LOG2, memorytree_t::LEVEL_MAX,  memorytree_t::NBLEAVES_MAX
+        );
     }
 
     void debug () const
@@ -539,19 +602,32 @@ public:
 
         // We flush the current block if needed.
         flush_block();
+    }
 
-        // We flush the memory tree as well.
-        memoryTree_.flush ();
+    NOINLINE auto update() const
+    {
+        VERBOSE_VECTOR ("[vector::update]  address: 0x%lx   dirty_: %d  size: %ld  CACHE_NB_ITEMS: %ld  check: %d\n",
+            uint64_t(this->cache(idxCache_).address()), dirty_, uint64_t(this->size()), uint64_t(CACHE_NB_ITEMS),
+            (this->size() % CACHE_NB_ITEMS)==1
+        );
+
+        // we save the data block from stack memory to main memory
+        if (this->cache(idxCache_).address() != 0)
+        {
+            this->cache(idxCache_).update();
+        }
     }
 
     void flush_block (bool force=false) const
     {
-        if (this->size()>0 and (isDirty() or force) )
+        if (isDirty() or force)
         {
             VERBOSE_VECTOR ("[vector::flush_block] \n");
 
+            this->update();
+
             // we save the data block from stack memory to main memory
-            memoryTree_.insert (this->cache().write());
+            memoryTree_.insert (this->cache(idxCache_).acquire());
 
             dirty_ = false;
         }
@@ -559,17 +635,12 @@ public:
 
     void flush_block_all (bool force=true)
     {
-        //if (this->size()>0 and (isDirty() or force) )
-        {
-            VERBOSE_VECTOR ("[vector::flush_block_all] 0\n");
+		VERBOSE_VECTOR ("[vector::flush_block_all] 0\n");
 
-            if (previousBlockIdx_[0] != size_type(-1))  {   this->cache(0).update();  }
-
-            VERBOSE_VECTOR ("[vector::flush_block_all] 1\n");
-            if (previousBlockIdx_[1] != size_type(-1))  {   this->cache(1).update();  }
-
-          //  dirty_ = false;
-        }
+        for (size_t i=0; i<CACHE_NB; i++)
+	    {
+			if (previousBlockIdx_[i] != size_type(-1))  {   this->cache(i).update();  }
+		}
     }
 
     void fill (address_t address, size_t nbItems, size_t sizeItem)
@@ -577,12 +648,11 @@ public:
         // We first call the parent method.
         parent_t::fill (address, nbItems, sizeItem);
 
+        // We count the number of nodes to be added in the memory tree.
+        size_t nbfound = (nbItems + (1<<MEMORY_SIZE_LOG2)-1) >> MEMORY_SIZE_LOG2;
+
         // We process the specific part.
-        for (int32_t nb=nbItems ; nb > 0; nb -= 1<<DATABLOCK_SIZE_LOG2)
-        {
-            memoryTree_.insert (address);
-            address += SIZEOF_DATABLOCK;
-        }
+        memoryTree_.insert (address, nbfound, 1<<MEMORY_SIZE_LOG2);
 
         flush();
     }
@@ -595,13 +665,10 @@ public:
     }
 
     mutable bool       dirty_            = false;
-    mutable size_type  previousBlockIdx_[2] = {~size_type(0),~size_type(0)};
+    mutable size_type  previousBlockIdx_[CACHE_NB];
     mutable MemoryTree <ALLOCATOR, MEMTREE_NBITEMS_PER_BLOCK_LOG2, MAX_MEMORY_LOG2> memoryTree_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-} };  // end of namespace
+};  // end of namespace
 ////////////////////////////////////////////////////////////////////////////////
-
-#endif // __BPL_UTILS_VECTOR__
-

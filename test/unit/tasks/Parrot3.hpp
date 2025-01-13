@@ -21,7 +21,7 @@ struct MyData
 //
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct Parrot3 : bpl::core::Task<ARCH>
+struct Parrot3 : bpl::Task<ARCH>
 {
     USING(ARCH);
 

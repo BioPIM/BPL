@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -10,26 +10,49 @@
 #ifdef DPU  // THIS PART SHOULD BE COMPILED ONLY FOR DPU
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef __BPL_ARCH_MRAM__
-#define __BPL_ARCH_MRAM__
-////////////////////////////////////////////////////////////////////////////////
+#pragma once
 
 extern "C"
 {
     #include <mram.h>
+    #include <mram_unaligned.h>
     #include <mutex.h>
+
+    void* mram_read_unaligned  (const __mram_ptr void *from, void *buffer, unsigned int nb_of_bytes);
+    void  mram_write_unaligned (const void *from, __mram_ptr void *dest, unsigned nb_of_bytes);
 }
 
 extern const mutex_id_t  __MRAM_Allocator_mutex__;
 
 ////////////////////////////////////////////////////////////////////////////////
+template<typename T>  struct MRAMWrite{};
+template<typename T>  struct MRAMRead {};
+
+template<> struct MRAMWrite<uint32_t>
+{ auto operator() (void* dest, void* data, size_t sizeInBytes)  { mram_write_unaligned (data, (__mram_ptr void*)dest, sizeInBytes);  }};
+
+template<> struct MRAMRead<uint32_t>
+{ auto operator() (void* from, void* data, size_t sizeInBytes)  { mram_read_unaligned ((__mram_ptr void*)from, data, sizeInBytes);  }};
+
+template<> struct MRAMWrite<uint64_t>
+{ auto operator() (void* dest, void* data, size_t sizeInBytes)  { mram_write (data, (__mram_ptr void*)dest, sizeInBytes);  }};
+
+template<> struct MRAMRead<uint64_t>
+{ auto operator() (void* from, void* data, size_t sizeInBytes)  { mram_read ((__mram_ptr void*)from, data, sizeInBytes);  }};
+
+////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace arch {
+////////////////////////////////////////////////////////////////////////////////
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct MRAM
 {
-    using address_t = uint64_t;
+    // using address_t = uint64_t;
+    using address_t    = uint32_t;
+    
+    using rw_address_t = uint64_t;
+    // using rw_address_t = uint32_t;
 
     template<bool LOCK>
     class Allocator
@@ -39,6 +62,9 @@ struct MRAM
         using pointer_t = __mram_ptr void*;
 
     public:
+
+        MRAMRead <rw_address_t> reader_;
+        MRAMWrite<rw_address_t> writer_;
 
         void init (address_t initAdd)
         {
@@ -62,7 +88,7 @@ struct MRAM
 
             pointer_t result = data_;
 
-            data_ = (pointer_t) ((uint8_t*)data_ + sizeInBytes);
+            data_ = (pointer_t)  ((address_t)(uint8_t*)data_ + sizeInBytes);
 
             nbCallsGet += 1;
 
@@ -72,10 +98,15 @@ struct MRAM
         }
 
         /** */
-        address_t writeAt (address_t dest, void* data, size_t sizeInBytes)
+        address_t writeAt (void* dest, void* data, size_t sizeInBytes)
         {
-            mram_write (data, (pointer_t)dest, sizeInBytes);
-            return dest;
+            writer_ (dest, data, sizeInBytes);
+            return (address_t) dest;
+        }
+
+        auto writeAtomic (address_t tgt, address_t const& src)
+        {
+            mram_write_int_atomic ((uint32_t)tgt, (uint32_t)src);
         }
 
         /** */
@@ -83,12 +114,12 @@ struct MRAM
         {
             address_t result = get (sizeInBytes);
 
-            mram_write (data, (pointer_t)result, sizeInBytes);
+            writer_ ((void*)result, data, sizeInBytes);
             return result;
         }
 
         /** */
-        void read (address_t from, void* data, size_t sizeInBytes)
+        void read (void* from, void* data, size_t sizeInBytes)
         {
 if (LOCK)  {   mutex_lock (__MRAM_Allocator_mutex__);  }
 
@@ -96,8 +127,8 @@ if (LOCK)  {   mutex_lock (__MRAM_Allocator_mutex__);  }
             nbCallsRead += 1;
 if (LOCK)  {   mutex_unlock (__MRAM_Allocator_mutex__);  }
 
-            mram_read ((pointer_t)from, data, sizeInBytes);
 
+            reader_ (from, data, sizeInBytes);
         }
 
         /** */
@@ -108,14 +139,14 @@ if (LOCK)  {   mutex_unlock (__MRAM_Allocator_mutex__);  }
         }
 
         template<typename T>
-        address_t writeAt (address_t dest, const T& data)
+        address_t writeAt (void* dest, const T& data)
         {
             return writeAt (dest, (void*)&data, sizeof(data));
         }
 
         /** */
         template<typename T>
-        void read (address_t from, const T& data)
+        void read (void* from, const T& data)
         {
             return read (from, (void*)&data, sizeof(data));
         }
@@ -136,14 +167,11 @@ if (LOCK)  {   mutex_unlock (__MRAM_Allocator_mutex__);  }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-} };  // end of namespace
+};  // end of namespace
 ////////////////////////////////////////////////////////////////////////////////
 
-extern bpl::arch::MRAM::Allocator<true>  __MRAM_Allocator_lock__;
-extern bpl::arch::MRAM::Allocator<false> __MRAM_Allocator_nolock__;
-
-////////////////////////////////////////////////////////////////////////////////
-#endif // __BPL_ARCH_MRAM__
+extern bpl::MRAM::Allocator<true>  __MRAM_Allocator_lock__;
+extern bpl::MRAM::Allocator<false> __MRAM_Allocator_nolock__;
 
 ////////////////////////////////////////////////////////////////////////////////
 #endif  // #ifdef DPU

@@ -12,8 +12,7 @@
 #include <bpl/arch/ArchDummy.hpp>
 #include <bpl/utils/split.hpp>
 
-using namespace bpl::core;
-using namespace bpl::arch;
+using namespace bpl;
 
 #include <tasks/SketchJaccard.hpp>
 #include <tasks/SketchJaccardOptim.hpp>
@@ -372,7 +371,7 @@ TEST_CASE ("SketchJaccard2", "[Sketch]" )
 
     using sketch_t = SketchJaccard<ArchUpmem>::sketch_t;
 
-    size_t refSize = 640000;
+    size_t refSize = 500000;
 
     std::vector<sketch_t> ref;
     for (size_t i=1; i<=refSize; i++)

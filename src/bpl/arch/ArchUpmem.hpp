@@ -1,14 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <firstinclude.hpp>
 
-#ifndef __BPL_ARCH_UPMEM__
-#define __BPL_ARCH_UPMEM__
-////////////////////////////////////////////////////////////////////////////////
+#pragma once
 
 #include <string>
 #include <array>
@@ -40,7 +38,6 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace arch {
 ////////////////////////////////////////////////////////////////////////////////
 
 /** Enumeration that distinguish sets made of ranks or and sets made of DPUs.
@@ -69,39 +66,44 @@ template<typename ARG, typename PARAM> struct check_arguments : std::true_type  
 ///////////////////////////////////////////////////////////////////////////////
 /** \brief Class that provides resources for the UPMEM architecture
  *
- * \see bpl::core::Launcher
+ * \see bpl::Launcher
  */
 class ArchUpmem : public ArchMulticoreResources
 {
 public:
 
+    // Factory that returns a type with a specific configuration.
+    template<typename CFG=int> using factory = ArchUpmem;
+
+    using config_t = void;
+
     /** To be improved (not really nice to have a 'kind' method that provide some typing info)
      */
-    class Rank : public core::TaskUnit
+    class Rank : public bpl::TaskUnit
     {
     public:
         using arch_t = ArchUpmem;
-        using core::TaskUnit::TaskUnit;
+        using bpl::TaskUnit::TaskUnit;
         DpuComponentKind_e kind() const { return DpuComponentKind_e::RANK; }
         std::size_t getNbUnits() const { return getNbComponents()*64*NR_TASKLETS; }
         constexpr static int LEVEL = 1;
     };
 
-    class DPU : public core::TaskUnit
+    class DPU : public bpl::TaskUnit
     {
     public:
         using arch_t = ArchUpmem;
-        using core::TaskUnit::TaskUnit;
+        using bpl::TaskUnit::TaskUnit;
         DpuComponentKind_e kind() const { return DpuComponentKind_e::DPU; }
         std::size_t getNbUnits() const { return getNbComponents()*NR_TASKLETS; }
         constexpr static int LEVEL = 2;
     };
 
-    class Tasklet : public core::TaskUnit
+    class Tasklet : public TaskUnit
     {
     public:
         using arch_t = ArchUpmem;
-        using core::TaskUnit::TaskUnit;
+        using TaskUnit::TaskUnit;
         DpuComponentKind_e kind() const { return DpuComponentKind_e::TASKLET; }
         std::size_t getNbUnits() const { return getNbComponents(); }
         constexpr static int LEVEL = 3;
@@ -114,7 +116,7 @@ public:
 
     using lowest_level_t = Tasklet;
 
-    using Serializer = core::Serialize<arch_t,core::BufferIterator<ArchMulticore>,8>;
+    using Serializer = Serialize<arch_t,BufferIterator<ArchMulticore>,8>;
 
     /** Defines the granularity of the UPMEM components used by this logical view of the architecture.
      * This enumeration should be used only at construction.
@@ -208,7 +210,7 @@ public:
 
         // We determine the result type of the TASK::run method.
         // Note that the TASK type is instantiated with the current ARCH type.
-        using result_t = bpl::core::return_t<decltype(&task_t::operator())>;
+        using result_t = bpl::return_t<decltype(&task_t::operator())>;
 
         // We call the 'prepare' method that will prepare the serialization
         prepare<TASK,TRAITS...> (std::forward<ARGS>(args)...);
@@ -287,7 +289,24 @@ public:
             }
 
             heap_pointers.push_back (metadata.heap_pointer);
-        }
+
+            statistics_.addTag ("bpl/vector/PROTO_VECTORS",std::to_string(metadata.vstats.NB_VECTORS_IN_PROTO));
+            statistics_.addTag ("bpl/vector/SIZEOF",       std::to_string(metadata.vstats.SIZEOF));
+            statistics_.addTag ("bpl/vector/CACHE_NB",     std::to_string(metadata.vstats.CACHE_NB));
+            statistics_.addTag ("bpl/vector/MEMORY_SIZE",  std::to_string(metadata.vstats.MEMORY_SIZE));
+            statistics_.addTag ("bpl/vector/CACHE_ITEMS",  std::to_string(metadata.vstats.CACHE_NB_ITEMS));
+            statistics_.addTag ("bpl/vector/NBITEMS_MAX",  std::to_string(metadata.vstats.NBITEMS_MAX));
+
+            statistics_.addTag ("bpl/memtree/BLOCK_ITEMS", std::to_string(metadata.vstats.MEMTREE_NBITEMS_PER_BLOCK));
+            statistics_.addTag ("bpl/memtree/MAX_MEMORY",  std::to_string(metadata.vstats.MEMTREE_MAX_MEMORY));
+            statistics_.addTag ("bpl/memtree/LEVEL_MAX",   std::to_string(metadata.vstats.MEMTREE_LEVEL_MAX));
+
+            statistics_.addTag ("bpl/sizeof/input",   std::to_string(metadata.input_sizeof));
+            statistics_.addTag ("bpl/sizeof/output",  std::to_string(metadata.output_sizeof));
+
+            statistics_.addTag ("resources/stack_size",  std::to_string(metadata.stack_size));
+
+        } // end of for (const MetadataOutput& metadata : __metadata_output__)
 
         clocks_per_sec =  __metadata_output__[0].clocks_per_sec;
 
@@ -296,6 +315,7 @@ public:
         AllocatorStats allocator_stats = __metadata_output__[0].allocator_stats;
 
         statistics_.addTag ("resources/MRAM/used",        std::to_string(allocator_stats.used));
+        statistics_.addTag ("resources/MRAM/pos",         std::to_string(allocator_stats.pos));
         statistics_.addTag ("resources/MRAM/calls/get",   std::to_string(allocator_stats.nbCallsGet));
         statistics_.addTag ("resources/MRAM/calls/read",  std::to_string(allocator_stats.nbCallsRead));
 
@@ -503,6 +523,13 @@ public:
     //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    // Returns the split status of a given object.
+    template<typename T>
+    static constexpr int getSplitStatus (T&& t)
+    {
+        return ::details::GetSplitStatus<std::decay_t<T>,lowest_level_t>::value;
+    }
+
     /** Prepare the input arguments into several configurations.
      * \param[in] args: input parameters for the task to be executed.
      * \return vector of tuples, each one holding an exec configuration
@@ -519,20 +546,21 @@ public:
         DEBUG_ARCH_UPMEM ("[ArchUpmem::prepare]  BEGIN\n");
 
         // For each type in the 'run' prototype, retrieve the fact it is a reference or not
-        //using fct_t  = decltype(bpl::core::GetParamType(TASK<arch_t>::run));
-        //using fct_t  = decltype(bpl::core::GetParamType( TASK<arch_t>::operator() ) );
+        //using fct_t  = decltype(bpl::GetParamType(TASK<arch_t>::run));
+        //using fct_t  = decltype(bpl::GetParamType( TASK<arch_t>::operator() ) );
 
         using proto_t      = std::decay_t<decltype(&task_t::operator())>;
-        using parameters_t = typename bpl::core::FunctionSignatureParser<proto_t>::args_tuple;
+        using parameters_t = typename bpl::FunctionSignatureParser<proto_t>::args_tuple;
 
         static_assert (std::tuple_size_v<arguments_t> == std::tuple_size_v<parameters_t>);
 
         // 'firstTagOnceRefIdx' is only defined to check that potential 'once' args are the first ones.
-        [[maybe_unused]] constexpr int firstTagOnceRefIdx   = bpl::core::first_predicate_idx_v <parameters_t, bpl::core::hastag_once,   true>;
-        [[maybe_unused]] constexpr int firstNoTagOnceRefIdx = bpl::core::first_predicate_idx_v <parameters_t, bpl::core::hasnotag_once, false>;
+        [[maybe_unused]] constexpr int firstTagOnceRefIdx   = bpl::first_predicate_idx_v <parameters_t, bpl::hastag_once,   true>;
+        [[maybe_unused]] constexpr int firstNoTagOnceRefIdx = bpl::first_predicate_idx_v <parameters_t, bpl::hasnotag_once, false>;
         [[maybe_unused]] constexpr int hasTagOnce           = firstTagOnceRefIdx < std::tuple_size_v<parameters_t>;
 
         size_t deltaFirstNotagOnce = 0;
+        std::vector<size_t> deltaFirstNotagOnceAllDpu (dpuSet_->getDpuNumber(), 0);
 
         DEBUG_ARCH_UPMEM ("[ArchUpmem::prepare]  firstTagOnceRefIdx=%d   firstNoTagOnceRefIdx=%d  hasTagOnce=%d \n",
             firstTagOnceRefIdx, firstNoTagOnceRefIdx, hasTagOnce
@@ -558,7 +586,7 @@ public:
         // Indeed on one DPU, the same vector (ie shared by the tasklets of the DPU) would hold a specific
         // part for each tasklet, which is contradictory with the fact that this vector must be common
         // and identical for each tasklet.
-        static_assert (bpl::core::compare_tuples_v<check_arguments,arguments_t,parameters_t> == true);
+        static_assert (bpl::compare_tuples_v<check_arguments,arguments_t,parameters_t> == true);
 
     //----------------------------------------------------------------------
     ts_serialize1.stop();
@@ -618,7 +646,7 @@ public:
             // If the incoming type is a splitter, we remove the splitter encapsulation. Otherwise we provide the same type.
             using result_t = std::conditional_t <is_splitter,
                 remove_splitter_t<dtype>,
-                type
+                std::decay_t<type>
             >;
 
             DEBUG_ARCH_UPMEM ("[ArchUpmem::prepare]  transfo %3ld  is_splitter: %d \n", argIdx, is_splitter);
@@ -636,16 +664,13 @@ public:
 
                 iterator& operator++ () { ++idx_;  return *this; }
 
-                auto  operator* () const
+				// Note: use decltype(auto) in order to keep possibility to have a reference as result
+                decltype(auto) operator* () const
                 {
                     size_t idx   = idx_/div_;
                     size_t total = (nb_+div_-1)/div_;
 
-                    // We use here the 'div' factor that tells us what is the level (rank or DPU) of parallelization.
-                    return std::make_pair (
-                        true,  // true means that this item has to be serialized.
-                        SplitOperator<result_t>::split2 (arg_, idx, total)
-                    );
+                    return SplitChoice<decltype(arg_),result_t,task_t>::split_view (arg_,idx,total);
                 }
             };
 
@@ -670,38 +695,64 @@ public:
         std::vector<size_t> sumSizePerDpu (dpuSet_->getDpuNumber(), 0);
 
         // We can define a callback that will be called during the serialization process.
-        auto cbk = [&] (size_t idxDpu, size_t idxArg, uint8_t* ptr, size_t length)
+        auto cbk = [&] (size_t idxDpu, size_t idxArg, size_t idxBlock, uint8_t* ptr, size_t length)
         {
-            VERBOSE_ARCH_UPMEM ("[cbk] idxDpu: %8ld   idxArg: %8ld   ptr: %p  length: %8ld   split: %d\n",
-                idxDpu, idxArg, ptr, length, splitStatus[idxArg]);
+            VERBOSE_ARCH_UPMEM ("[cbk] idxDpu: %8ld  idxArg: %8ld  idxBlock: %8ld   ptr: %p  length: %8ld   split: %d\n",
+                idxDpu, idxArg, idxBlock, ptr, length, splitStatus[idxBlock]);
+
+            if (hasTagOnce and idxArg==firstNoTagOnceRefIdx)
+            {
+                if (oncePaddingPerDpu_.empty())
+                {
+                    // we may have to add some padding to the first 'once' args.
+                    auto M = *std::max_element (deltaFirstNotagOnceAllDpu.begin(), deltaFirstNotagOnceAllDpu.end());
+
+                    for (size_t i=0; i<offsets.size(); i++)
+                    {
+                        // we cumul the buffer sizes for the current ith DPU
+                       size_t sumSizes=0;  for (auto x : offsets[i])  { sumSizes += x.second; }
+
+                       oncePaddingPerDpu_.push_back (M - sumSizes);
+                    }
+                }
+            }
 
             // We may need to resize the vector.
-            if (offsets[idxDpu].size()<=idxArg)  {  offsets[idxDpu].resize (idxArg+1);  }
+            if (offsets[idxDpu].size()<=idxBlock)  {  offsets[idxDpu].resize (idxBlock+1);  }
 
             if (ptr != nullptr)
             {
-                offsets[idxDpu][idxArg] = make_pair (ptr, length);
+                offsets[idxDpu][idxBlock] = make_pair (ptr, length);
             }
             else
             {
-                offsets[idxDpu][idxArg] = offsets[idxDpu-1][idxArg];
+                // If ptr is null, we reuse the information of the previous dpu for that block
+                offsets[idxDpu][idxBlock] = offsets[idxDpu-1][idxBlock];
+
+                // IMPORTANT: we must consider the actual size and not a null one
+                // -> otherwise the sumSizePerDpu for this DPU will not be correct and thus maxSumSizeDpu could be wrong.
+                length = offsets[idxDpu][idxBlock].second;
             }
 
             // We update the sum of arg size for the DPU.
             sumSizePerDpu[idxDpu] += length;
 
-            // NOTE: for the moment, we only rely on the first DPU for computing the 'once' argument delta
-            if (hasTagOnce and idxDpu==0 and idxArg<=firstNoTagOnceRefIdx) {  deltaFirstNotagOnce += length; }
+            // NOTE 1: for the moment, we only rely on the first DPU for computing the 'once' argument delta
+            // NOTE 2: since an argument can be made of several blocks (e.g. vector), we have to take idxArg into account here
+            if (hasTagOnce and idxArg<firstNoTagOnceRefIdx)
+            {
+                deltaFirstNotagOnceAllDpu[idxDpu] += length;
+            }
         };
 
         auto info = [&] (size_t idx, auto&& item)
         {
-            return std::tuple (splitStatus[idx], splitStatus[idx]>0, dpuSet_->getDpuNumber());
+            return std::tuple (getSplitStatus(item), getSplitStatus(item)>0, dpuSet_->getDpuNumber());
         };
 
-        bool isLoadedBinaryMatching = previousBinary_.match (bpl::core::type_shortname<TASK<arch_t>>(), 'A');
+        bool isLoadedBinaryMatching = previousBinary_.match (bpl::type_shortname<TASK<arch_t>>(), 'A');
 
-        DEBUG_ARCH_UPMEM ("[ArchUpmem::prepare]  before tuple_to_buffer:   isLoadedBinaryMatching: %d \n", isLoadedBinaryMatching);
+        DEBUG_ARCH_UPMEM ("[ArchUpmem::prepare]  before tuple_to_buffer:   isLoadedBinaryMatching: %d  hasTagOnce: %d\n", isLoadedBinaryMatching, hasTagOnce);
 
         size_t broadcastSize = 0;
 
@@ -709,15 +760,16 @@ public:
         if (isLoadedBinaryMatching and hasTagOnce)
         {
             // We get rid of the first arguments that are tagged with 'once'
-            auto targsSliced = bpl::core::tuple_slice <firstNoTagOnceRefIdx, sizeof...(ARGS)>(targs);
+            auto targsSliced = bpl::tuple_slice <firstNoTagOnceRefIdx, sizeof...(ARGS)>(targs);
 
             // We need to resize the offsets matrix since the number of arguments is not the same.
             for (auto& vec :  offsets)  { vec.resize(std::tuple_size_v<decltype(targsSliced)> ); }
 
-            DEBUG_ARCH_UPMEM ("[ArchUpmem::prepare]  slicing the args... #args: %ld\n", std::tuple_size_v<decltype(targsSliced)>);
-
             // We serialize the (sliced) pack of arguments.
             broadcastSize = Serializer::tuple_to_buffer (targsSliced, buf, info, transfo, cbk);
+
+            DEBUG_ARCH_UPMEM ("[ArchUpmem::prepare]  slicing the args... #args: %ld  broadcastSize: %ld \n",
+                std::tuple_size_v<decltype(targsSliced)>, broadcastSize);
 
             // We set the actual delta for calling dpu_push_sg_xfer -> this is the one computed in the previous call to 'run'.
             deltaFirstNotagOnce = firstNotagOnce_deltaBuffer_;
@@ -727,6 +779,8 @@ public:
             // We serialize the arguments.
             broadcastSize = Serializer::tuple_to_buffer (targs, buf, info, transfo, cbk);
 
+            deltaFirstNotagOnce = *std::max_element (deltaFirstNotagOnceAllDpu.begin(), deltaFirstNotagOnceAllDpu.end());
+
             // We keep track of the 'once' delta for further 'run' calls.
             firstNotagOnce_deltaBuffer_ = deltaFirstNotagOnce;
 
@@ -735,11 +789,14 @@ public:
         }
 
         // We want to compute the max size of serialization for all the DPU.
-        size_t maxSumSizeDpu=0;  for (auto s : sumSizePerDpu)  { if (s>maxSumSizeDpu) { maxSumSizeDpu=s; } }
+        size_t maxSumSizeDpu=0;
+        for (auto s : sumSizePerDpu)  { if (s>maxSumSizeDpu) { maxSumSizeDpu=s; } }
 
-        DEBUG_ARCH_UPMEM ("[ArchUpmem::prepare]  after  tuple_to_buffer  maxSumSizeDpu: %ld   deltaFirstNotagOnce: %ld \n",
-            maxSumSizeDpu, deltaFirstNotagOnce
+        DEBUG_ARCH_UPMEM ("[ArchUpmem::prepare]  after  tuple_to_buffer  maxSumSizeDpu: %ld   deltaFirstNotagOnce: %ld  firstNotagOnce_deltaBuffer_: %ld  broadcastSize: %ld \n",
+            maxSumSizeDpu, deltaFirstNotagOnce, firstNotagOnce_deltaBuffer_, broadcastSize
         );
+
+        for ([[maybe_unused]] auto padding : oncePaddingPerDpu_)  {  DEBUG_ARCH_UPMEM ("[ArchUpmem::prepare]  once padding: %ld \n", padding);  }
 
         statistics_.set ("broadcast_size", broadcastSize);
 
@@ -747,7 +804,7 @@ public:
         __attribute__((unused)) size_t initialSize = buf.size();
 
         // Now, we must be sure to respect alignment constraints for broadcast -> we resize the buffer accordingly.
-        buf.resize (core::roundUp<8> (buf.size()));
+        buf.resize (bpl::roundUp<8> (buf.size()));
 
         DEBUG_ARCH_UPMEM ("[ArchUpmem::prepare]  serialization done,  alreadyLoaded=%d  initSize=%ld  buf.size=%ld  deltaFirstNotagOnce=%ld  delta=%ld  firstNoTagOnceRefIdx=%d \n",
             alreadyLoaded, initialSize, buf.size(), deltaFirstNotagOnce, delta, firstNoTagOnceRefIdx
@@ -766,23 +823,23 @@ public:
         if (not isLoadedBinaryMatching)
         {
             // Tuple holding the types tagged with 'global'  (we remove tags now)
-            using globalparams_t = bpl::core::transform_tuple_t <
-                typename bpl::core::pack_predicate_partition_t <
-                    bpl::core::hastag_global,
-                    bpl::core::task_params_t<task_t>
+            using globalparams_t = bpl::transform_tuple_t <
+                typename bpl::pack_predicate_partition_t <
+                    bpl::hastag_global,
+                    bpl::task_params_t<task_t>
                 >::first_type,
-                bpl::core::removetag_once,
-                bpl::core::removetag_global
+                bpl::removetag_once,
+                bpl::removetag_global
             >;
 
-            static constexpr int sizeofGlobal = bpl::core::sum_sizeof (globalparams_t{});
+            static constexpr int sizeofGlobal = bpl::sum_sizeof (globalparams_t{});
             static_assert (sizeofGlobal < 65536);
 
             // We compute the % of WRAM available for tasklets (round down to a decade)
             static constexpr int wramGlobalPercent       = int ( (100.0*sizeofGlobal)/65536);
 
             // We use the name of the type thanks to some MPL magic -> no more need to define a 'name' function in the task structure.
-            alreadyLoaded = loadBinary (bpl::core::type_shortname<TASK<arch_t>>(), 'A', maxSumSizeDpu, wramGlobalPercent);
+            alreadyLoaded = loadBinary (bpl::type_shortname<TASK<arch_t>>(), 'A', maxSumSizeDpu, wramGlobalPercent);
 
             DEBUG_ARCH_UPMEM ("[ArchUpmem::prepare]  alreadyLoaded: %d   maxSumSizeDpu: %ld  wramGlobalPercent: %d\n",
                 alreadyLoaded, maxSumSizeDpu, wramGlobalPercent
@@ -801,33 +858,61 @@ public:
         {
             vector<char>&    buffer;
             offset_matrix_t& matrix;
+            vector<size_t>&  oncePaddingPerDpu;
+            bool padding;
         };
 
-        data_t data = { buf, offsets};
-
-        auto get_block = [] (struct sg_block_info *out, uint32_t dpu_index, uint32_t arg_index, void *args)
+        auto get_block = [] (struct sg_block_info *out, uint32_t dpu_index, uint32_t block_index, void *args)
         {
             data_t* data = (data_t*)args;
-
             offset_matrix_t& offsets = data->matrix;
-            bool result = arg_index < offsets[dpu_index].size();
+
+            bool result = true;
+
+            if (data->padding and dpu_index < data->oncePaddingPerDpu.size())
+            {
+                // By convention, the first block is used to add some potential padding (for 'once' management)
+                if (block_index==0)
+                {
+                    static uint8_t dummy[8];
+                    out->addr   = dummy;
+                    out->length = data->oncePaddingPerDpu [dpu_index];
+                }
+                else if (block_index > 0)
+                {
+                    result = block_index-1 < offsets[dpu_index].size();
+                    if (result)
+                    {
+                        out->addr   = offsets[dpu_index][block_index-1].first;
+                        out->length = offsets[dpu_index][block_index-1].second;
+                    }
+                }
+            }
+            else
+            {
+                result = block_index < offsets[dpu_index].size();
+                if (result)
+                {
+                    out->addr   = offsets[dpu_index][block_index].first;
+                    out->length = offsets[dpu_index][block_index].second;
+                }
+            }
 
             if (result)
             {
-                out->addr   = offsets[dpu_index][arg_index].first;
-                out->length = offsets[dpu_index][arg_index].second;
-
-                VERBOSE_ARCH_UPMEM ("[get_block]  args: %p  dpu_index: %4d  arg_index: %3d  #offsets: %ld  #offsets[dpu_index]: %ld  => %p  %d \n",
-                    args, dpu_index, arg_index, offsets.size(), offsets[dpu_index].size(),
-                    out->addr, out->length
+                DEBUG_ARCH_UPMEM ("[get_block]  args: %p  dpu_index: %4d  block_index: %3d  #offsets: %ld  #offsets[dpu_index]: %ld  => %7d  %p\n",
+                    args, dpu_index, block_index, offsets.size(), offsets[dpu_index].size(),
+                    out->length, out->addr
                 );
             }
 
             return result;
         };
+        
+        data_t data = { buf, offsets, oncePaddingPerDpu_, deltaFirstNotagOnce==0};
 
         // Apparently, we can define a lambda and use it as a field of 'get_block_t'.
-        get_block_t block_info { .f= get_block, .args= &data, .args_size=sizeof(data)};
+        get_block_t block_info { .f = get_block,  .args = &data, .args_size = sizeof(data) };
 
         // WARNING: since the total length data can be different from one DPU to another,
         // we use the flag DPU_SG_XFER_DISABLE_LENGTH_CHECK.
@@ -853,14 +938,15 @@ public:
 
         // We prepare a vector holding the input metadata for all DPU.
         std::vector<MetadataInput> __metadata_input__ (getDpuNumber());
-        for (size_t i=0; i<__metadata_input__.size(); i++)
+        for (size_t dpuIdx=0; dpuIdx<__metadata_input__.size(); dpuIdx++)
         {
-            __metadata_input__[i] = MetadataInput (
+            __metadata_input__[dpuIdx] = MetadataInput (
                 getProcUnitNumber(),
-                i,
-                sumSizePerDpu[i] + deltaFirstNotagOnce,  // Note: if tag 'once' is used, we have to take it into account for the buffer size
+                dpuIdx,
+                sumSizePerDpu[dpuIdx] + deltaFirstNotagOnce,  // Note: if tag 'once' is used, we have to take it into account for the buffer size
                 deltaFirstNotagOnce,
                 reset_,
+                oncePaddingPerDpu_.empty() ? 0 : oncePaddingPerDpu_[dpuIdx],
                 splitStatus
             );
         }
@@ -882,16 +968,18 @@ public:
         DEBUG_ARCH_UPMEM ("[ArchUpmem::prepare]  END\n");
     }
 
-    const core::Statistics& getStatistics() const { return statistics_; }
+    const bpl::Statistics& getStatistics() const { return statistics_; }
 
 private:
-    core::Statistics statistics_;
+    bpl::Statistics statistics_;
 
     /** Handle on a set made of ranks or DPUs. */
     std::shared_ptr<details::dpu_set_handle_t> dpuSet_;
     struct dpu_set_t& set() const { return dpuSet_->handle(); }
 
     bool reset_ = false;
+
+    std::vector<size_t> oncePaddingPerDpu_;
 
     bool isLoaded_ = false;
     bool isLoaded() const { return isLoaded_; }
@@ -1010,7 +1098,7 @@ private:
         char* d = getenv("DPU_BINARIES_DIR");
         if (d!=nullptr)
         {
-            for (bpl::core::directory_entry entry : bpl::core::recursive_directory_iterator(d))
+            for (bpl::directory_entry entry : bpl::recursive_directory_iterator(d))
             {
                 std::string filePath = entry.path().string();
                 std::string last_element(filePath.substr(filePath.rfind("/") + 1));
@@ -1037,13 +1125,17 @@ private:
         {
             double all = value.unserialize + value.split + value.exec + value.result;
 
-            snprintf (buffer, sizeof(buffer), "time: %9.6f sec  (%9.6f)  [percent]  unserialize: %5.2f   split: %5.2f  exec:%5.2f  result: %5.2f",
-                double(value.all) / clocks_per_sec,
-                double(all)       / clocks_per_sec,
-                100.0*value.unserialize / all,
-                100.0*value.split       / all,
-                100.0*value.exec        / all,
-                100.0*value.result      / all
+            snprintf (buffer, sizeof(buffer), "time: %.4f sec  (%.4f + %.4f + %.4f + %.4f)  [percent]  unserialize: %5.2f   split: %5.2f  exec:%5.2f  result: %5.2f",
+				// double(value.all) / clocks_per_sec,
+                double(all)               / clocks_per_sec,
+                double(value.unserialize) / clocks_per_sec,
+                double(value.split)       / clocks_per_sec,
+                double(value.exec)        / clocks_per_sec,
+                double(value.result)      / clocks_per_sec,
+                100.0*value.unserialize   / all,
+                100.0*value.split         / all,
+                100.0*value.exec          / all,
+                100.0*value.result        / all
             );
             statistics_.addTag (prefix,buffer);
         };
@@ -1085,12 +1177,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
-} };  // end of namespace
+};  // end of namespace
 ////////////////////////////////////////////////////////////////////////////////
 
-inline auto operator""_rank    (unsigned long long int nb)  {   return bpl::arch::ArchUpmem::Rank    {nb};  }
-inline auto operator""_dpu     (unsigned long long int nb)  {   return bpl::arch::ArchUpmem::DPU     {nb};  }
-inline auto operator""_tasklet (unsigned long long int nb)  {   return bpl::arch::ArchUpmem::Tasklet {nb};  }
-
-////////////////////////////////////////////////////////////////////////////////
-#endif // __BPL_ARCH_UPMEM__
+inline auto operator""_rank    (unsigned long long int nb)  {   return bpl::ArchUpmem::Rank    {nb};  }
+inline auto operator""_dpu     (unsigned long long int nb)  {   return bpl::ArchUpmem::DPU     {nb};  }
+inline auto operator""_tasklet (unsigned long long int nb)  {   return bpl::ArchUpmem::Tasklet {nb};  }

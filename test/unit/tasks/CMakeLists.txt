@@ -17,6 +17,8 @@ set (CMAKE_CXX_FLAGS         "-Wall -Wextra -Wno-unused-parameter -Wno-macro-red
 MESSAGE ("-- DPU:  CMAKE_C_COMPILER  : ${CMAKE_C_COMPILER}")
 MESSAGE ("-- DPU:  CMAKE_CXX_COMPILER: ${CMAKE_CXX_COMPILER}")
 
+set (DPU_INCLUDE_SYSLIB /opt/upmem/share/upmem/include/syslib)
+
 ################################################################################
 
 # We create the config file.
@@ -91,7 +93,20 @@ set (TASKS_LIST
 	"VectorMove2"
 	"VectorEmplaceBack"
 	"Once1"
-	"Global1"  "Global2"  "Global3"  "Global4"  "Global5"
+	"Global1"  "Global2"  "Global3"  "Global4"  "Global5" "Global6"
+	"Struct1" "Struct2" "Struct3"
+	"VectorCache" "VectorConfig" "VectorMany" "VectorMany1" "VectorMany2" "VectorMany3" 
+	"GlobalOnce1"  "GlobalOnce2"
+	"VectorViewRandomAccess1"  "VectorViewRandomAccess2"
+	"VectorAddAndIterate"
+	"VectorSizeof12"
+	"VectorMany4" "VectorMany2b"
+	"VectorRandomAccessGlobal1" "VectorRandomAccessGlobal2"
+	"GlobalOnce3" "GlobalOnce4"
+	"SplitDifferentSizes"
+	"VectorEmpty1" "VectorEmpty2"
+	"VectorSplitDpu"
+	"OncePadding1"
 )
 
 ################################################################################
@@ -129,7 +144,7 @@ configure_file(amalgation_getsizeglobal.cpp.in  amalgation_getsizeglobal.cpp COP
 
  # We infer the stack size from compilation of the underlying task.
 EXECUTE_PROCESS (
-    COMMAND ${CMAKE_CXX_COMPILER} -ferror-limit=0 -std=gnu++2a ${DPU_TARGET_RTE} -D__x86_64__  -I${CMAKE_SOURCE_DIR}/src -I${CMAKE_CURRENT_SOURCE_DIR}/.. ${CXX_DEFAULT_INCLUDE_DIRECTORIES_LIST}  ${CMAKE_CURRENT_BINARY_DIR}/amalgation_getsizeglobal.cpp
+    COMMAND ${CMAKE_CXX_COMPILER} -ferror-limit=0 -std=gnu++2a ${DPU_TARGET_RTE} -D__x86_64__  -I${CMAKE_SOURCE_DIR}/src -I${CMAKE_CURRENT_SOURCE_DIR}/.. -I${DPU_INCLUDE_SYSLIB}  ${CXX_DEFAULT_INCLUDE_DIRECTORIES_LIST}  ${CMAKE_CURRENT_BINARY_DIR}/amalgation_getsizeglobal.cpp
     # We get the useful information from the compiler error message
     # See https://stackoverflow.com/questions/78580764/retrieving-from-gcc-clang-a-value-known-at-compilation-time/78580978#78580978 
     ERROR_VARIABLE  GLOBAL_WRAM_SIZE
@@ -150,6 +165,7 @@ foreach (X1 ${GLOBAL_WRAM_SIZE})
         #MESSAGE ("${X4class} -> ${MAP_GLOBALSIZE_${X4class}}")
     ENDIF()
 endforeach()
+#MESSAGE ("===> ${GLOBAL_WRAM_SIZE}")
 
 ################################################################################
 # DPU BINARIES GENERATION 
@@ -184,9 +200,9 @@ foreach (FULLTASKNAME ${TASKS_LIST})
 
         # we define the source to be compiled (ie. the generated cpp file)
         add_executable             (${localtarget} ${CMAKE_CURRENT_BINARY_DIR}/${localtarget}.cpp)
-        target_include_directories (${localtarget} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/.. ${DPU_INCLUDE_DIRS} /opt/upmem/share/upmem/include/syslib)
+        target_include_directories (${localtarget} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/.. ${DPU_INCLUDE_DIRS} ${DPU_INCLUDE_SYSLIB})
         target_compile_options     (${localtarget} PUBLIC ${DPU_TARGET_RTE} -DNR_TASKLETS=${NR_TASKLETS} -DSTACK_SIZE_DEFAULT=${STACK_SIZE_DEFAULT}  -O3 -DNDEBUG -fno-exceptions -fno-rtti  -D__x86_64__)
-        target_link_options        (${localtarget} PUBLIC ${DPU_TARGET_RTE} -DNR_TASKLETS=${NR_TASKLETS} -DSTACK_SIZE_DEFAULT=${STACK_SIZE_DEFAULT} -Wl,-S )
+        target_link_options        (${localtarget} PUBLIC ${DPU_TARGET_RTE} -DNR_TASKLETS=${NR_TASKLETS} -DSTACK_SIZE_DEFAULT=${STACK_SIZE_DEFAULT} -Wl,-S)
     
         # The following can be used for usage with dpu_profiling
         #target_link_options        (${localtarget} PUBLIC ${DPU_TARGET_RTE} -DNR_TASKLETS=${NR_TASKLETS} -DSTACK_SIZE_DEFAULT=${STACK_SIZE_DEFAULT}  -pg)

@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -9,7 +9,7 @@
 #include <bpl/core/Task.hpp>
 
 template<class ARCH>
-struct HelloWorld : bpl::core::Task<ARCH>
+struct HelloWorld : bpl::Task<ARCH>
 {
     USING(ARCH);
 

@@ -1,13 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2024
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <firstinclude.hpp>
 
-#ifndef __BPL_LAUNCHER__
-#define __BPL_LAUNCHER__
+#pragma once
 
 #include <bpl/utils/metaprog.hpp>
 #include <bpl/utils/reduce.hpp>
@@ -21,7 +20,6 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-namespace core {
 ////////////////////////////////////////////////////////////////////////////////
 
 //namespace tmp  // for the moment...
@@ -78,8 +76,8 @@ concept runnable = requires (TASK task, ARGS&&... args)
  *
  * \param[in] ARCH : class providing resources for a specific hardware architecture
  *
- * \see bpl::arch::ArchUpmem
- * \see bpl::arch::ArchMulticore
+ * \see bpl::ArchUpmem
+ * \see bpl::ArchMulticore
  */
 template <class ARCH>
 class Launcher
@@ -125,7 +123,9 @@ public:
      * \return result from the task
      */
     template<template<typename ...> class TASK, typename...TRAITS, typename ...ARGS>
-    requires runnable<ARCH,TASK<ARCH,TRAITS...>,ARGS...>
+    // WARNING!!! temporarely remove the concept here because of split management when mixing archs
+    // (e.g. unit tests on host like 'SplitDifferentSizes')
+    //requires runnable<ARCH,TASK<ARCH,TRAITS...>,ARGS...>
     auto  run (ARGS&&... args)
     {
         DEBUG_LAUNCHER ("[Launcher::run] BEGIN\n");
@@ -143,7 +143,7 @@ public:
         DEBUG_LAUNCHER ("[Launcher::run] reducing  %ld items\n", result.size());
 
         // We return the reduced results.
-        auto res = std::move(reducer(result));
+        auto res = reducer(result);
 
         DEBUG_LAUNCHER ("[Launcher::run] END\n");
 
@@ -162,7 +162,5 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-} };  // end of namespace
+};  // end of namespace
 ////////////////////////////////////////////////////////////////////////////////
-
-#endif // __BPL_LAUNCHER__

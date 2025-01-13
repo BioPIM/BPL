@@ -16,6 +16,8 @@ struct CountInstances
 
     struct Info
     {
+        static constexpr bool parseable = false;
+
         char dummy = 0;
 
         static size_t& counts (size_t n)

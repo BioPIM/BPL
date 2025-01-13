@@ -13,8 +13,7 @@
 #include <tasks/Mutex1.hpp>
 #include <tasks/Mutex2.hpp>
 
-using namespace bpl::core;
-using namespace bpl::arch;
+using namespace bpl;
 
 using arch_t = ArchUpmem;
 
