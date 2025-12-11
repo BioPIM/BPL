@@ -76,7 +76,7 @@ set (TASKS_LIST
 	"VectorMove2"
 	"VectorEmplaceBack"
 	"Once1"
-	"Global1"  "Global2"  "Global3"  "Global4"  "Global5" "Global6"
+	"Global0" "Global1"  "Global2"  "Global3"  "Global4"  "Global5" "Global6"
 	"Struct1" "Struct2" "Struct3"
 	"VectorMany" "VectorMany1" "VectorMany2" "VectorMany3" "VectorCache" "VectorConfig"
 	"GlobalOnce1"  "GlobalOnce2"

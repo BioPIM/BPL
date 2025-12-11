@@ -13,6 +13,7 @@ using namespace bpl;
 
 #include <tasks/IntegerType.hpp>
 #include <tasks/Once1.hpp>
+#include <tasks/Global0.hpp>
 #include <tasks/Global1.hpp>
 #include <tasks/Global2.hpp>
 #include <tasks/Global3.hpp>
@@ -263,6 +264,13 @@ TEST_CASE ("Once2", "[once]" )
         if (n==1)  {  REQUIRE (bufsize >= 8 + (nbitems*sizeof(uint32_t) + 8)*nbdpu ); }
         else       {  REQUIRE (bufsize == 8); }
     }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("Global0", "[global]" )
+{
+    using type = typename Global0<ArchDummy>::type;
+    Launcher<ArchUpmem>{1_dpu}.run<Global0> (type{});
 }
 
 //////////////////////////////////////////////////////////////////////////////
