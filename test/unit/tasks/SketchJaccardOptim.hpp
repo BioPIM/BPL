@@ -15,7 +15,7 @@ struct SketchJaccardOptim
     using hash_t   = uint32_t;
     using count_t  = uint16_t;
 
-    auto operator() (vector<hash_t>& dbRef, vector<hash_t>& dbQry, size_t ssize)
+    auto operator() (vector_view<hash_t>& dbRef, vector_view<hash_t>& dbQry, size_t ssize)
     {
         vector<count_t> result;
 

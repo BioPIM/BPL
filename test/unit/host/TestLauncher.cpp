@@ -1,23 +1,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2023
+// date  : 2025
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <catch2/catch_test_macros.hpp>
-
-#include <bpl/core/Launcher.hpp>
-#include <bpl/arch/ArchMulticore.hpp>
-#include <bpl/arch/ArchUpmem.hpp>
-#include <bpl/utils/std.hpp>
-#include <bpl/utils/split.hpp>
-#include <bpl/bank/BankRandom.hpp>
-#include <bpl/bank/BankChunk.hpp>
-
-#include <bpl/arch/ArchMulticoreResources.hpp>
-
-#include <array>
-#include <cstdio>
+#include <common.hpp>
 
 using namespace bpl;
 
@@ -33,6 +20,7 @@ using namespace bpl;
 #include <tasks/CountInstances.hpp>
 #include <tasks/GetPuid.hpp>
 #include <tasks/Array1.hpp>
+#include <tasks/Array2.hpp>
 #include <tasks/DoSomething.hpp>
 #include <tasks/HelloWorld.hpp>
 #include <tasks/Compare1.hpp>
@@ -40,6 +28,9 @@ using namespace bpl;
 #include <tasks/ReturnArray.hpp>
 #include <tasks/SplitRangeInt.hpp>
 #include <tasks/TemplateTask.hpp>
+#include <tasks/LauncherPool1.hpp>
+#include <tasks/Max.hpp>
+#include <tasks/Min.hpp>
 
 //////////////////////////////////////////////////////////////////////////////
 struct config
@@ -265,6 +256,34 @@ TEST_CASE ("Array1", "[Launcher]" )
     REQUIRE (launcher.run<Array1>  (arr, 4) == truth*4);
 }
 
+TEST_CASE ("Array2upmem", "[Launcher]" )
+{
+    Array2<ArchUpmem>::array_t arr;
+    for (size_t i=0; i<arr.size(); i++)  { arr[i] = i; }
+
+    Launcher<ArchUpmem> launcher (ArchUpmem::Rank(1));
+
+    uint64_t truth = uint64_t(arr.size()) * (arr.size()-1)/2 * launcher.getProcUnitNumber();
+
+    REQUIRE (launcher.run<Array2>  (arr, 1) == truth*1);
+    REQUIRE (launcher.run<Array2>  (arr, 2) == truth*2);
+    REQUIRE (launcher.run<Array2>  (arr, 4) == truth*4);
+}
+
+TEST_CASE ("Array2multicore", "[Launcher]" )
+{
+    Array2<ArchMulticore>::array_t arr;
+    for (size_t i=0; i<arr.size(); i++)  { arr[i] = i; }
+
+    Launcher<ArchMulticore> launcher (32_thread);
+
+    uint64_t truth = uint64_t(arr.size()) * (arr.size()-1)/2 * launcher.getProcUnitNumber();
+
+    REQUIRE (launcher.run<Array2>  (arr, 1) == truth*1);
+    REQUIRE (launcher.run<Array2>  (arr, 2) == truth*2);
+    REQUIRE (launcher.run<Array2>  (arr, 4) == truth*4);
+}
+
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("Mix runs", "[Launcher]" )
 {
@@ -459,9 +478,145 @@ void template_task_aux (LAUNCHER launcher)
     for (auto x : launcher.template run<TemplateTask,decltype(value)> (value))   {  REQUIRE (x==value);  }
 }
 
-
 TEST_CASE ("template task", "[Launcher]" )
 {
     template_task_aux (Launcher<ArchMulticore> {4_thread});
     template_task_aux (Launcher<ArchUpmem>     {4_dpu});
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("LauncherPool0", "[Launcher]" )
+{
+    std::array<char,16> data {'h','e','l','l', 'o', ' ', 'w','o','r','l','d', ' ', '!', 0};
+
+    LauncherPool<ArchUpmem> pool (25, 1_rank);
+
+    size_t imax = 20 * pool.getNbComponents();
+
+    std::atomic<uint32_t> nbOk = 0;
+
+    auto cbk = [&nbOk] (auto&& launcher, auto&& results)
+    {
+        for (auto res : results)
+        {
+            if (res==1181)   {  nbOk++;  }
+        }
+    };
+
+    // WARNING... we use a temporary object 'cbk' for calling 'submit'
+    // => using directly the lambda as argument may lead to to freeze on 'wait' (KO with g++ but OK with clang++)
+    for (size_t i=0; i<imax; i++)
+    {
+        pool.submit<HelloWorld> (cbk, std::ref(data));
+    }
+
+   // We need to wait the end of all workers.
+    pool.wait();
+
+    // We look whether we got all the results. NOTE: since some DPU may not work (HW issue),
+    // we are not sure to have a 1 ratio here, so we test against a reasonable value like 0.99
+    REQUIRE (nbOk.load() > 0.99 * (NR_TASKLETS * 64 * imax) );
+}
+
+//////////////////////////////////////////////////////////////////////////////
+auto LauncherPool1_aux (LauncherPool<ArchUpmem>& pool)
+{
+    uint16_t nbLaunchers = pool.size();
+    uint16_t nbRuns = 2;
+    uint16_t totalNbRuns = nbRuns*nbLaunchers;
+
+    std::atomic<uint16_t> totalNbOk = 0;
+
+    auto callback = [&totalNbOk] (auto&& launcher, auto&& results)
+     {
+        uint16_t nbOk = 0;
+        for (auto res : results)  {  nbOk += res; }
+        totalNbOk += nbOk; // take care of concurrent access since we are in a specific thread here.
+     };
+
+    for (uint16_t n=0; n<totalNbRuns; n++)
+    {
+        pool.submit<LauncherPool1> (callback, n);
+    }
+
+    // We wait for the end of all tasks processed by the pool.
+    pool.wait();
+
+    uint16_t res = (totalNbRuns*(totalNbRuns-1)/2) * 1 * NR_TASKLETS;
+    REQUIRE (totalNbOk.load() == res);
+}
+
+TEST_CASE ("LauncherPool1", "[Launcher]" )
+{
+    LauncherPool<ArchUpmem> pool (2, 1_dpu);
+    LauncherPool1_aux (pool);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+template<bool B>
+struct LauncherPoolTest
+{
+    LauncherPoolTest ()                          { stats()[0]++; }
+    LauncherPoolTest (LauncherPoolTest const& x) { stats()[1]++; }
+    LauncherPoolTest (LauncherPoolTest     && x) { stats()[2]++; }
+    ~LauncherPoolTest ()                         { stats()[3]++; }
+    static auto&  stats()  {  static std::array<size_t,4> arr = {};  return arr;  }
+};
+
+template<class ARCH>  struct LauncherPool2
+{
+    auto operator() (LauncherPoolTest<true> const& x, LauncherPoolTest<false> const& y) const  {  return 0;  }
+};
+
+TEST_CASE ("LauncherPool2", "[Launcher]" )
+{
+    // inside block => make sure the resources will be released before checking the instances number
+    {
+        LauncherPool<ArchMulticore> pool (1, 1_thread);
+
+        LauncherPoolTest<true> obj;
+
+        pool.submit<LauncherPool2> (
+            [] (auto&& launcher, auto&& results) {},
+            std::ref(obj),               // We use std::ref here since we know that 'obj' will live long enough.
+            LauncherPoolTest<false>{}    // A temporary object.
+        );
+
+        pool.wait();
+    }
+
+    // For the left reference:   1 default
+    REQUIRE (LauncherPoolTest<true> ::stats() == std::array<size_t,4> {1,0,0,1});
+
+    // For the temporary object: 1 default, 1 copy and 2 moves
+    REQUIRE (LauncherPoolTest<false>::stats() == std::array<size_t,4> {1,1,2,4});
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("Max1", "[MaxMin]" )
+{
+    Launcher<ArchUpmem> launcher (64_dpu);
+    for (auto r : launcher.run<Max> (17, 42))  {  REQUIRE (r == 42);  }
+    for (auto r : launcher.run<Max> (36, 12))  {  REQUIRE (r == 36);  }
+}
+
+TEST_CASE ("Max2", "[MaxMin]" )
+{
+    Launcher<ArchMulticore> launcher (32_thread);
+    for (auto r : launcher.run<Max> (17, 42))  {  REQUIRE (r == 42);  }
+    for (auto r : launcher.run<Max> (36, 12))  {  REQUIRE (r == 36);  }
+}
+
+TEST_CASE ("Min1", "[MaxMin]" )
+{
+    Launcher<ArchUpmem> launcher (64_dpu);
+    for (auto r : launcher.run<Min> (17, 42))  {  REQUIRE (r == 17);  }
+    for (auto r : launcher.run<Min> (36, 12))  {  REQUIRE (r == 12);  }
+}
+
+TEST_CASE ("Min2", "[MaxMin]" )
+{
+    Launcher<ArchMulticore> launcher (32_thread);
+    for (auto r : launcher.run<Min> (17, 42))  {  REQUIRE (r == 17);  }
+    for (auto r : launcher.run<Min> (36, 12))  {  REQUIRE (r == 12);  }
 }

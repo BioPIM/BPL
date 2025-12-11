@@ -357,6 +357,29 @@ constexpr auto get_nb_fields (T&& object) noexcept
     return result;
 }
 
+template<class T>
+requires(std::is_arithmetic_v<T>)
+constexpr auto get_hash (T const& object) noexcept
+{
+    return uint64_t (object);
+}
+
+template<class T,size_t N>
+constexpr auto get_hash (std::array<T,N> const& object) noexcept
+{
+    uint64_t s=0;  for (auto&& x : object)  { s += get_hash(x); }
+    return s;
+}
+
+template<class T>
+requires (std::is_class_v<T>)
+constexpr auto get_hash (T const& object) noexcept
+{
+    uint64_t result = 0;
+    bpl::class_fields_iterate (object, [&] (auto&& field)  {  result += get_hash (field);  });
+    return result;
+}
+
 namespace details
 {
     template< typename result_type, typename ...types, std::size_t ...indices >
@@ -862,6 +885,12 @@ auto transform_each(const std::tuple<Args...>& t, F f)
     return transform_each_impl(t, f, std::make_index_sequence<sizeof...(Args)>{});
 }
 
+template <class F, typename...Args>
+auto transform_each (F f, Args&&...args)
+{
+    return std::forward_as_tuple (f(std::forward<Args>(args))...);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template<typename TIter1, typename TIter2>
@@ -948,8 +977,8 @@ struct compare_tuples<COMPARATOR,std::tuple<A...>, std::tuple<B...>>
 ////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/78922921/type-trait-providing-the-static-member-of-a-struct-class-if-available?noredirect=1#comment139150964_78922921
 #define DEFINE_GETTER(NAME)                                                                 \
-  template<typename T, int DEFAULT>                                                         \
-  static inline constexpr int get_##NAME##_v =  []() -> decltype(auto)                      \
+  template<typename T, auto DEFAULT>                                                        \
+  static inline constexpr decltype(DEFAULT) get_##NAME##_v =  []() -> decltype(auto)        \
   {                                                                                         \
       if constexpr (requires { T::NAME; }) {  return T::NAME;  } else {  return DEFAULT;  } \
   }();
@@ -1033,7 +1062,7 @@ template<template<typename> class PREDICATE, typename T>
 struct CounterTrait<PREDICATE,T>  : std::integral_constant<int, (PREDICATE<std::decay_t<T>>::value ? 1 : 0)> {};
 
 template<template<typename> class PREDICATE, typename T>
-static inline constexpr bool CounterTrait_v = CounterTrait<PREDICATE,T>::value;
+static inline constexpr int CounterTrait_v = CounterTrait<PREDICATE,T>::value;
 
 template<template<typename> class PREDICATE, typename T>
 requires (is_parseable_v<T>)
@@ -1058,6 +1087,16 @@ using static_not = typename std::conditional<
     std::false_type,
     std::true_type
 >::type;
+
+////////////////////////////////////////////////////////////////////////////////
+// Type traits that retrieve the template parameter
+template<typename T> struct FirstTemplateParameter {};
+
+template<template<typename> typename X, typename T>
+struct FirstTemplateParameter<X<T>> { using type=T; };
+
+template<typename T>
+using FirstTemplateParameter_t = typename FirstTemplateParameter<T>::type;
 
 ////////////////////////////////////////////////////////////////////////////////
 };  // end of namespace

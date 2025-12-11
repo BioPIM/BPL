@@ -6,6 +6,13 @@
 
 #pragma once
 
+////////////////////////////////////////////////////////////////////////////////
+// @description: Takes two vectors Ai and Bi as input and computes an output
+// vector Ci=Ai+Bi
+// @remarks: a 'zip' function is used for iterating Ai and Bi
+// @benchmark-input: 2^n for n in range(10,20)
+// @benchmark-split: yes (v1 and v2)
+////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
 struct VectorAdd
 {

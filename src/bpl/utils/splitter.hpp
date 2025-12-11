@@ -273,7 +273,7 @@ struct SplitOperator<details::SplitProxy<LEVEL,KIND,TYPE>>
      * \param total : total number of partitions
      * \return the ith partition
      */
-    static TYPE split (const details::SplitProxy<LEVEL,KIND,TYPE>& t, std::size_t idx, std::size_t total)
+    static decltype(auto) split (const details::SplitProxy<LEVEL,KIND,TYPE>& t, std::size_t idx, std::size_t total)
     {
         // We simply forward to the encapsulated object.
         return SplitOperator<TYPE>::split (t, idx, total);

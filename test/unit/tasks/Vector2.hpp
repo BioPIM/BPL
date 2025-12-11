@@ -123,7 +123,7 @@ struct Vector2 : bpl::Task<ARCH>
         {
             for (int k=1; k<=K; k++)
             {
-                bpl::vector <type, Allocator, MutexNull, 8, 1, 3, 10> vec;
+                bpl::vector <type, Allocator, MutexNull, 8, 1, true, 3, 10> vec;
 
                 for (type i=1; i<=N; i++)  {  vec.push_back (i);  }
 

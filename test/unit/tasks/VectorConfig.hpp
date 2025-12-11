@@ -11,7 +11,7 @@
 //////////////////////////////////////////////////////////////////////
 struct SomeConfig
 {
-    static const int VECTOR_MEMORY_SIZE_LOG2 = 10;
+    static const int VECTOR_MEMORY_SIZE_LOG2 = 9;
     static const int VECTOR_CACHE_NB_LOG2    = 1;
 };
 

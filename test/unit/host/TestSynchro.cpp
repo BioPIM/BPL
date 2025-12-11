@@ -1,14 +1,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics
-// date  : 2024
+// date  : 2025
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <catch2/catch_test_macros.hpp>
-
-#include <bpl/core/Launcher.hpp>
-#include <bpl/arch/ArchMulticore.hpp>
-#include <bpl/arch/ArchUpmem.hpp>
+#include <common.hpp>
 
 #include <tasks/Mutex1.hpp>
 #include <tasks/Mutex2.hpp>

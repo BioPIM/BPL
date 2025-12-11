@@ -9,6 +9,8 @@
 #include <firstinclude.hpp>
 #include <vector>
 
+#define WITH_STATS_TIME_MEDIAN 1
+
 ////////////////////////////////////////////////////////////////////////////////
 // STATISTICS
 //
@@ -37,23 +39,38 @@ struct TimeStatsValues
     }
 };
 
-struct TimeStats : TimeStatsValues<uint32_t>
+struct TimeStats : TimeStatsValues<uint64_t>
 {
+    using value_type = uint64_t;
+
     static auto minmax (const std::vector<TimeStats>& entries)
     {
         TimeStats m;
         TimeStats M;
 
-        m.all = std::numeric_limits<uint32_t>::max();
+        m.all = std::numeric_limits<value_type>::max();
         M.all = 0;
 
+        std::vector<value_type> alls;
         for (const auto& x : entries)
         {
+            alls.push_back (x.all);
             if (x.all < m.all)  { m = x; }
             if (x.all > M.all)  { M = x; }
         }
 
-        return std::make_tuple (m,M);
+#ifdef WITH_STATS_TIME_MEDIAN
+        std::sort(alls.begin(), alls.end());
+#endif
+        std::array<value_type,32> quantiles = {};
+
+        if (not alls.empty())
+        {
+            size_t idx=0; for (auto& x : quantiles) { x = alls[idx*alls.size()/quantiles.size()]; idx++; }
+            quantiles.back() = alls.back();
+        }
+
+        return std::make_tuple (m,M,quantiles);
     }
 
     static auto mean (const std::vector<TimeStats>& entries)
@@ -120,6 +137,7 @@ struct MetadataOutput
     uint32_t        stack_size        = 0;
     uint32_t        input_sizeof      = 0;
     uint32_t        output_sizeof     = 0;
+    uint32_t        restoreNbErrors   = 0;
 
     struct VectorStats
     {

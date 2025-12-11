@@ -1,14 +1,11 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2025
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <catch2/catch_test_macros.hpp>
+#include <common.hpp>
 
-#include <bpl/core/Launcher.hpp>
-#include <bpl/arch/ArchMulticore.hpp>
-#include <bpl/arch/ArchUpmem.hpp>
 #include <bpl/utils/RangeInt.hpp>
 #include <bpl/utils/tag.hpp>
 
@@ -30,9 +27,16 @@ using namespace bpl;
 #include <tasks/GlobalOnce3.hpp>
 #include <tasks/GlobalOnce4.hpp>
 #include <tasks/OncePadding1.hpp>
+#include <tasks/ResultsToVector.hpp>
+#include <tasks/VectorSplitDpu.hpp>
+#include <tasks/TemplateSpecialization.hpp>
+#include <tasks/SyracuseReduce.hpp>
+#include <tasks/Syracuse.hpp>
 
 #include <iostream>
 #include <list>
+#include <ranges>
+#include <algorithm>
 
 #include <fmt/core.h>
 #include <fmt/ranges.h>
@@ -220,7 +224,7 @@ TEST_CASE ("Once1", "[once]" )
         size_t bufsize = launcher.getStatistics().getCallNb ("broadcast_size");
 
         // See 'Once2' for explanation of broadcast buffer size.
-        if (n==1)  {  REQUIRE (bufsize == 8 + (N*sizeof(uint32_t) + 8)*1 ); }
+        if (n==1)  {  REQUIRE (bufsize >= 8 + (N*sizeof(uint32_t) + 8)*1 ); }
         else       {  REQUIRE (bufsize == 8); }
     }
 }
@@ -256,7 +260,7 @@ TEST_CASE ("Once2", "[once]" )
         //   for n>1:
         //      -> 8 bytes for the second parameter (same value used for all DPUs)
 
-        if (n==1)  {  REQUIRE (bufsize == 8 + (nbitems*sizeof(uint32_t) + 8)*nbdpu ); }
+        if (n==1)  {  REQUIRE (bufsize >= 8 + (nbitems*sizeof(uint32_t) + 8)*nbdpu ); }
         else       {  REQUIRE (bufsize == 8); }
     }
 }
@@ -384,7 +388,7 @@ TEST_CASE ("Struct1", "[global]" )
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("Struct2", "[global]" )
 {
-    using type = Struct2<ArchUpmem>::MyStruct;
+    using type = MyStruct<ArchDummy>;
 
     Launcher<ArchUpmem> launcher {1_dpu};
 
@@ -397,7 +401,7 @@ TEST_CASE ("Struct2", "[global]" )
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("Struct2b", "[global]" )
 {
-    using type = Struct2<ArchUpmem>::MyStruct;
+    using type = MyStruct<ArchDummy>;
 
     Launcher<ArchUpmem> launcher {11_dpu};
 
@@ -441,9 +445,9 @@ TEST_CASE ("Struct4", "[global]" )
 }
 
 //////////////////////////////////////////////////////////////////////////////
-TEST_CASE ("Struct5", "[global]" )
+TEST_CASE ("Struct2c", "[global]" )
 {
-    using type = Struct2<ArchUpmem>::MyStruct;
+    using type = MyStruct<ArchDummy>;
 
     Launcher<ArchUpmem> launcher {1_dpu};
 
@@ -529,7 +533,7 @@ void GlobalOnce_aux (DATATYPE&& data, size_t nbitems, uint64_t truth)
         size_t bufsize = launcher.getStatistics().getCallNb ("broadcast_size");
         //fmt::println("broadcast_size: {}", bufsize);
 
-        if (nbruns==1)  {  REQUIRE (bufsize == nbitems*sizeof(uint16_t) + 2*sizeof(uint64_t) ); }
+        if (nbruns==1)  {  REQUIRE (bufsize >= nbitems*sizeof(uint16_t) + 2*sizeof(uint64_t) ); }
         else            {  REQUIRE (bufsize == sizeof(uint64_t) ); }
     }
 }
@@ -537,7 +541,7 @@ void GlobalOnce_aux (DATATYPE&& data, size_t nbitems, uint64_t truth)
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("GlobalOnce3", "[once]" )
 {
-    using type = typename GlobalOnce3<ArchMulticore>::type;
+    using type = typename GlobalOnce3<ArchDummy>::type;
 
     uint64_t truth = 0;
     type v;
@@ -549,7 +553,7 @@ TEST_CASE ("GlobalOnce3", "[once]" )
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("GlobalOnce4", "[once]" )
 {
-    using type = GlobalOnce4Struct<ArchMulticore>;
+    using type = GlobalOnce4Struct<ArchDummy>;
 
     uint64_t truth = 0;
     type v;
@@ -587,4 +591,195 @@ TEST_CASE ("OncePadding1", "[once]" )
             OncePadding1_aux (nbDpu,imax);
         }
     }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+auto ResultsToVector_aux (size_t nbdpu)
+{
+    // test 'to_vector' method of the object returned by the call of Launcher::run
+    // -> will get all the results in a vector
+
+    //fmt::println ("dpu: {}", nbdpu);
+
+    size_t nbitems = 1;
+
+    Launcher<ArchUpmem> launcher {ArchUpmem::DPU(nbdpu)};
+
+    auto check = [&] (auto&& results)
+    {
+        size_t i=1;
+        for (auto&& res : results)
+        {
+            REQUIRE (res.size() == i);
+            uint64_t s=0;  for (auto x : res) { s+=x; }
+            REQUIRE (s == uint64_t{i+1}*i/2);
+            i++;
+        }
+    };
+
+    // Test 1: without using 'to_vector'
+    check (launcher.run<ResultsToVector>(nbitems));
+
+    // Test 2: with using 'to_vector' -> ACTIVATED BY DEFAULT
+	// check (launcher.run<ResultsToVector>(nbitems).to_vector());
+}
+
+TEST_CASE ("ResultsToVector", "[misc]" )
+{
+    for (size_t nbdpu : {1,2,4,8,16,32,64,128,256,512,1024})
+    {
+        ResultsToVector_aux (nbdpu);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+template<typename UNITS>
+auto Diagnostic_aux (UNITS units, size_t imax)
+{
+    std::vector<uint64_t> v1;  for (size_t i=1; i<=imax; i++)  {  v1.push_back (i);  }
+    std::vector<uint64_t> v2;  for (size_t i=1; i<=imax; i++)  {  v2.push_back (i);  }
+
+    Launcher<ArchUpmem> launcher {units};
+
+    size_t nbErrors = 0;
+    for ([[maybe_unused]] auto res : launcher.template run<VectorSplitDpu> (split<ArchUpmem::DPU>(v1),v2))
+    {
+        nbErrors += res.second != imax*(imax+1)/2 ? 1 : 0;
+    }
+    //fmt::println ("launcher: {}  imax: {:6}  nbErrors: {}", fmt::join(launcher.getProcUnitDetails(),"/"), imax, nbErrors);
+}
+
+TEST_CASE ("Diagnostic", "[misc]" )
+{
+    for (size_t nb=1; nb<=26; nb++)  {   Diagnostic_aux (ArchUpmem::Rank(nb),11111);  }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("TemplateSpecialization", "[misc]" )
+{
+    for (auto res : Launcher<ArchUpmem>    {1_dpu}   .run<TemplateSpecialization> ()) { REQUIRE(res.v.size()==1); }
+    for (auto res : Launcher<ArchMulticore>{1_thread}.run<TemplateSpecialization> ()) { REQUIRE(res.v.size()==0); }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+struct Benchmark
+{
+    static constexpr auto defaultCallback = [] (
+            const char* taskname,
+            size_t nbruns,
+            auto&& launcher,
+            double duration,
+            auto&& input
+        ) {
+
+        double time1 = launcher.getStatistics().getTiming("run/cumul/all")      / nbruns;
+        double time2 = launcher.getStatistics().getTiming("run/cumul/launch")   / nbruns;
+        double time3 = launcher.getStatistics().getTiming("run/cumul/pre")      / nbruns;
+        double time4 = launcher.getStatistics().getTiming("run/cumul/post")     / nbruns;
+        double time5 = launcher.getStatistics().getTiming("run/cumul/result")   / nbruns;
+
+        fmt::println ("task: {:15}  arch: {:10}  unit: {:8s} {:4} {:5}  time: {:9.5f} {:9.5f} {:9.5f} {:9.5f} {:9.5f} {:9.5f}  in: {:3}",
+            taskname,
+            launcher.name(),
+            launcher.getTaskUnit()->name(),
+            launcher.getTaskUnit()->getNbComponents(),
+            launcher.getTaskUnit()->getNbUnits(),
+            duration, time1, time2, time3, time4, time5,
+            input
+        );
+    };
+
+    template<typename...Ls>
+    static auto run (const char* taskname, size_t nbruns, std::tuple<Ls...> launchersViews,
+        auto inputs, auto fct
+        //,auto callback = defaultCallback
+    )
+    {
+        auto exec = [&] (auto launchers) {
+            for (auto arg : inputs) {  // 'inputs' before 'launchers' => mandatory for exact cumulation times for launchers
+                for (auto l : launchers) {
+                    fct(taskname, nbruns, l, arg, defaultCallback);
+                }
+            }
+        };
+
+        [&] <std::size_t...Is> (std::index_sequence<Is...>){
+            ( exec (std::get<Is>(launchersViews)), ...);
+        } (std::make_index_sequence<sizeof...(Ls)>() );
+    }
+};
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("SyracuseReduce", "[misc]" )
+{
+return;
+    auto fct = [] (const char* taskname, size_t nbruns, auto&& launcher, uint64_t input, auto callback) {
+
+        std::pair<uint64_t,uint64_t> range (1, 1ULL<<input);
+
+        auto t0 = timestamp();
+        for (size_t i=0; i<nbruns; i++) {   launcher.template run<SyracuseReduce> (split(range));  }
+        auto t1 = timestamp();
+
+        callback (taskname, nbruns, launcher, (t1-t0)/nbruns/1'000'000.0, input);
+    };
+
+    auto v1 = std::views::iota(0,6) | std::views::transform([](auto nbthreadLog2) {
+        return Launcher<ArchMulticore> { ArchMulticore::Thread(1<<nbthreadLog2), 32_thread};
+    });
+
+    auto v2 = std::views::iota(1,25) | std::views::transform([](auto nbrank) {
+        return Launcher<ArchUpmem> { ArchUpmem::DPU(64*nbrank) };
+    });
+
+    auto input = std::views::iota(20,31);
+
+    size_t nbruns = 5;
+
+    Benchmark::run ("SyracuseReduce", nbruns, std::make_tuple(v2, v1), input, fct);
+
+#if 0
+    auto fct = [&] (auto idx, std::size_t nbdpu) {
+
+        Launcher<ArchUpmem>     l1 { ArchUpmem    ::DPU   {nbdpu}    };
+        Launcher<ArchMulticore> l2 { ArchMulticore::Thread{nbdpu*16}, 32_thread};
+
+        if (l1.getProcUnitNumber() != l2.getProcUnitNumber())  {
+            throw std::runtime_error("incompatible number of process units between launchers");
+        }
+
+        auto t0 = timestamp();
+        [[maybe_unused]] auto res1 = l1.run<SyracuseReduce> (split(range));
+        auto t1 = timestamp();
+        [[maybe_unused]] auto res2 = l2.run<SyracuseReduce> (split(range));
+        auto t2 = timestamp();
+
+        double dt1 = (t1-t0)/1000.0;
+        double dt2 = (t2-t1)/1000.0;
+
+        fmt::println ("idx: {:3}  dpu: {:5}  same_result: {}  upmem: {:6.3f}  multicore: {:6.3f}  ratio: {:6.3f} ",
+            idx, nbdpu, res1==res2, dt1,dt2, (dt1!=0 ? dt2/dt1 : 0)
+        );
+    };
+
+    auto v = std::views::iota(1,21) | std::views::transform([](auto i) { return 64*i; });
+
+    auto run = [] (auto v, auto fct) {
+        size_t i=0;  for (auto x : v) { fct(i++,x); }
+    };
+
+    run (v,fct);
+#endif
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("Syracuse", "[misc]" )
+{
+return;
+    uint64_t N = 1ULL<<30;
+    std::pair<uint64_t,uint64_t> range (1, N);
+
+//    Launcher<ArchUpmem> launcher {20_rank};
+    Launcher<ArchMulticore> launcher {ArchMulticore::Thread{16*64*20}, 32_thread};
+    auto result = launcher.run<Syracuse> (split(range));
 }

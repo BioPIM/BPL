@@ -1,20 +1,16 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2025
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <catch2/catch_test_macros.hpp>
+#include <common.hpp>
 
-#include <bpl/core/Launcher.hpp>
-#include <bpl/arch/ArchMulticore.hpp>
-#include <bpl/arch/ArchUpmem.hpp>
 #include <bpl/utils/RangeInt.hpp>
 #include <bpl/utils/tag.hpp>
 
 using namespace bpl;
 
-#include <iostream>
 #include <list>
 #include <string_view>
 
@@ -295,3 +291,35 @@ TEST_CASE ("Log2", "[metaprog]" )
     #undef TL2
 }
 
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("get_hash", "[metaprog]" )
+{
+    uint32_t n=123;
+    REQUIRE (get_hash(n) == n);
+
+    struct foo
+    {
+        uint32_t a;
+        uint32_t b;
+    };
+    foo f = {11,23};
+    REQUIRE (get_hash(f) == 11+23);
+
+    struct bar
+    {
+        foo      f;
+        uint32_t c;
+        uint32_t d;
+    };
+    bar b = { {11,23}, 35, 49};
+    REQUIRE (get_hash(b) == 11+23+35+49);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+template<typename T> struct mypredicate      : std::false_type {};
+template<>           struct mypredicate<int> : std::true_type  {};
+
+TEST_CASE ("predicate", "[metaprog]" )
+{
+    static_assert (count_predicate_match_v<mypredicate, int,char,int> == 2);
+}

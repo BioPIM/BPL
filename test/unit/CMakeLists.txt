@@ -12,6 +12,9 @@ pkg_check_modules(DPU REQUIRED dpu)
 set (CMAKE_CXX_STANDARD      20)
 set (CMAKE_CXX_FLAGS         "-Wall -Wextra -Wno-unused-parameter -O3 -DNDEBUG -g -fdiagnostics-color=always")
 
+# Using this flag will add a checksum while serializing data from host to DPUs.
+#set (WITH_SERIALIZATION_HASH_CHECK 1)
+ 
 ################################################################################
 
 include_directories     (${PROJECT_SOURCE_DIR}/src ${DPU_INCLUDE_DIRS})
@@ -24,6 +27,10 @@ endif()
 
 if (NOT DEFINED NR_TASKLETS)
     set (NR_TASKLETS 16)
+endif()
+
+if (NOT DEFINED NR_THREADS)
+    set (NR_THREADS 24)
 endif()
 
 ################################################################################

@@ -105,7 +105,7 @@ struct Vector3 : bpl::Task<ARCH>
 
     using type_t   = uint32_t;
 
-    using vector_t = bpl::vector<type_t,MyAllocator,MutexNull,8,1,3,9>;
+    using vector_t = bpl::vector<type_t,MyAllocator,MutexNull,8,1,true,3,9>;
 
     uint64_t operator() (size_t nbtasks, uint32_t nbitems)
     {

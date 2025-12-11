@@ -17,6 +17,7 @@
 #include <string>
 #include <map>
 #include <thread>
+#include <any>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
@@ -86,6 +87,15 @@ public:
 
     using arch_t = ARCH;
 
+    template<typename... ARGS>
+    static std::any make_configuration (ARGS&&... args)  {
+        return arch_t::make_configuration (std::forward<ARGS>(args)...);
+    }
+
+    static auto create (std::any cfg)  {  return std::make_unique <Launcher<ARCH>> (cfg);  }
+
+    Launcher(std::any cfg)  : arch_(cfg) {}
+
     /** Constructor. Perfect forwarding used here in order to initialize the underlying architecture.
      * \param[in] args : parameters for initializing the architecture
      */
@@ -109,6 +119,8 @@ public:
 
     auto getProcUnitDetails()  const { return arch_.getProcUnitDetails(); }
 
+    auto getTaskUnit() const { return arch_.getTaskUnit(); }
+
     /** Run a task on the underlying architecture.
      *
      * Launcher has the responsibility to check whether the end user has provided some information for splitting the input
@@ -123,7 +135,7 @@ public:
      * \return result from the task
      */
     template<template<typename ...> class TASK, typename...TRAITS, typename ...ARGS>
-    // WARNING!!! temporarely remove the concept here because of split management when mixing archs
+    // WARNING!!! Temporarily remove the concept here because of split management when mixing archs
     // (e.g. unit tests on host like 'SplitDifferentSizes')
     //requires runnable<ARCH,TASK<ARCH,TRAITS...>,ARGS...>
     auto  run (ARGS&&... args)
@@ -153,6 +165,10 @@ public:
     const auto& getStatistics() const
     {
         return arch_.getStatistics();
+    }
+
+    auto resetStatistics() {
+        arch_.resetStatistics();
     }
 
 private:

@@ -25,6 +25,7 @@
 #include <tuple>
 #include <string>
 #include <cstring>
+#include <any>
 
 #include <thread>
 
@@ -50,8 +51,7 @@ namespace bpl  {
 class ArchMulticore : public ArchMulticoreResources
 {
 private:
-
-    BS::thread_pool threadpool_;
+    std::unique_ptr<BS::thread_pool<>> threadpool_;
 
 public:
 
@@ -68,23 +68,61 @@ public:
         using TaskUnit::TaskUnit;
         constexpr static int LEVEL = 1;
         std::size_t getNbUnits() const { return getNbComponents()*1; }
+        const char*  name() const { return "thread"; }
     };
 
     using lowest_level_t = Thread;
 
+    template<typename T> struct hasSplitArgument  : std::false_type {};
+
+    template<typename T>
+    requires(::details::GetSplitStatus<T,lowest_level_t>::value > 0)
+    struct hasSplitArgument<T> : std::true_type  {};
+
+    struct ArchMulticoreConfiguration  {
+        std::shared_ptr<TaskUnit> taskunit;
+        std::size_t nbcomponents;
+        std::size_t chunksize;
+        bool trace;
+        bool reset;
+    };
+
     template<typename TASKUNIT=Thread>
-    ArchMulticore (TASKUNIT taskunit = TASKUNIT(1),
+    static std::any make_configuration (
+        TASKUNIT taskunit  = TASKUNIT(1),
+        TASKUNIT chunksize = TASKUNIT(1),
+        bool trace=false,
+        bool reset=false
+    )
+    {
+        return ArchMulticoreConfiguration {
+            std::shared_ptr<TaskUnit> (new TASKUNIT(taskunit)),
+            taskunit.getNbComponents(), chunksize.getNbComponents(), trace, reset
+        };
+    }
+
+    ArchMulticore (std::any config) {
+        try {
+            auto cfg = std::any_cast<ArchMulticoreConfiguration>(config);
+            taskunit_  = cfg.taskunit;
+            nbThreads_ = cfg.nbcomponents;
+            chunkSize_ = cfg.chunksize;
+            threadpool_ = std::make_unique<BS::thread_pool<>> (std::min(nbThreads_,chunkSize_));
+        }
+        catch (const std::bad_any_cast& e)  {  std::cout << e.what() << '\n';  }
+    }
+
+    template<typename TASKUNIT=Thread>
+    ArchMulticore (TASKUNIT taskunit = TASKUNIT(1), TASKUNIT chunksize = TASKUNIT(1),
         [[maybe_unused]] bool trace=false,
         [[maybe_unused]] bool reset=false
-    ) : threadpool_(taskunit.getNbComponents())
-    {
-        nbThreads_ = taskunit.getNbComponents();
-    }
+    ) : ArchMulticore (make_configuration(taskunit, chunksize, trace, reset)) {}
 
     /** Constructor.
      * \param[in] nbThreads : number of usable threads for this architecture.
      */
-    ArchMulticore (int nbThreads=1) : nbThreads_ (nbThreads) {}
+    ArchMulticore (int nbThreads=1) :
+        ArchMulticore (Thread(nbThreads), Thread(nbThreads)) {}
 
     /** Return the name of the current architecture.
      * \return the architecture name
@@ -97,6 +135,8 @@ public:
     size_t getProcUnitNumber() const { return nbThreads_; }
 
     auto getProcUnitDetails()  const { return std::make_tuple(getProcUnitNumber()); }
+
+    auto getTaskUnit () const { return taskunit_; }
 
     ////////////////////////////////////////////////////////////////////////////////
     /** Configure an object of type T. We distinguish here two cases:
@@ -119,20 +159,19 @@ public:
      */
     template<template<typename ...> class TASK, typename...TRAITS, typename ...ARGS>
     auto run (ARGS&&...args)
-    //auto run (const std::vector<std::tuple<ARGS...>>& configurations)
     {
         using task_t = TASK<arch_t,TRAITS...>;
 
-        auto ts = statistics_.produceTimestamp("run/launch");
-
         // We determine the result type of the TASK::run method.
         // Note that the TASK type is instantiated with the current ARCH type.
-        using result_t = bpl::return_t<decltype(&task_t::operator())>;
+        using result_t = std::decay_t<bpl::return_t<decltype(&task_t::operator())>>;
 
         // We create the result vector.
         std::vector<result_t> results;
 
-        auto loop_future = threadpool_.submit_sequence <std::size_t> (0, getProcUnitNumber(),  [&] (std::size_t idx)
+        std::vector<float> exectimes(getProcUnitNumber());
+
+        auto loop_future = threadpool_->submit_sequence <std::size_t> (0, getProcUnitNumber(),  [&] (std::size_t idx)
         {
             task_t task;
 
@@ -140,19 +179,34 @@ public:
             configure (
                 task,
                 idx, // process unit uid
-                0,   // group uid: only one group for multicore (with idx 0)
+                idx, // group uid: same as thread
                 0
             );
 
-            auto config = prepare<ARGS...>(idx,getProcUnitNumber(),std::tuple<ARGS...> {args...});
+            // we check whether an argument has to be split.
+            if constexpr(count_predicate_match_v<hasSplitArgument, ARGS...> == 0)
+            {
+                TimeStamp ts (exectimes[idx]);
+                return task (std::forward<decltype(args)>(args)...);
+            }
+            else
+            {
+                TimeStamp ts (exectimes[idx]);
 
-            // we use 'apply' here to unpack the current tuple in order to feed the 'run' method of the task.
-            return bpl::apply ( [&](auto &&... args)  {  return task (args...);  },
-                config
-            );
+                auto config = prepare<ARGS...>(idx,getProcUnitNumber(),std::tuple<ARGS...> {std::forward<decltype(args)>(args)...});
+
+                // we use 'apply' here to unpack the current tuple in order to feed the 'run' method of the task.
+                return bpl::apply ( [&](auto &&... args)  {  return task (std::forward<decltype(args)>(args)...);  },
+                    config
+                );
+            }
         });
 
-        for (auto&& res : loop_future.get()) { results.push_back (res); }
+        // we can do a std::move here
+        for (auto&& res : loop_future.get()) { results.push_back (std::move(res)); }
+
+        auto maxTime = *std::max_element(exectimes.begin(), exectimes.end());
+        statistics_.addTiming("run/once/launch", maxTime);
 
         // We return the partial results as a vector.
         return results;
@@ -164,7 +218,7 @@ public:
      *    - otherwise, we use the object itself without transformation.
      */
     template<typename ...ARGS>
-    auto prepare (size_t idx, size_t nbitems, const std::tuple<ARGS...>& targs)
+    decltype(auto) prepare (size_t idx, size_t nbitems, const std::tuple<ARGS...>& targs)
     {
         return bpl::transform_each (targs, [&] (auto&& x)
         {
@@ -186,10 +240,17 @@ public:
      */
     const Statistics& getStatistics() const { return statistics_; }
 
+    auto resetStatistics() { statistics_={}; }
+
 private:
+
+    std::shared_ptr<TaskUnit> taskunit_;
 
     /** Number of threads usable for this architecture. */
     size_t nbThreads_ = 1;
+
+    /** Number of threads usable at the same time. */
+    size_t chunkSize_ = 1;
 
     Statistics statistics_;
 };
@@ -227,6 +288,22 @@ public:
 private:
     pointer_t buf_;
 };
+
+template<>
+struct Task <ArchMulticore> : TaskBase <Task<ArchMulticore>>
+{
+    using parent_t = TaskBase <Task<ArchMulticore>>;
+
+    using tuid_t   = typename parent_t::tuid_t;
+    using cycles_t = typename parent_t::cycles_t;
+
+    cycles_t nbcycles() const  { return 1;  }
+
+    void notify (size_t current, size_t total) {}
+
+    bool match_tuid (tuid_t value) const  { return true; }
+};
+
 
 ////////////////////////////////////////////////////////////////////////////////
 };

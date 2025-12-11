@@ -12,9 +12,13 @@
 template<class ARCH>
 struct VectorMany2 : bpl::Task<ARCH>
 {
-    USING (ARCH);
+    struct config  {
+        static const int VECTOR_MEMORY_SIZE_LOG2 = 10;
+    };
 
-    template<template<typename> class CONTAINER, typename T>
+    USING (ARCH,config);
+
+    template<template<typename...> class CONTAINER, typename T>
     struct type_generic
     {
         CONTAINER<T> a0;
@@ -29,7 +33,7 @@ struct VectorMany2 : bpl::Task<ARCH>
         CONTAINER<T> a9;
     };
 
-    using type = type_generic<vector,uint32_t>;
+    using type = type_generic<vector_view,uint32_t>;
 
     auto operator() (const type& t)
     {

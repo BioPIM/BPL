@@ -22,7 +22,7 @@ struct CountInstances
 
         static size_t& counts (size_t n)
         {
-            static std::size_t arr[] = {0,0,0,0,0,0,0};
+            static size_t arr[] = {0,0,0,0,0,0,0};
             return arr[n];
         }
 

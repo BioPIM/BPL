@@ -776,6 +776,53 @@ struct once
 	using type = T; 
 };
 
+////////////////////////////////////////////////////////////////////////////////
+//
+////////////////////////////////////////////////////////////////////////////////
 
+LauncherPool<ArchUpmem> pool (40_rank);  // 40 instances of Launcher with 64 DPUs each
 
+pool.submit<pang> (
+	[&] (size_t idx, auto&& list_nga)
+	{
+        std::sort (list_nga.begin(),list_nga.end(), [] (const Align& A1, const Align& A2)  {  return (A1.score > A2.score); });
+        
+        for (Align const& align : list_nga)
+        {
+            save<config::arch_t> (
+                ref_name,
+                fresults,
+                align,
+                queries     [align.num_qry_prot],
+                queriesNames[align.num_qry_prot],
+                align_p
+            );
+        }
+	},
+	split (DS),
+    submat,
+    queries,
+	align_p.get()
+);
+
+template<typename Task, typename Callback, typename...Args>
+auto LauncherPool::submit (Callback&& cbk, Args&&...args)
+{
+ 	pool_.detach_task ([this]
+    {
+    	const std::optional<std::size_t> idx = BS::this_thread::get_index();
+    	
+		if (idx)
+		{
+			// we retrieve the required launcher.
+			auto& launcher = (*this) [idx];
+		
+			// we process the task
+			auto&& results = launcher.run<Task> (std::forward<Args>(args)...);
+			
+			// we invoke the callback with the results
+			cbk (idx, results);
+		}
+	});
+}
 

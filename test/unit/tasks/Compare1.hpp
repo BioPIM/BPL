@@ -17,7 +17,7 @@ struct Compare1
     USING(ARCH);
 
     static const int NBREF  = 64;
-    static const int NBQRY  = 64;
+    static const int NBQRY  = 32;
 
     static const int SEQLEN = 32;
 

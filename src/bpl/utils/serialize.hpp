@@ -50,9 +50,17 @@ struct Serialize
     using iter_t    = BUFITER;
     using buffer_t  = vector<char>;
     using pointer_t = typename BUFITER::pointer_t;
+    using serial_size_t = uint64_t;
 
     ////////////////////////////////////////////////////////////////////////////////
     constexpr static auto round (int n)  {  return roundUp<ROUNDUP>(n); }
+
+    // Returns a dummy buffer
+    static auto getDummyBuffer()
+    {
+        static char dummy[8] = { 1,2,3,4,5,6,7,8 };
+        return make_pair (dummy, sizeof(dummy));
+    }
 
     ////////////////////////////////////////////////////////////////////////////////
     // SERIALIZABLE
@@ -75,6 +83,8 @@ struct Serialize
 
         // we forward the request to the implementation provided by the user
         serializable<T>::template restore<ARCH,BUFITER,ROUNDUP> (it, result);
+
+        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -97,7 +107,20 @@ struct Serialize
         result = it.template object<T> (round(sizeof(T)));
 
         it.advance (round(sizeof(T)) );
+
+        return true;
     }
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // REF
+    ////////////////////////////////////////////////////////////////////////////////
+    template<typename T, typename FCT>
+    static auto iterate (bool transient, int depth, std::reference_wrapper<T> t, FCT fct, void* context=nullptr)
+    {
+        DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "reference_wrapper", (uint32_t) sizeof(T));
+        iterate (transient, depth, t.get(), fct, context);
+    }
+
 #if 0
     ////////////////////////////////////////////////////////////////////////////////
     // (std::is_trivially_copyable_v<T> and not (std::is_arithmetic_v<T> or is_serializable_v<T>))
@@ -120,6 +143,8 @@ struct Serialize
         result = it.template object<T> (round(sizeof(T)));
 
         it.advance (round(sizeof(T)) );
+
+        return true;
     }
 #endif
     ////////////////////////////////////////////////////////////////////////////////
@@ -150,6 +175,8 @@ struct Serialize
         // The possible choice is to restore directly each field of the struct, without using a tuple.
         // The consequence is that the code is not so pretty but we can avoid some unwanted copies then.
         class_fields_iterate (result, [&] (auto&& x)  { restore(it,x); });
+
+        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -182,6 +209,8 @@ struct Serialize
         // We initialize each item of the array.
         std::size_t idx=0;
         for (T& x : result)  {  it.initialize(x,idx++); }
+
+        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -206,6 +235,8 @@ struct Serialize
         DEBUG_SERIALIZATION (DEBUG_FMT, 0, "restore", "array + is_trivial_v<T>", (uint32_t) n);
 
         it.memcpy (result.data(), round (n) );
+
+        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -227,6 +258,8 @@ struct Serialize
 
         restore (it, result.first);
         restore (it, result.second);
+
+        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -243,7 +276,7 @@ struct Serialize
     }
 
     template<typename ...ARGS>
-    static void restore (iter_t& it, tuple<ARGS...>& result)
+    static auto restore (iter_t& it, tuple<ARGS...>& result)
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, 0, "restore", "tuple", (uint32_t) sizeof(tuple<ARGS...>));
 
@@ -251,6 +284,8 @@ struct Serialize
         {
             restore (it, x);
         });
+
+        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -261,24 +296,31 @@ struct Serialize
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "string", (uint32_t) size_t(0));
 
-        typename string::size_type n = t.size();
-        iterate (transient, depth, n,fct, context);
-        fct (transient, depth, (char*)t.data(), n, round(n));
+        serial_size_t n = t.size();
+
+        iterate (true, depth, n,fct, context);
+
+        if (n>0)  {  fct (transient, depth, (char*)t.data(), n, round(n)); }
     }
 
-    static void restore (iter_t& it, string& result)
+    static auto restore (iter_t& it, string& result)
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, 0, "restore", "string", (uint32_t) size_t(0));
 
         // We retrieve the size.
-        size_t n = 0;
+        serial_size_t n = 0;
         restore (it, n);
 
-        // We setup the object.
-        result.assign (it.get(),n);
+        if (n>0)
+        {
+            // We setup the object.
+            result.assign (it.get(),n);
 
-        // We update the pointer.
-        it.advance (n);
+            // We update the pointer.
+            it.advance (n);
+        }
+
+        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -290,7 +332,7 @@ struct Serialize
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "vector + not is_trivially_copyable", (uint32_t) sizeof(T));
 
-        typename vector<T>::size_type n = t.size();
+        serial_size_t n = t.size();
         iterate (transient, depth, n,fct, context);
 
         for (auto&& x : t)  {  iterate (transient, depth+1, x,fct, context);  }
@@ -303,7 +345,7 @@ struct Serialize
         DEBUG_SERIALIZATION (DEBUG_FMT, 0, "restore", "vector + not is_trivially_copyable", (uint32_t) sizeof(T));
 
         // We get the vector size.
-        size_t n = 0;
+        serial_size_t n = 0;
         restore (it, n);
 
         // We resize the vector.
@@ -311,6 +353,8 @@ struct Serialize
 
         // We restore each item of the vector.
         for (size_t i=0; i<n; i++)  {  restore (it, result[i]);  }
+
+        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -322,7 +366,7 @@ struct Serialize
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "vector + is_trivially_copyable", (uint32_t) sizeof(T));
 
-        typename vector<T>::size_type n = t.size();
+        serial_size_t n = t.size();
         iterate (true, depth, n,fct, context);
 
         if (n>0)
@@ -332,10 +376,16 @@ struct Serialize
         else
         {
             // in case the vector is empty, we still provide some data in order not to have an nullptr.
-            static char dummy[8] = {};
-            static const size_t N = sizeof(dummy)/sizeof(dummy[0]);
+            auto [dummy, N] = getDummyBuffer();
             fct (transient, depth, dummy, N, round(N));
         }
+
+#ifdef WITH_SERIALIZATION_HASH_CHECK
+        // we compute the sum of the hash for each item of the vector.
+        uint64_t check = 0;
+        for (auto const& x : t)  { check += get_hash(x); }
+        iterate (true, depth, check, fct, context);
+#endif
     }
 
     template<typename T>
@@ -345,7 +395,7 @@ struct Serialize
         DEBUG_SERIALIZATION (DEBUG_FMT, 0, "restore", "vector + is_trivially_copyable", (uint32_t) sizeof(T));
 
         // We get the vector size.
-        size_t n = 0;
+        serial_size_t n = 0;
         restore (it, n);
 
         // We resize the vector.
@@ -358,6 +408,13 @@ struct Serialize
         // We restore each item of the vector.
         for (size_t i=0; i<n; i++)  {  restore (it, result[i]);  }
 #endif
+
+#ifdef WITH_SERIALIZATION_HASH_CHECK
+            uint64_t check1 = 0;
+            restore (it, check1);
+#endif
+
+        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -369,12 +426,33 @@ struct Serialize
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "span + not is_trivially_copyable", (uint32_t) sizeof(T));
 
-        DEBUG_SERIALIZATION ("ITERATE(span + not is_trivially_copyable):  size: %d\n", t.size());
-
-        typename vector<T>::size_type n = t.size();
+        serial_size_t n = t.size();
         iterate (transient, depth, n,fct, context);
 
-        for (auto&& x : t)  {  iterate (transient, depth+1, x,fct, context);  }
+        [[maybe_unused]] uint64_t check = 0;
+
+        if (n>0)
+        {
+            for (auto&& x : t)
+            {
+                iterate (transient, depth+1, x,fct, context);
+
+#ifdef WITH_SERIALIZATION_HASH_CHECK
+                // we compute the sum of the hash for each item of the vector.
+                check += get_hash(x);
+#endif
+            }
+        }
+        else
+        {
+            // in case the vector is empty, we still provide some data in order not to have an nullptr.
+            auto [dummy, N] = getDummyBuffer();
+            fct (transient, depth, dummy, N, round(N));
+        }
+
+#ifdef WITH_SERIALIZATION_HASH_CHECK
+        iterate (true, depth, check, fct, context);
+#endif
     }
 
     template<typename T, typename FCT>
@@ -383,9 +461,26 @@ struct Serialize
     {
         DEBUG_SERIALIZATION (DEBUG_FMT, depth, "iterate", "span + is_trivially_copyable", (uint32_t) sizeof(T));
 
-        iterate (true, depth, t.size(),fct);
+        serial_size_t n = t.size();
+        iterate (true, depth, n,fct);
 
-        fct (transient, depth, (void*)t.data(), sizeof(T)*t.size(), round(sizeof(T)*t.size()));
+        if (n>0)
+        {
+            fct (transient, depth, (void*)t.data(), sizeof(T)*t.size(), round(sizeof(T)*t.size()));
+        }
+        else
+        {
+            // in case the vector is empty, we still provide some data in order not to have an nullptr.
+            auto [dummy, N] = getDummyBuffer();
+            fct (transient, depth, dummy, N, round(N));
+        }
+
+#ifdef WITH_SERIALIZATION_HASH_CHECK
+        // we compute the sum of the hash for each item of the vector.
+        uint64_t check = 0;
+        for (auto const& x : t)  { check += get_hash(x); }
+        iterate (true, depth, check, fct, context);
+#endif
     }
 
     template<typename T>
@@ -395,10 +490,9 @@ struct Serialize
         DEBUG_SERIALIZATION (DEBUG_FMT, 0, "restore", "span + not is_trivially_copyable", (uint32_t) sizeof(T));
 
         // We get the vector size.
-        size_t n = 0;
+        serial_size_t n = 0;
         restore (it, n);
         DEBUG_SERIALIZATION ("RESTORE(span + not is_trivially_copyable + not is_serializable_v):  size: %d\n", n);
-
 
         T item;
         // We restore each item of the vector.
@@ -409,6 +503,8 @@ struct Serialize
 //
 //        // We restore each item of the vector.
 //        for (size_t i=0; i<n; i++)  {  restore (it, result[i]);  }
+
+        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////////

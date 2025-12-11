@@ -16,7 +16,7 @@ namespace bpl  {
 
 static inline auto  timestamp()
 {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -40,7 +40,7 @@ public:
         {
             started_ = false;
             t1_ = timestamp() ;
-            ref_ += (t1_ - t0_) / 1000.0;
+            ref_ += (t1_ - t0_) / 1000.0 / 1000.0;
         }
     }
 
@@ -49,6 +49,19 @@ private:
     uint64_t  t0_ = 0;
     uint64_t  t1_ = 0;
     bool started_ = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+class DualTimeStamp
+{
+public:
+    DualTimeStamp(TimeStamp const& t1 , TimeStamp const& t2) : ts(t1,t2)  {}
+
+    void start () {  ts.first.start();  ts.second.start();  }
+    void stop  () {  ts.first.stop ();  ts.second.stop ();  }
+
+private:
+    std::pair<TimeStamp,TimeStamp> ts;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

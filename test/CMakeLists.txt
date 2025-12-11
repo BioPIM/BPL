@@ -12,4 +12,4 @@ ADD_SUBDIRECTORY (unit)
 ################################################################################
 #  BENCHMARK TESTS GENERATION 
 ################################################################################
-#ADD_SUBDIRECTORY (benchmark)
+ADD_SUBDIRECTORY (benchmark)

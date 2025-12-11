@@ -32,11 +32,13 @@ struct ArchMulticoreResources
 
     template<typename T, int N> using array  = std::array<T,N>;
 
-    template<typename T>        using vector = std::vector<T>;
+    template<typename T, typename...Ts> using vector = std::vector<T, Ts...>;
 
     template<typename T>        using span   = std::span<T>;
 
-    template<typename T>        using vector_view = std::vector<T>;
+    template<typename T>        using vector_view = std::span<T>;
+
+    template<typename T>        using allocator = std:: allocator<T>;
 
     template<typename T>        using initializer_list = std::initializer_list<T>;
 
@@ -44,6 +46,9 @@ struct ArchMulticoreResources
 
     template<typename T, typename S=T>
     static auto make_pair (T t, S s) { return std::make_pair(t,s); }
+
+    template<typename T>
+    static auto make_reverse_iterator (T&& t) { return std::make_reverse_iterator(t); }
 
     template<typename ...Ts>
     static auto make_tuple (Ts... t) { return std::make_tuple(t...); }
@@ -63,6 +68,8 @@ struct ArchMulticoreResources
     template<typename T> using lock_guard = std::lock_guard<T>;
 
     template <class T> static void swap ( T& a, T& b ) {  std::swap(a,b);  }
+    template <class T> static T max ( T& a, T& b ) {  return std::max(a,b);  }
+    template <class T> static T min ( T& a, T& b ) {  return std::min(a,b);  }
 
     template<typename T> using once   = bpl::once<T>;
     template<typename T> using global = bpl::global<T>;

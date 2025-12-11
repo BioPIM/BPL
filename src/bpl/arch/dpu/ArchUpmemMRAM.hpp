@@ -100,7 +100,10 @@ struct MRAM
         /** */
         address_t writeAt (void* dest, void* data, size_t sizeInBytes)
         {
-            writer_ (dest, data, sizeInBytes);
+            // We might have to fallback on unaligned version
+            if (sizeInBytes%8==0) {  writer_ (dest, data, sizeInBytes);  }
+            else { mram_write_unaligned (data, (__mram_ptr void*)dest, sizeInBytes);  }
+
             return (address_t) dest;
         }
 
@@ -126,7 +129,6 @@ if (LOCK)  {   mutex_lock (__MRAM_Allocator_mutex__);  }
             // Warning !!! not protected via mutex (for perf concern), so will provide approximation only.
             nbCallsRead += 1;
 if (LOCK)  {   mutex_unlock (__MRAM_Allocator_mutex__);  }
-
 
             reader_ (from, data, sizeInBytes);
         }

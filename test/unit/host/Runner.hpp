@@ -56,7 +56,7 @@ private:
     static auto exec (result_t& result, ARGS&&...args)
     {
         double t0 = timestamp();
-        for (auto&& x : Launcher<ARCH>().template run<TASK> (std::forward<ARGS>(args)...))  {  result.second.push_back (std::move(x));  }
+        for (auto&& x : bpl::Launcher<ARCH>{}.template run<TASK> (std::forward<ARGS>(args)...))  {  result.second.push_back (std::move(x));  }
         double t1 = timestamp();
 
         result.first = (t1-t0)/1000.0;

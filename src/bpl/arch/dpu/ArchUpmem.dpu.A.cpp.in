@@ -58,6 +58,15 @@ extern "C"
 //#define WITH_FAKE_ARGUMENTS
 
 ////////////////////////////////////////////////////////////////////////////////
+template<typename T>
+struct GlobalAndVector : std::false_type {};
+
+template<typename T>
+struct GlobalAndVector<bpl::global<T>>  {
+    static constexpr bool value = bpl::CounterTrait_v<bpl::is_vector,std::decay_t<T>> > 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 struct ResourcesManager
 {
     // We define the task with generic resources (i.e. without configuration)
@@ -74,7 +83,7 @@ struct ResourcesManager
         bpl::removetag_once,
         bpl::removetag_global
     >;
-    
+
     // We count how many vectors we have in the parameters
     static constexpr int nbvectors_in_proto_v = bpl::CounterTrait<bpl::is_vector, raw_params_t>::value;  
 
@@ -94,10 +103,13 @@ struct ResourcesManager
             resources_generic_t::constants_t::MEMTREE_NBITEMS_PER_BLOCK_LOG2 
             - (MEMTREE_MAX_MEMORY_LOG2<6 ? 1 : 0);
 
-		// We may have to set SHARED_ITER_CACHE in case we have at least one global vector in the prototype            
-        static constexpr int SHARED_ITER_CACHE = 
-        	bpl::CounterTrait_v<bpl::is_vector, raw_params_t> < bpl::CounterTrait_v<bpl::is_vector, params_t> 
-        	? 0 : 1;
+		static constexpr bool hasAtLeastOneGlobalVector = [] <size_t...Is> (std::index_sequence<Is...>) {
+			return std::disjunction_v<GlobalAndVector<std::tuple_element_t<Is,raw_params_t>>...>; 
+		} (std::make_index_sequence<std::tuple_size_v<raw_params_t>>());  
+
+		// We may have to set SHARED_ITER_CACHE to false in case we have at least one global vector in the prototype            
+        static constexpr bool SHARED_ITER_CACHE = hasAtLeastOneGlobalVector ? 
+        	false : resources_generic_t::constants_t::SHARED_ITER_CACHE;
     };
 
     // We define the actual resources and task types 
@@ -210,12 +222,13 @@ template<>  ArrayMutex_t TaskBase_t::mutexes = ArrayMutex_t::init_from <uint8_t>
 // used by the arguments; this is possible since we broadcast (as input metadata)
 // the size of the serialized arguments, so we can tell that the actual available MRAM
 // is at this specific offset.
-static const std::size_t ARGS_SIZE   = (64-1) * 1024*1024;
+static const std::size_t ARGS_SIZE   = (64-2) * 1024*1024;
 
 // This is the main buffer holding the serialized information from the host.
 __mram_noinit  uint8_t __args__   [ARGS_SIZE];                              // HOST -> DPU
 __host MetadataInput   __metadata_input__;                                  // HOST -> DPU
-__host MetadataOutput  __metadata_output__;                                 // DPU  -> HOST
+__dma_aligned MetadataOutput  __metadata_output__;                          // DPU  -> HOST (tmp version in WRAM)
+__mram_noinit MetadataOutput __metadata_output__mram__{};                   // DPU -> HOST
 
 ////////////////////////////////////////////////////////////////////////////////
 // MRAM allocator
@@ -260,7 +273,7 @@ void banner (const char* msg)
 #ifdef WITH_PERFCOUNTER 
     struct Perf
     {
-        using type = uint32_t;
+        using type = typename TimeStats::value_type;
         static type init  () { return perfcounter_config(COUNT_CYCLES, true); }
         static type get   () { return perfcounter_get(); }
         static type since (type prev) 
@@ -273,12 +286,18 @@ void banner (const char* msg)
 #else
     struct Perf
     {
-        using type = uint32_t;
+        using type = uint64_t;
         static type init () { return 0; }    
         static type get  () { return 0; }
         static type since (type prev) { return 0; }
     };
 #endif
+
+////////////////////////////////////////////////////////////////////////////////
+// RESET
+////////////////////////////////////////////////////////////////////////////////
+template<typename T> 
+auto reset_state (T& t) {}
 
 ////////////////////////////////////////////////////////////////////////////////
 // TASK CONFIGURATION
@@ -308,7 +327,7 @@ auto configure (T&& task, ARGS...args)
 template<typename T> 
 void postprocess (T& result) 
 {
-    DEBUG0 ("postprocess generic: %d  @: 0x%lx \n", sizeof(result), uint64_t(&result));
+    DEBUG0 ("postprocess generic: %d  @: 0x%lx \n", sizeof(result), uint64_t(std::addressof(result)));
 }
 
 template<typename...ARGS>
@@ -321,19 +340,40 @@ void postprocess (std::tuple<ARGS...>& result)
     });
 }
 
-
 template<
-    typename T, 
-    int DATABLOCK_SIZE_LOG2,
-    int CACHE_NB_LOG2,
-    int MEMTREE_NBITEMS_PER_BLOCK_LOG2, 
+    typename T,
+    typename ALLOCATOR,
+    typename MUTEX,
+    int MEMORY_SIZE_LOG2,
+    int CACHE_NB_LOG2,             // log2 of the number of caches
+    bool SHARED_ITER_CACHE,
+    int MEMTREE_NBITEMS_PER_BLOCK_LOG2,
     int MAX_MEMORY_LOG2
->
-void postprocess ( 
-    resources_t::vector<T,DATABLOCK_SIZE_LOG2,CACHE_NB_LOG2,MEMTREE_NBITEMS_PER_BLOCK_LOG2, MAX_MEMORY_LOG2>& result
+> 
+void postprocess (
+    bpl::vector<T,ALLOCATOR,MUTEX,MEMORY_SIZE_LOG2,CACHE_NB_LOG2,SHARED_ITER_CACHE,MEMTREE_NBITEMS_PER_BLOCK_LOG2, MAX_MEMORY_LOG2>& result
 ) 
 {
     DEBUG0 ("postprocess vector\n");
+    // FIRST VERSION: to be improved...
+    result.update_all();
+}
+
+template<
+    typename T, 
+    typename Allocator, 
+    int MEMORY_SIZE_LOG2,
+    int CACHE_NB_LOG2,
+    bool SHARED_ITER_CACHE,
+    int MEMTREE_NBITEMS_PER_BLOCK_LOG2, 
+    int MEMTREE_MAX_MEMORY_LOG2
+>
+void postprocess (
+    resources_t::vector<T,Allocator,
+        MEMORY_SIZE_LOG2,CACHE_NB_LOG2,SHARED_ITER_CACHE,MEMTREE_NBITEMS_PER_BLOCK_LOG2, MEMTREE_MAX_MEMORY_LOG2>& result
+) 
+{
+    DEBUG0 ("postprocess(2) vector\n");
     // FIRST VERSION: to be improved...
     result.flush();
     result.flush_block_all();
@@ -355,7 +395,7 @@ void postprocess (
 ////////////////////////////////////////////////////////////////////////////////
 int main()
 {
-    uint32_t initial_time = Perf::init ();
+    auto initial_time = Perf::init ();
 
     // shortcut
     int tuid = me();
@@ -396,10 +436,24 @@ int main()
 
         // Trace for dumping the incoming buffer.
         VERBOSE0 ("INCOMING BUFFER '__args__'\n");
-        for (size_t idx=0; idx<std::min(size_t(512),ARGS_SIZE); idx++)  {  VERBOSE0 ("%3d%c", __args__[idx], (idx%32==31 ? '\n' : (idx%4==3 ? '|' : ' ')));  }   VERBOSE0 ("\n");        
+        for (size_t idx=0; idx<std::min(size_t(512),ARGS_SIZE); idx++)  
+        {
+            if (idx%32==0)  {  VERBOSE0 ("[%4ld]  ", uint64_t(idx)); }
+            
+            VERBOSE0 ("%3d%c", __args__[idx], (idx%32==31 ? '\n' : (idx%4==3 ? '|' : ' ')));  
+        }   VERBOSE0 ("\n");        
     
     } // end of if (tuid==0) 
     
+    // WARNING !!! if we use an argument tagged with 'global' and that its content changes over runs,
+    // it would lead to issue since the WRAM will not be touched after the first run, so the object
+    // will not take a coherent initial state. 
+    // An initial solution awe to force an affectation with a default instance BUT it takes too much
+    // exec stack. So we use a custom "reset_state" for classes that need such a reset.
+    bpl::for_each_in_tuple (globalParams, [] (auto& x)  
+    {
+        reset_state(x);
+    });
     barrier_wait(&my_barrier);
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -444,6 +498,8 @@ int main()
             std::tuple_size_v<decltype(argsAsTuple)>, sizeof(argsAsTuple), uint64_t(&argsAsTuple)
         );
 
+        __metadata_output__.restoreNbErrors = 0;
+        
         // We un-serialize each item of the params tuple.
         size_t argIdx = 0;
         bpl::for_each_in_tuple (argsAsTuple, [&] (auto& x)  
@@ -462,7 +518,9 @@ int main()
             if ( (isGlobal && me()==0) or (not isGlobal) )
             {
                 //printf ("======> [%d]: tuid: %2d  global: %d  @: %6ld  sizeof: %d\n",  argIdx, me(), isGlobal, uint64_t(&x), sizeof(x)); 
-                Serializer::restore (iter, x);  
+                bool status = Serializer::restore (iter, x);
+                
+                __metadata_output__.restoreNbErrors += status==true ? 0 : 1;
             }
             else
             {
@@ -545,7 +603,12 @@ int main()
 
 #ifndef WITH_FAKE_EXEC
     // This implemention will run the task
+    //result_type result = __metadata_output__.restoreNbErrors ==0 ?
+    //    std::apply (fct, argsAsTuple) :
+    //    result_type ();
+        
     result_type result = std::apply (fct, argsAsTuple);
+        
 #else
     // This implemention will return a default value for the type returned by the task
     result_type result = result_type ();
@@ -571,6 +634,8 @@ int main()
     // NOTE: the trick here is to first compute the size of the result before copying the result into MRAM
     // -> this can be done in the context of the current tasklet without concurrent access
     auto totalSize = Serializer::size (result);
+
+    DEBUG0("result size for serialization: [%ld,%ld]\n", uint64_t(totalSize.first), uint64_t(totalSize.second));
     
     __metadata_output__.result_tasklet_order [tuid] = puid;
     __metadata_output__.result_tasklet_size  [tuid] = totalSize.first + totalSize.second; // transient + permanent
@@ -593,6 +658,8 @@ int main()
         __metadata_output__.heap_pointer = __MRAM_Allocator_lock__.get(0);
     }
     barrier_wait(&my_barrier);
+
+    banner ("SERIALIZE FOR HOST");
 
     std::size_t localSize = 0;
 
@@ -671,26 +738,34 @@ int main()
                 __metadata_output__.nb_cycles [i].result
             );
         }
+ 
+        __metadata_output__.stack_size = STACK_SIZE_DEFAULT;
+    
+        // static information for a uint32_t vector
+        using vtype_sample = uint32_t;
+        
+        __metadata_output__.vstats.NB_VECTORS_IN_PROTO       = ResourcesManager::nbvectors_in_proto_v;
+        __metadata_output__.vstats.SIZEOF                    = sizeof(resources_t::vector<vtype_sample>);
+        __metadata_output__.vstats.CACHE_NB                  = resources_t::vector<vtype_sample>::CACHE_NB;
+        __metadata_output__.vstats.MEMORY_SIZE               = resources_t::vector<vtype_sample>::MEMORY_SIZE;
+        __metadata_output__.vstats.CACHE_NB_ITEMS            = resources_t::vector<vtype_sample>::CACHE_NB_ITEMS;
+        __metadata_output__.vstats.NBITEMS_MAX               = resources_t::vector<vtype_sample>::NBITEMS_MAX;
+        __metadata_output__.vstats.MEMTREE_NBITEMS_PER_BLOCK = resources_t::vector<vtype_sample>::MEMTREE_NBITEMS_PER_BLOCK;
+        __metadata_output__.vstats.MEMTREE_MAX_MEMORY        = resources_t::vector<vtype_sample>::MAX_MEMORY;
+        __metadata_output__.vstats.MEMTREE_LEVEL_MAX         = resources_t::vector<vtype_sample>::memorytree_t::LEVEL_MAX;
+
     }
- 
- 	__metadata_output__.stack_size = STACK_SIZE_DEFAULT;
- 
- 	// static information for a uint32_t vector
- 	using vtype_sample = uint32_t;
- 	
-	__metadata_output__.vstats.NB_VECTORS_IN_PROTO       = ResourcesManager::nbvectors_in_proto_v;
-	__metadata_output__.vstats.SIZEOF                    = sizeof(resources_t::vector<vtype_sample>);
-	__metadata_output__.vstats.CACHE_NB                  = resources_t::vector<vtype_sample>::CACHE_NB;
-	__metadata_output__.vstats.MEMORY_SIZE               = resources_t::vector<vtype_sample>::MEMORY_SIZE;
-	__metadata_output__.vstats.CACHE_NB_ITEMS            = resources_t::vector<vtype_sample>::CACHE_NB_ITEMS;
-    __metadata_output__.vstats.NBITEMS_MAX               = resources_t::vector<vtype_sample>::NBITEMS_MAX;
-	__metadata_output__.vstats.MEMTREE_NBITEMS_PER_BLOCK = resources_t::vector<vtype_sample>::MEMTREE_NBITEMS_PER_BLOCK;
-	__metadata_output__.vstats.MEMTREE_MAX_MEMORY        = resources_t::vector<vtype_sample>::MAX_MEMORY;
-    __metadata_output__.vstats.MEMTREE_LEVEL_MAX         = resources_t::vector<vtype_sample>::memorytree_t::LEVEL_MAX;
 
     __metadata_output__.nb_cycles [tuid].all = Perf::since (initial_time);
     
     banner("END");
+    
+    barrier_wait(&my_barrier);
+
+    if (tuid==0)  
+    {
+        mram_write(&__metadata_output__, &__metadata_output__mram__, sizeof(MetadataOutput));
+    }
     
     barrier_wait(&my_barrier);
 

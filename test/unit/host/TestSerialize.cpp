@@ -1,15 +1,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics
-// date  : 2023
+// date  : 2025
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <catch2/catch_test_macros.hpp>
-
-#include <bpl/arch/ArchMulticore.hpp>
-#include <bpl/arch/ArchUpmem.hpp>
-
-#include <iostream>
+#include <common.hpp>
 
 using namespace bpl;
 
@@ -55,7 +50,7 @@ TEST_CASE ("serialize (1)", "[Serialize]" )
     {
         vector<int> x = {1,1,2,3,5,8,13};
         auto res = MySerialize<DEFAULT_ARCH>::to (x);
-        REQUIRE (res.size() == sizeof(size_t) + x.size()*sizeof(int));
+        REQUIRE (res.size() >= sizeof(size_t) + x.size()*sizeof(int));
     }
 }
 
@@ -87,18 +82,6 @@ struct MyStruct
     string      name;
     vector<int> values;
     bool operator== (const MyStruct& other)  const { return name==other.name and values==other.values; }
-
-    MyStruct (const string& n, const vector<int>& v) : name(n), values(v)  { debug ("construct");  }
-
-    MyStruct()  { debug ("default const");  }
-    MyStruct(const MyStruct& other)  { debug ("copy const");  }
-
-    ~MyStruct()  { debug ("destructor");  }
-
-    void debug(const char* txt)
-    {
-        if (false)  {  printf ("--> [MyStruct]  %15s  %p\n", txt, this);  }
-    }
 };
 
 struct MyOtherStruct

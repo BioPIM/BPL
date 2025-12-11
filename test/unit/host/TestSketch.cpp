@@ -1,15 +1,11 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics
-// date  : 2023
+// date  : 2025
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <catch2/catch_test_macros.hpp>
+#include <common.hpp>
 
-#include <bpl/core/Launcher.hpp>
-#include <bpl/arch/ArchMulticore.hpp>
-#include <bpl/arch/ArchUpmem.hpp>
-#include <bpl/arch/ArchDummy.hpp>
 #include <bpl/utils/split.hpp>
 
 using namespace bpl;
@@ -178,7 +174,7 @@ auto SketchJaccardTopK_aux (double& runtime, size_t nbSketchRef = 10, size_t nbS
 
     size_t nbunits = CONFIG::nbunits;
 
-    Launcher<typename CONFIG::arch_t> launcher (typename CONFIG::level_t {nbunits}, false);
+    Launcher<typename CONFIG::arch_t> launcher (typename CONFIG::level_t {nbunits});
 
     using hash_t = typename SketchJaccardTopK<typename CONFIG::arch_t>::hash_t;
 

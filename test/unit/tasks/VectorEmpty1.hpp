@@ -12,8 +12,8 @@ struct VectorEmpty1
 {
     USING(ARCH);
 
-    uint32_t operator() (vector<int> const& v) // don't use auto for return type here
+    uint32_t operator() (vector<uint32_t> const& v, uint32_t value) // don't use auto for return type here
     {
-        return v.size();
+        return v.size() + value;
     }
 };

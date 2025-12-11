@@ -26,8 +26,8 @@ struct SplitOperator<std::pair<A,B>>
         size_t i0   = diff * (idx+0) / total;
         size_t i1   = diff * (idx+1) / total;
 
-        DEBUG_SPLIT ("SPLIT<pair> sizeof: [%2d,%2d]  idx: %5d  total: %5d   in: [%5d %5d]  =>  out: [%5d %5d]\n",
-            sizeof(A), sizeof(B), idx, total, t.first, t.second, i0, i1);
+        DEBUG_SPLIT ("SPLIT<pair> sizeof: [%2d,%2d]  idx: %5d  total: %5d   in: [%5d %5d]  =>  out: [%5d %5d[  len: %d\n",
+            sizeof(A), sizeof(B), idx, total, t.first, t.second, i0, i1, i1-i0);
 
         return std::pair { t.first+i0, t.first+i1 };
     }

@@ -1,16 +1,11 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2025
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <catch2/catch_test_macros.hpp>
-#include <fmt/core.h>
+#include <common.hpp>
 
-#include <bpl/core/Launcher.hpp>
-#include <bpl/core/Task.hpp>
-#include <bpl/arch/ArchMulticore.hpp>
-#include <bpl/arch/ArchUpmem.hpp>
 #include <bpl/utils/split.hpp>
 #include <bpl/utils/RangeInt.hpp>
 
@@ -22,9 +17,11 @@
 #include <tasks/SplitRangeInt.hpp>
 #include <tasks/SplitDifferentSizes.hpp>
 #include <tasks/VectorSplitDpu.hpp>
+#include <tasks/VectorSplitSimple.hpp>
+#include <tasks/VectorSplitOverload.hpp>
+#include <tasks/SplitMyLong.hpp>
 
-#include <fmt/core.h>
-#include <fmt/ranges.h>
+#include <Runner.hpp>
 
 using namespace bpl;
 
@@ -287,6 +284,11 @@ TEST_CASE ("is_splitable", "[Split]" )
 template<class ARCH>
 struct SplitOperator<std::vector<DummyStruct<ARCH>>>
 {
+    static decltype(auto) split (std::vector<DummyStruct<ARCH>> const& t, std::size_t idx, std::size_t total)
+    {
+        return t[idx];
+    }
+
     static decltype(auto) split_view (std::vector<DummyStruct<ARCH>> const& t, std::size_t idx, std::size_t total)
     {
         return t[idx];
@@ -298,7 +300,7 @@ TEST_CASE ("SplitDifferentSizes", "[Split]" )
     size_t nbdpus  = 16*64;
     size_t nbitems = 1000;
 
-    using type = DummyStruct<ArchMulticore>;
+    using type = DummyStruct<ArchDummy>;
 
     std::vector<type> vdata(nbdpus);
 
@@ -337,13 +339,135 @@ auto VectorSplitDpu_aux (size_t nbDpu, size_t imax)
     }
 }
 
-TEST_CASE ("VectorSplitDpu", "[once]" )
+TEST_CASE ("VectorSplitDpu", "[Split]" )
 {
+    VectorSplitDpu_aux (3, 2); // more DPUs than items -> see how the split behaves
+
     for (size_t nbDpu : {1,2,3,5,8,13,21,34})
     {
         for (size_t imax : {11, 111, 1111, 11111})
         {
             VectorSplitDpu_aux (nbDpu,imax);
         }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+auto VectorSplitDpuPool_aux (LauncherPool<ArchUpmem>& pool, size_t imax, bool useSplit)
+{
+    std::vector<uint64_t> v1;  for (size_t i=1; i<=imax; i++)  {  v1.push_back (i);  }
+    std::vector<uint64_t> v2;  for (size_t i=1; i<=imax; i++)  {  v2.push_back (i);  }
+
+    size_t nbLaunchers = pool.size();
+    size_t nbRuns      = 10;
+    size_t totalNbRuns = nbRuns*nbLaunchers;
+
+    //fmt::println ("nbLaunchers: {}  imax: {}  useSplit: {}  nbRuns: {} ", nbLaunchers, imax, useSplit, nbRuns);
+
+    std::atomic<size_t> totalNbOk = 0;
+
+    auto callback = [imax, &totalNbOk] (auto&& launcher, auto&& results)
+    {
+        size_t nbOk = 0;
+        for (auto res : results)
+        {
+            nbOk += (res.second == imax*(imax+1)/2) ? 1 : 0;
+        }
+        REQUIRE (nbOk == results.size());
+
+        totalNbOk += nbOk;  // take care of concurrent access since we are in a specific thread here.
+    };
+
+    for (size_t n=0; n<totalNbRuns; n++)
+    {
+        if (useSplit) {  pool.submit<VectorSplitDpu> (callback, split<ArchUpmem::DPU>(v1), std::ref(v2)); }
+        else          {  pool.submit<VectorSplitDpu> (callback, std::ref(v1),              std::ref(v2)); }
+    }
+
+    // We wait for the end of all tasks processed by the pool.
+    pool.wait();
+
+    //REQUIRE (totalNbOk.load() == totalNbRuns);
+}
+
+TEST_CASE ("VectorSplitDpuPool", "[Split]" )
+{
+    // {  LauncherPool<ArchUpmem> pool (3,128_dpu);   VectorSplitDpuPool_aux (pool ,111111, true);  return;  }
+
+    for (size_t nbLaunchers : {1,3,8,13})
+    {
+        LauncherPool<ArchUpmem> pool (nbLaunchers, 128_dpu);
+
+        for (size_t imax : {11, 1111, 111111})
+        {
+            VectorSplitDpuPool_aux (pool, imax, false);
+            VectorSplitDpuPool_aux (pool, imax, true);
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+auto VectorSimpleSplit_aux (auto& launcher, size_t N, size_t K)
+{
+    using value_type = typename VectorSplitSimple<ArchMulticore>::value_type;
+
+    std::vector<value_type> data;
+    for (size_t n=0; n<N; n++)  {
+        for (size_t k=0; k<K; k++) {
+            data.push_back(n+1);
+        }
+    }
+
+    auto res = launcher.template run<VectorSplitSimple> (split<ArchUpmem::Tasklet>(data));
+    REQUIRE (res == K*N*(N+1)/2);
+}
+
+TEST_CASE ("VectorSimpleSplit", "[Split]" )
+{
+    Launcher<ArchUpmem> launcher {1_dpu};
+
+    for (size_t k=1; k<=10; k++) {  VectorSimpleSplit_aux (launcher,16,k); }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorSplitOverload", "[Split]" )
+{
+    size_t N=16;
+
+    std::vector<uint64_t> data;
+    uint64_t truth = 0;
+    for (size_t n=0; n<N; n++)  {  data.push_back(n+1);  truth += data.back()*data.back(); }
+
+    Launcher<ArchUpmem> launcher {1_dpu};
+
+    [[maybe_unused]] auto res = launcher.template run<VectorSplitOverload> (split<ArchUpmem::Tasklet>(data));
+    //fmt::println ("N: {}  res: {}  truth: {}", N, res, truth);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+template <>
+struct SplitOperator<MyLong> {
+    static decltype(auto) split     (MyLong const& t, std::size_t idx, std::size_t total) {  return t; }
+    static decltype(auto) split_view(MyLong const& t, std::size_t idx, std::size_t total) {  return split(t, idx, total); }
+};
+
+TEST_CASE ("SplitMyLong1", "[Split]" )
+{
+    MyLong ml {42};
+
+    //Launcher<ArchMulticore> launcher {16_thread};
+    Launcher<ArchUpmem> launcher {1_dpu};
+    for (auto res : launcher.template run<SplitMyLong>(split<ArchUpmem::Tasklet>(ml)))
+    {
+        REQUIRE (res==ml.value);
+    }
+}
+
+TEST_CASE ("SplitMyLong2", "[Split]" )
+{
+    MyLong ml {42};
+
+    for (auto& [stats,results] : Runner<>::run<SplitMyLong> (split(ml)))  {
+        for (auto res : results)  {  REQUIRE (res==ml.value);  }
     }
 }

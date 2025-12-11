@@ -37,6 +37,8 @@ public:
     /** Destructor */
     virtual ~TaskUnit() {}
 
+    virtual const char* name() const = 0;
+
     /** Return the number of components
      * \return the number of components
      */
@@ -45,7 +47,7 @@ public:
     virtual std::size_t getNbUnits() const = 0;
 
 private:
-    std::size_t nbComponents_;
+    std::size_t nbComponents_ = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

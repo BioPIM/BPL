@@ -12,7 +12,11 @@
 template<class ARCH>
 struct SketchJaccardTopK : bpl::Task<ARCH>
 {
-    USING(ARCH);
+    struct config  {
+        static const int VECTOR_MEMORY_SIZE_LOG2 = 10;
+    };
+
+    USING(ARCH,config);
 
     using hash_t   = uint32_t;
     using count_t  = uint16_t;
@@ -62,10 +66,10 @@ struct SketchJaccardTopK : bpl::Task<ARCH>
 #if VERSION==2  // 142.7 s   (#ref=16  #qry=1200)
 
                 auto refBegin = refStart + offsetRef;
-                auto refEnd   = refBegin + ssize;
+                auto refEnd   = dbRef.end() - (dbRef.size()-(offsetRef + ssize));
 
                 auto qryBegin = qryStart + offsetQry;
-                auto qryEnd   = qryBegin + ssize;
+                auto qryEnd   = dbQry.end() - (dbQry.size()-(offsetQry + ssize));
 
                 while (true)  // loop that compares two sketches
                 {

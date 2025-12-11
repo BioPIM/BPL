@@ -20,7 +20,23 @@ class Statistics
 {
 public:
 
-    TimeStamp produceTimestamp (const char* label)  {  return TimeStamp (timings[label]);  }
+    TimeStamp produceTimestamp (const char* label, bool cumul=false)  {
+        if (not cumul)  { timings[label]={}; }
+        return TimeStamp (timings[label]);
+    }
+
+    auto produceDualTimestamp (const char* l1, const char* l2, bool c1=false, bool c2=false)  {
+        if (not c1)  { timings[l1]={}; }
+        if (not c2)  { timings[l2]={}; }
+        return DualTimeStamp (TimeStamp (timings[l1]), TimeStamp (timings[l2]));
+    }
+
+    auto produceCumulTimestamp (const char* prefix, const char* suffix)  {
+        std::string nocumul = std::string(prefix) + "/once/"  + std::string(suffix);
+        std::string   cumul = std::string(prefix) + "/cumul/" + std::string(suffix);
+        timings[nocumul]={};
+        return DualTimeStamp (TimeStamp (timings[nocumul]), TimeStamp (timings[cumul]));
+    }
 
     void dump(bool force=false) const
     {
@@ -32,19 +48,19 @@ public:
             printf ("   calls  : %ld\n", callsNb.size());
             for (auto entry : callsNb)
             {
-                printf ("       %-27s: %4ld\n", entry.first.c_str(), entry.second);
+                printf ("       %-35s: %4ld\n", entry.first.c_str(), entry.second);
             }
 
             printf ("   timings: %ld\n", timings.size());
             for (auto entry : timings)
             {
-                printf ("       %-27s: %7.4f\n", entry.first.c_str(), entry.second);
+                printf ("       %-35s: %7.4f\n", entry.first.c_str(), entry.second);
             }
 
             printf ("   tags   : %ld\n", tags.size());
             for (const auto& entry: tags)
             {
-                printf ("       %-27s: %s\n", entry.first.c_str(), entry.second.c_str());
+                printf ("       %-35s: %s\n", entry.first.c_str(), entry.second.c_str());
             }
 
         }
@@ -70,6 +86,10 @@ public:
     }
 
     void addTag (const std::string& key, const std::string& value) { tags[key] = value; }
+
+    void addTiming (const std::string& key, double value) { timings[key] = value; }
+
+    auto const& getTag (const std::string& key) const { return tags.at(key); }
 
     size_t getCallNb (const std::string& key) const
     {

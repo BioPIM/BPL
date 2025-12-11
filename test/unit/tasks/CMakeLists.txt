@@ -17,29 +17,103 @@ set (CMAKE_CXX_FLAGS         "-Wall -Wextra -Wno-unused-parameter -Wno-macro-red
 MESSAGE ("-- DPU:  CMAKE_C_COMPILER  : ${CMAKE_C_COMPILER}")
 MESSAGE ("-- DPU:  CMAKE_CXX_COMPILER: ${CMAKE_CXX_COMPILER}")
 
-set (DPU_INCLUDE_SYSLIB /opt/upmem/share/upmem/include/syslib)
-
 ################################################################################
 
 # We create the config file.
 configure_file (${PROJECT_SOURCE_DIR}/src/bpl/arch/ArchUpmemConfig.hpp.in  config.hpp   @ONLY)
 
 # We set the list of default include directories.
-# see also https://stackoverflow.com/questions/27650807/avoid-quotes-when-using-cmake-to-pass-a-process-output-as-compile-options-for-sp
-execute_process (COMMAND ${CMAKE_SOURCE_DIR}/scripts/FindDefaultIncludes.py  OUTPUT_VARIABLE CXX_DEFAULT_INCLUDE_DIRECTORIES OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT DEFINED CXX_FOR_DEFAULT_INCLUDE_QUERY OR CXX_FOR_DEFAULT_INCLUDE_QUERY STREQUAL "")
+  if(DEFINED ENV{CXX} AND NOT "$ENV{CXX}" STREQUAL "")
+    set(_cxx_for_default "$ENV{CXX}")
+  else()
+    set(_cxx_for_default "${CMAKE_CXX_COMPILER}")
+  endif()
+  set(CXX_FOR_DEFAULT_INCLUDE_QUERY "${_cxx_for_default}" CACHE STRING "Compiler used to query default include directories")
+endif()
+
+execute_process (
+  COMMAND ${CMAKE_COMMAND} -E env "CXX=${CXX_FOR_DEFAULT_INCLUDE_QUERY}" ${CMAKE_SOURCE_DIR}/scripts/FindDefaultIncludes.py
+  OUTPUT_VARIABLE CXX_DEFAULT_INCLUDE_DIRECTORIES
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
 separate_arguments (CXX_DEFAULT_INCLUDE_DIRECTORIES_LIST UNIX_COMMAND "${CXX_DEFAULT_INCLUDE_DIRECTORIES}")
 
 MESSAGE ("CXX_DEFAULT_INCLUDE_DIRECTORIES     : '${CXX_DEFAULT_INCLUDE_DIRECTORIES}'")
 
 ################################################################################
-# UTILS FUNCTIONS  
+# LIST OF TASKS TO BE COMPILED FOR DPU
 ################################################################################
 
-# https://stackoverflow.com/questions/15282444/using-cmake-how-can-i-concat-files-and-install-them
-function(cat IN_FILE OUT_FILE)
-  file(READ ${IN_FILE} CONTENTS)
-  file(APPEND ${OUT_FILE} "${CONTENTS}")
-endfunction()
+set (TASKS_LIST 
+	"Bank1" "Bank2" "Bank3" "Bank4" "Bank5"
+	"Parrot1" "Parrot2"  "Parrot4" "Parrot5" "SumGeneric" "CountInstances" "GetPuid" "DoSomething"
+	"Parrot3"
+	"RangeSplit" "Array1" "Array2" "HelloWorld" "Checksum3" "Checksum4" "Checksum5" "IterableSplit"
+	"Compare2" "ReturnArray" "IntegerType" "Compare1"
+	"Sum"
+	"Vector1" "Vector2" "Vector3" "VectorCheck" 
+	"VectorAsInput2" "VectorAsInput3" "VectorAsInputCustom" 
+	"VectorChecksum"
+	"VectorAsOutputUint8" "VectorAsOutputUint16" "VectorAsOutputUint32"  
+	"VectorAsInput"  
+	"SketchJaccardTopK"
+  "SketchJaccardOptim"
+  "SketchJaccardDistance" "SketchJaccardDistanceOnce" 
+  "SketchJaccard" 
+	"VectorAsInputSplit"
+	"SplitRangeInt"
+	"Mutex1" "Mutex2"
+	"TemplateTask<double>"
+	"VectorInputOutput"
+	"VectorInputOutput2"
+	"VectorOfVectors"
+	"VectorFlush"
+	"VectorAdd"
+	"Span1"
+	"VectorSwap"
+	"VectorMove1"
+	"VectorMove2"
+	"VectorEmplaceBack"
+	"Once1"
+	"Global1"  "Global2"  "Global3"  "Global4"  "Global5" "Global6"
+	"Struct1" "Struct2" "Struct3"
+	"VectorMany" "VectorMany1" "VectorMany2" "VectorMany3" "VectorCache" "VectorConfig"
+	"GlobalOnce1"  "GlobalOnce2"
+	"VectorViewRandomAccess1"  "VectorViewRandomAccess2"
+	"VectorAddAndIterate"
+	"VectorSizeof12"
+	"VectorMany4" "VectorMany2b"
+	"VectorRandomAccessGlobal1" "VectorRandomAccessGlobal2"
+	"GlobalOnce3" "GlobalOnce4"
+	"SplitDifferentSizes"
+	"VectorEmpty1" "VectorEmpty2"
+	"VectorSplitDpu"
+	"OncePadding1"
+	"ResultsToVector"
+	"IterateMultipleVectors"
+	"LauncherPool1" 
+	"VectorReverseIterator" "VectorReverseIterator2" 
+	"VectorReverseIterator3" "VectorReverseIterator3global" "VectorReverseIterator3once" "VectorReverseIterator3glonce" 
+	"VectorStd"
+	"VectorTwoRunsGlobalRandomAccess"
+	"VectorIterator1" "VectorIterator2" "VectorIterator3"
+	"VectorSplitSimple" "VectorSplitOverload" "TemplateSpecialization"
+	"Min" "Max"
+	"VectorReverseInPlace"
+	"SortSelection"  
+	"SortSelectionVector"  
+	"VectorCustomAllocator"
+	"SplitMyLong" 
+	"VectorCreation"
+	"VectorSharedIteratorTrue" "VectorSharedIteratorFalse"
+	"VectorSerialize"
+	"SyracuseReduce" "SyracuseVector"
+)
+
+################################################################################
+# UTILS FUNCTIONS  
+################################################################################
 
 # Split a full task name if needed.
 #   Ex: Mutex1               => Mutex1
@@ -59,158 +133,109 @@ function(process_taskname FULLTASKNAME  TASKNAME TASKTEMPLATE)
   SET(TASKTEMPLATE ${TASKTEMPLATE} PARENT_SCOPE)
 endfunction()
 
-################################################################################
-# LIST OF TASKS TO BE COMPILED FOR DPU
-################################################################################
+# Register a custom command that analyzes a task's DPU binary, applies a
+# 10% safety margin (aligned to 8 bytes), and emits a response file providing
+# -DSTACK_SIZE_DEFAULT=<value> to clang during the optimized build.
+function(register_stack_analysis TASKNAME TASKTYPE)
+  set(localtarget_analysis ${TASKNAME}.${TASKTYPE}.dpu.analysis)
 
-set (TASKS_LIST 
-	"Bank1" "Bank2" "Bank3" "Bank4" "Bank5"
-	"Parrot1" "Parrot2"  "Parrot4" "Parrot5" "SumGeneric" "CountInstances" "GetPuid" "DoSomething"
-	"Parrot3"
-	"RangeSplit" "Array1" "HelloWorld" "Checksum3" "Checksum4" "Checksum5" "IterableSplit"
-	"Compare1" "Compare2" "ReturnArray" "IntegerType" 
-	"Sum"
-	"Vector1" "Vector2" "Vector3" "VectorCheck" 
-	"VectorAsInput2" "VectorAsInput3" "VectorAsInputCustom" 
-	"VectorChecksum"
-	"VectorAsOutputUint8" "VectorAsOutputUint16" "VectorAsOutputUint32"  
-	"VectorAsInput"  
-	"SketchJaccardTopK"
-    "SketchJaccardOptim" 
-    "SketchJaccard" 
-	"VectorAsInputSplit"
-	"SplitRangeInt"
-	"Mutex1" "Mutex2"
-	"TemplateTask<double>"
-	"VectorInputOutput"
-	"VectorInputOutput2"
-	"VectorOfVectors"
-	"VectorFlush"
-	"VectorAdd"
-	"Span1"
-	"VectorSwap"
-	"VectorMove1"
-	"VectorMove2"
-	"VectorEmplaceBack"
-	"Once1"
-	"Global1"  "Global2"  "Global3"  "Global4"  "Global5" "Global6"
-	"Struct1" "Struct2" "Struct3"
-	"VectorCache" "VectorConfig" "VectorMany" "VectorMany1" "VectorMany2" "VectorMany3" 
-	"GlobalOnce1"  "GlobalOnce2"
-	"VectorViewRandomAccess1"  "VectorViewRandomAccess2"
-	"VectorAddAndIterate"
-	"VectorSizeof12"
-	"VectorMany4" "VectorMany2b"
-	"VectorRandomAccessGlobal1" "VectorRandomAccessGlobal2"
-	"GlobalOnce3" "GlobalOnce4"
-	"SplitDifferentSizes"
-	"VectorEmpty1" "VectorEmpty2"
-	"VectorSplitDpu"
-	"OncePadding1"
+  add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${TASKNAME}.stack_size.rsp
+    COMMAND /bin/bash -c "\
+      set -euo pipefail; \
+      max=\$(dpu_stack_analyzer \"$<TARGET_FILE:${localtarget_analysis}>\" \
+              | grep 'Max size:' \
+              | sed 's/Max size: //'); \
+      if [[ -z \"\$max\" ]]; then \
+        echo \"ERROR: Could not read max size\" >&2; exit 1; \
+      fi; \
+      if [[ ! \$max =~ ^[0-9]+$ ]]; then \
+        echo \"ERROR: Invalid max size: \$max\" >&2; exit 1; \
+      fi; \
+      optimal=\$(echo \"scale=0; ((\$max + ((\$max + 90) / 100)) + 7) / 8 * 8\" | bc); \
+      echo ${TASKNAME} \": Calculated optimal stack size: Max=\$max -> Optimal=\$optimal\"; \
+      printf -- '-DSTACK_SIZE_DEFAULT=%s\\n' \"$optimal\" > ${CMAKE_CURRENT_BINARY_DIR}/${TASKNAME}.stack_size.rsp\
+    "
+    DEPENDS ${localtarget_analysis}
+    COMMENT "Analyzing stack usage for ${TASKNAME} and generating stack flag"
+    VERBATIM
+  )
+endfunction()
+
+set(DPU_TASK_TYPES A)
+
+set(DPU_COMMON_INCLUDES
+    ${CMAKE_SOURCE_DIR}/src
+	${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${DPU_INCLUDE_DIRS}
+    /opt/upmem/share/upmem/include/syslib
 )
 
-################################################################################
-# STACK SIZE DEFINITION FOR EACH TASK
-################################################################################
-
-# We try to infer the stack size to be used for each task.
-# To do this, we need to know the tasks that use 'global' parameters, ie. parameters
-# whose type is tagged by the C++ template template class 'global'.
-# Then we can compute the size of the WRAM that will be common to all tasklets and
-# by deduction we can compute the stack size for each tasklet
-
-# PASS 1: we generate a file that will be the amalgation of the 'GetSizeGlobalParameters.cpp.in' file for each task  
-foreach (FULLTASKNAME ${TASKS_LIST})
-
-    # we retrieve information from the full task name
-    process_taskname (${FULLTASKNAME} TASKNAME TASKTEMPLATE)
-
-    # we generate the DPU code file from the generic code
-    configure_file (
-  	    ${PROJECT_SOURCE_DIR}/src/bpl/utils/GetSizeGlobalParameters.cpp.in  
- 	    ${CMAKE_CURRENT_BINARY_DIR}/${TASKNAME}.getsizeglobal.cpp   
- 	    @ONLY
-    )
-endforeach()
-
-# We concatenate all the generated files into a single one.
-# -> we will have only one compilation which should greatly speed up the cmake configuration step.
-file (GLOB  GlobalSizeFiles "${CMAKE_CURRENT_BINARY_DIR}/*.getsizeglobal.cpp")
-file (WRITE amalgation_getsizeglobal.cpp.in "")
-foreach(GlobalSizeFile ${GlobalSizeFiles})
-  cat(${GlobalSizeFile} amalgation_getsizeglobal.cpp.in)
-endforeach()
-configure_file(amalgation_getsizeglobal.cpp.in  amalgation_getsizeglobal.cpp COPYONLY)
-
- # We infer the stack size from compilation of the underlying task.
-EXECUTE_PROCESS (
-    COMMAND ${CMAKE_CXX_COMPILER} -ferror-limit=0 -std=gnu++2a ${DPU_TARGET_RTE} -D__x86_64__  -I${CMAKE_SOURCE_DIR}/src -I${CMAKE_CURRENT_SOURCE_DIR}/.. -I${DPU_INCLUDE_SYSLIB}  ${CXX_DEFAULT_INCLUDE_DIRECTORIES_LIST}  ${CMAKE_CURRENT_BINARY_DIR}/amalgation_getsizeglobal.cpp
-    # We get the useful information from the compiler error message
-    # See https://stackoverflow.com/questions/78580764/retrieving-from-gcc-clang-a-value-known-at-compilation-time/78580978#78580978 
-    ERROR_VARIABLE  GLOBAL_WRAM_SIZE
+set(DPU_COMMON_COMPILE_FLAGS
+    ${DPU_TARGET_RTE}
+    -DNR_TASKLETS=${NR_TASKLETS}
+    -O3 -DNDEBUG
+    -fno-exceptions -fno-rtti
+    -D__x86_64__
 )
 
-# Finally, we build a "map" that associates the task name with the byte size of the WRAM dedicated to 'global' parameters.
-foreach (X1 ${GLOBAL_WRAM_SIZE})
-    STRING (REGEX MATCHALL "_[a-zA-Z0-9_]*_::error<[0-9]*>"  X2 ${X1})
-    IF (NOT X2 STREQUAL "")
-        # X2 example:  _VectorChecksum_::error<0>
-        STRING (REPLACE "::" ";" X3 ${X2})
-        LIST (GET  X3 0 X3class)
-        LIST (GET  X3 1 X3value)
-	    STRING (REGEX MATCH "[0-9]+"  X4value ${X3value})
-	    STRING (REPLACE "_" "" X4class ${X3class})
-	    # We add an entry into the "map-like" structure  (see https://stackoverflow.com/questions/66637169/map-in-cmake-script)
-	    SET (MAP_GLOBALSIZE_${X4class} ${X4value})
-        #MESSAGE ("${X4class} -> ${MAP_GLOBALSIZE_${X4class}}")
-    ENDIF()
-endforeach()
-#MESSAGE ("===> ${GLOBAL_WRAM_SIZE}")
+set(DPU_LINK_FLAGS
+    ${DPU_TARGET_RTE}
+    -DNR_TASKLETS=${NR_TASKLETS}
+    -Wl,-S
+)
+
+function(configure_dpu_target TASKNAME TASKTEMPLATE TASKTYPE OUTNAME STACK_DEFINE)
+  configure_file(
+    ${PROJECT_SOURCE_DIR}/src/bpl/arch/dpu/ArchUpmem.dpu.${TASKTYPE}.cpp.in
+    ${OUTNAME}.cpp
+    @ONLY
+  )
+
+  add_executable(${OUTNAME} ${CMAKE_CURRENT_BINARY_DIR}/${OUTNAME}.cpp)
+  target_include_directories(${OUTNAME} PUBLIC ${DPU_COMMON_INCLUDES})
+  target_compile_options(${OUTNAME} PUBLIC ${DPU_COMMON_COMPILE_FLAGS})
+  target_compile_options(${OUTNAME} PUBLIC ${CXX_DEFAULT_INCLUDE_DIRECTORIES_LIST})
+  target_link_options(${OUTNAME} PUBLIC ${DPU_LINK_FLAGS})
+
+  if(STACK_DEFINE)
+    target_compile_options(${OUTNAME} PUBLIC "@$<SHELL_PATH:${STACK_DEFINE}>")
+    target_link_options(${OUTNAME} PUBLIC "@$<SHELL_PATH:${STACK_DEFINE}>")
+  else()
+    target_compile_options(${OUTNAME} PUBLIC -DSTACK_SIZE_DEFAULT=64)
+    target_link_options(${OUTNAME} PUBLIC -DSTACK_SIZE_DEFAULT=64)
+  endif()
+endfunction()
 
 ################################################################################
 # DPU BINARIES GENERATION 
 ################################################################################
-foreach (FULLTASKNAME ${TASKS_LIST})
+foreach(FULLTASKNAME ${TASKS_LIST})
+  process_taskname(${FULLTASKNAME} TASKNAME TASKTEMPLATE)
 
-    # we retrieve information from the full task name
-    process_taskname (${FULLTASKNAME} TASKNAME TASKTEMPLATE)
+  foreach(TASKTYPE IN LISTS DPU_TASK_TYPES)
+    # We create the analysis target to get stack size information.
+    set(localtarget_analysis ${TASKNAME}.${TASKTYPE}.dpu.analysis)
+    configure_dpu_target("${TASKNAME}" "${TASKTEMPLATE}" "${TASKTYPE}" "${localtarget_analysis}" "")
+    register_stack_analysis(${TASKNAME} ${TASKTYPE})
 
-    # we generate the DPU code file from the generic code
-    configure_file (
-        ${PROJECT_SOURCE_DIR}/src/bpl/utils/GetSizeGlobalParameters.cpp.in  
-        ${CMAKE_CURRENT_BINARY_DIR}/${TASKNAME}.getsizeglobal.cpp   
-        @ONLY
-    )
+    # We create the actual target that will be used.
+    set(stack_rsp ${CMAKE_CURRENT_BINARY_DIR}/${TASKNAME}.stack_size.rsp)
+    set(stack_ready_target ${TASKNAME}_${TASKTYPE}_stack_ready)
+    add_custom_target(${stack_ready_target} DEPENDS ${stack_rsp})
 
-    # We compute the default stack size by using the 'global size' map we created before.
-    MATH (EXPR STACK_SIZE_DEFAULT "(( ( (65536*90)/100 - ${MAP_GLOBALSIZE_${TASKNAME}}) / ${NR_TASKLETS})/8)*8")
-    MESSAGE ("  STACK_SIZE_DEFAULT: ${STACK_SIZE_DEFAULT} for ${FULLTASKNAME}")
+    set(localtarget ${TASKNAME}.${TASKTYPE}.dpu)
+    configure_dpu_target("${TASKNAME}" "${TASKTEMPLATE}" "${TASKTYPE}" "${localtarget}" "${stack_rsp}")
+    add_dependencies(${localtarget} ${localtarget_analysis} ${stack_ready_target})
 
-    ################################################################################
-    # LOOP OVER EACH TASK TYPE
-    ################################################################################
-    foreach (TASKTYPE A)
-	
-        SET (localtarget ${TASKNAME}.${TASKTYPE}.dpu)
-
-        #MESSAGE ("-- DPU BINARY: ${localtarget}    NR_DPUS: ${NR_DPUS}   NR_TASKLETS: ${NR_TASKLETS}   STACK_SIZE_DEFAULT: ${STACK_SIZE_DEFAULT} ")
-
-        # we generate the DPU code file from the generic code
-        configure_file             (${PROJECT_SOURCE_DIR}/src/bpl/arch/dpu/ArchUpmem.dpu.${TASKTYPE}.cpp.in   ${localtarget}.cpp   @ONLY)
-
-        # we define the source to be compiled (ie. the generated cpp file)
-        add_executable             (${localtarget} ${CMAKE_CURRENT_BINARY_DIR}/${localtarget}.cpp)
-        target_include_directories (${localtarget} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/.. ${DPU_INCLUDE_DIRS} ${DPU_INCLUDE_SYSLIB})
-        target_compile_options     (${localtarget} PUBLIC ${DPU_TARGET_RTE} -DNR_TASKLETS=${NR_TASKLETS} -DSTACK_SIZE_DEFAULT=${STACK_SIZE_DEFAULT}  -O3 -DNDEBUG -fno-exceptions -fno-rtti  -D__x86_64__)
-        target_link_options        (${localtarget} PUBLIC ${DPU_TARGET_RTE} -DNR_TASKLETS=${NR_TASKLETS} -DSTACK_SIZE_DEFAULT=${STACK_SIZE_DEFAULT} -Wl,-S)
-    
-        # The following can be used for usage with dpu_profiling
-        #target_link_options        (${localtarget} PUBLIC ${DPU_TARGET_RTE} -DNR_TASKLETS=${NR_TASKLETS} -DSTACK_SIZE_DEFAULT=${STACK_SIZE_DEFAULT}  -pg)
-
-        # We need to force inclusion of default include directories for the DPU target
-        # Note: must use 'target_compile_options' since 'target_include_directories' doesn't work in this context.
-        target_compile_options     (${localtarget} PUBLIC ${CXX_DEFAULT_INCLUDE_DIRECTORIES_LIST} )
-
-    endforeach()  # TASKTYPE
-
-endforeach()  # FULLTASKNAME
+#    # We clean up the temporary files created to get stack size information.
+#    add_custom_command(TARGET ${localtarget}
+#      POST_BUILD
+#        COMMAND ${CMAKE_COMMAND} -E remove -f
+#                "${CMAKE_CURRENT_BINARY_DIR}/${localtarget_analysis}"
+#                "${CMAKE_CURRENT_BINARY_DIR}/${localtarget_analysis}.cpp"
+#                "${CMAKE_CURRENT_BINARY_DIR}/${TASKNAME}.stack_size.rsp"
+#        COMMENT "Removing temporaries after building ${localtarget}"
+#    )
+  endforeach()
+endforeach()
