@@ -22,7 +22,7 @@ struct VectorAdd
     {
         vector<uint32_t> result;
 
-        for (auto [x,y] : zip(v1,v2))  { result.push_back (x+y); }
+        for (auto [x,y] : bpl::zip(v1,v2))  { result.push_back (x+y); }
 
         return result;
     }

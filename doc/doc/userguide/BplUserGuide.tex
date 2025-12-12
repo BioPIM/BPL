@@ -337,7 +337,7 @@ Don't forget to set the \verb+DPU_BINARIES_DIR+ environment variable as displaye
 \subsection{Compilation toolchain with the \BPL}
 The \BPL tries to make the code agnostic regarding to the underlying architecture. This is somewhat challeging for an archicture
 like \UPMEM; for such an architecture, the developer has normally to write two programs, one for the host using standard C/C++
-and one for the DPU chipset using the \UPMEM SDK. With the \BPL, the developer should not worry with such details and only
+and one for the DPU chipset using the \UPMEM SDK. With the \BPL, the developer should not worry about such details and only
 focus on writing only one code. For achieving this, the \BPL introduces a compilation toolchain based on \emph{CMake} 
 that will take in charge the generation of the two binaries (one for host and the other for the DPU) when the \UPMEM architecture
 has to be used.
@@ -354,8 +354,8 @@ This compilation toolchain requires that the developer follows some convention s
         \cxx{src/main} directory 
   \item the \cxx{bpl::Launcher} class takes as template parameter the actual hardware architecture to be used (multicore, \UPMEM, \ldots); 
         it is possible to provide some arguments to the constructor for defining what resources has to be used (number of threads, tasklets, \ldots)
-  \item normally, the only location when an hardware architecture is referred is while instanciating the \cxx{bpl::Launcher} class;
-        all the remaining code should not rely on explicit reference of a specific architecture
+  \item normally, the only location where an hardware architecture is referred is while instanciating the \cxx{bpl::Launcher} class;
+        all the remaining code should not rely on explicit reference to a specific architecture
   \item when $N$ process units are used, one can use the \cxx{bpl::split} function on one or more input arguments, which will
         ``split'' the argument in such a way that each process unit will receive a specific part as input argument.   
 \end{enumerate}
@@ -452,7 +452,7 @@ and \UPMEM architectures.
 
 \section{Memory constraints}
 \subsection{Stack size}
-\subsection{Macro ARCH_ALIGN}
+\subsection{Macro ARCH\_ALIGN}
 
 \section{UPMEM miscellanous}
 \subsection{Binary size}
@@ -475,7 +475,7 @@ and \UPMEM architectures.
 \section{LauncherPool}
 
 
-\section{vector and vector_view}
+\section{vector and vector\_view}
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

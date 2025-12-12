@@ -6,12 +6,13 @@
 
 #include <common.hpp>
 #include <bpl/utils/TimeUtils.hpp>
+#include <bpl/utils/getname.hpp>
 
 //////////////////////////////////////////////////////////////////////////////
 struct Benchmark
 {
     static constexpr auto defaultCallback = [] (
-            const char* taskname,
+            std::string_view taskname,
             auto&& launcher,
             double duration,
             auto&& input,
@@ -36,14 +37,18 @@ struct Benchmark
     };
 
     template<typename...Ls>
-    static auto run (const char* taskname,  std::tuple<Ls...> launchersViews,
-        auto inputs, auto fct, size_t nbruns=2
+    static auto run (
+        std::tuple<Ls...> launchersViews,
+        auto inputs,
+        auto fct,
+        size_t nbruns=2
     )
     {
         auto exec = [&] (auto launchers) {
             for (auto arg : inputs) {  // 'inputs' before 'launchers' => mandatory for exact cumulation times for launchers
                 for (auto l : launchers) {
-                    fct(taskname, l, arg, defaultCallback, nbruns);
+                    auto [time,taskname] = fct(l, arg, nbruns);
+                    defaultCallback (taskname, l, time, arg, nbruns);
                 }
             }
         };
@@ -57,6 +62,9 @@ struct Benchmark
     template<template<typename> class Task, typename...Args>
     static auto run (auto&& launcher, size_t nbruns, bool firstWithoutTime, Args&&...args)
     {
+        // We retrieve the task name from the type
+        auto taskname = bpl::type_shortname<Task<bpl::ArchDummy>>();
+
     	if (firstWithoutTime) {
     		 launcher.template run<Task> (std::forward<Args>(args)...);
     		 launcher.resetStatistics();
@@ -65,6 +73,7 @@ struct Benchmark
         auto t0 = bpl::timestamp();
         for (size_t i=0; i<nbruns; i++) {   launcher.template run<Task> (std::forward<Args>(args)...);  }
         auto t1 = bpl::timestamp();
-        return (t1-t0)/nbruns/1'000'000.0;
+
+        return std::make_tuple ((t1-t0)/nbruns/1'000'000.0, taskname);
     }
 };
