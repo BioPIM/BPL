@@ -142,6 +142,7 @@ public:
         DpuComponentKind_e kind;
         std::size_t nbcomponents;
         bool trace;
+        bool stats;
         bool reset;
     };
 
@@ -149,12 +150,13 @@ public:
     static std::any make_configuration (
         TASKUNIT taskunit = TASKUNIT(1),
         bool trace=false,
+        bool stats=false,
         bool reset=false
     )
     {
         return ArchUpmemConfiguration {
             std::shared_ptr<TaskUnit> (new TASKUNIT(taskunit)),
-                    taskunit.kind(),taskunit.getNbComponents(), trace, reset
+                    taskunit.kind(),taskunit.getNbComponents(), trace, stats, reset
         };
     }
 
@@ -167,6 +169,8 @@ public:
             auto ts = statistics_.produceCumulTimestamp("init", "alloc");
 
             dpuSet_ = std::make_shared<details::dpu_set_handle_t> (cfg.kind,cfg.nbcomponents, nullptr, cfg.trace);
+
+            useStats_ = cfg.stats;
 
             // We may need to reset resources between each call to 'run' (like MRAM memory management for instance).
             reset_ = cfg.reset;
@@ -186,8 +190,9 @@ public:
     ArchUpmem (
         TASKUNIT taskunit = TASKUNIT(1),
         bool trace=false,
+        bool stats=false,
         bool reset=false
-    ) : ArchUpmem (make_configuration(taskunit, trace, reset)) {}
+    ) : ArchUpmem (make_configuration(taskunit, trace, stats, reset)) {}
 
     /** Return the name of the current architecture.
      * \return the architecture name
@@ -283,9 +288,9 @@ public:
         struct dpu_set_t dpu;
         uint32_t each_dpu;
 
-        std::vector<uint32_t> allTaskletsOrder;
-        std::vector<uint32_t> allTaskletsSize;
-        std::vector<uint32_t> allDPUSize;
+        std::vector<uint32_t> allTaskletsOrder;     allTaskletsOrder.reserve(getProcUnitNumber());
+        std::vector<uint32_t> allTaskletsSize;      allTaskletsSize .reserve(getProcUnitNumber());
+        std::vector<uint32_t> allDPUSize;           allDPUSize.reserve(getDpuNumber());
 
         std::vector<TimeStats> allNbCycles;
         uint32_t clocks_per_sec = 0;
@@ -304,17 +309,16 @@ public:
         }
         DPU_ASSERT(dpu_push_xfer(set(), DPU_XFER_FROM_DPU, "__metadata_output__mram__", 0, sizeof(MetadataOutput), DPU_XFER_DEFAULT));
 
+        // We retrieve mandatory information used for unserialization
         for (const MetadataOutput& metadata : __metadata_output__)
         {
-            for (auto idx : metadata.result_tasklet_order)
-            {
+            for (auto idx : metadata.result_tasklet_order)  {
                 VERBOSE_ARCH_UPMEM ("[ArchUpmem::run]  result_tasklet_order:  idx=%d\n", idx);
                 allTaskletsOrder.push_back (idx);
             }
 
             uint32_t DPUSize = 0;
-            for (auto s : metadata.result_tasklet_size)
-            {
+            for (auto s : metadata.result_tasklet_size)  {
                 VERBOSE_ARCH_UPMEM ("[ArchUpmem::run]  result_tasklet_size :  s=%d\n", s);
                 allTaskletsSize.push_back (s);
                 DPUSize += s;
@@ -324,49 +328,47 @@ public:
 
             if (DPUSize > maxResultSize)  { maxResultSize = DPUSize; }
 
-            std::array<TimeStats,NR_TASKLETS> nbCycles;
-            for (const auto& val : metadata.nb_cycles)
-            {
-                VERBOSE_ARCH_UPMEM ("[ArchUpmem::run]  nb_cycles:  [%u,%u,%u,%u,%u] \n",
-                    val.unserialize,  val.split,  val.exec,  val.result,  val.all
-                );
-                allNbCycles.push_back (val);
-            }
-
             heap_pointers.push_back (metadata.heap_pointer);
-
-            statistics_.addTag ("bpl/vector/PROTO_VECTORS",std::to_string(metadata.vstats.NB_VECTORS_IN_PROTO));
-            statistics_.addTag ("bpl/vector/SIZEOF",       std::to_string(metadata.vstats.SIZEOF));
-            statistics_.addTag ("bpl/vector/CACHE_NB",     std::to_string(metadata.vstats.CACHE_NB));
-            statistics_.addTag ("bpl/vector/MEMORY_SIZE",  std::to_string(metadata.vstats.MEMORY_SIZE));
-            statistics_.addTag ("bpl/vector/CACHE_ITEMS",  std::to_string(metadata.vstats.CACHE_NB_ITEMS));
-            statistics_.addTag ("bpl/vector/NBITEMS_MAX",  std::to_string(metadata.vstats.NBITEMS_MAX));
-
-            statistics_.addTag ("bpl/memtree/BLOCK_ITEMS", std::to_string(metadata.vstats.MEMTREE_NBITEMS_PER_BLOCK));
-            statistics_.addTag ("bpl/memtree/MAX_MEMORY",  std::to_string(metadata.vstats.MEMTREE_MAX_MEMORY));
-            statistics_.addTag ("bpl/memtree/LEVEL_MAX",   std::to_string(metadata.vstats.MEMTREE_LEVEL_MAX));
-
-            statistics_.addTag ("bpl/sizeof/input",   std::to_string(metadata.input_sizeof));
-            statistics_.addTag ("bpl/sizeof/output",  std::to_string(metadata.output_sizeof));
-
-            statistics_.addTag ("resources/stack_size",  std::to_string(metadata.stack_size));
-
-            statistics_.addTag ("resources/checksum/restore",  std::to_string(metadata.restoreNbErrors));
 
         } // end of for (const MetadataOutput& metadata : __metadata_output__)
 
-        clocks_per_sec =  __metadata_output__[0].clocks_per_sec;
+        if (useStats_)
+        {
+            // We retrieve optional information used for statistics
+            for (const MetadataOutput& metadata : __metadata_output__)
+            {
+                std::array<TimeStats,NR_TASKLETS> nbCycles;
+                for (const auto& val : metadata.nb_cycles)  {
+                    VERBOSE_ARCH_UPMEM ("[ArchUpmem::run]  nb_cycles:  [%u,%u,%u,%u,%u] \n",
+                        val.unserialize,  val.split,  val.exec,  val.result,  val.all
+                    );
+                    allNbCycles.push_back (val);
+                }
+                statistics_.addTag ("bpl/vector/PROTO_VECTORS",std::to_string(metadata.vstats.NB_VECTORS_IN_PROTO));
+                statistics_.addTag ("bpl/vector/SIZEOF",       std::to_string(metadata.vstats.SIZEOF));
+                statistics_.addTag ("bpl/vector/CACHE_NB",     std::to_string(metadata.vstats.CACHE_NB));
+                statistics_.addTag ("bpl/vector/MEMORY_SIZE",  std::to_string(metadata.vstats.MEMORY_SIZE));
+                statistics_.addTag ("bpl/vector/CACHE_ITEMS",  std::to_string(metadata.vstats.CACHE_NB_ITEMS));
+                statistics_.addTag ("bpl/vector/NBITEMS_MAX",  std::to_string(metadata.vstats.NBITEMS_MAX));
+                statistics_.addTag ("bpl/memtree/BLOCK_ITEMS", std::to_string(metadata.vstats.MEMTREE_NBITEMS_PER_BLOCK));
+                statistics_.addTag ("bpl/memtree/MAX_MEMORY",  std::to_string(metadata.vstats.MEMTREE_MAX_MEMORY));
+                statistics_.addTag ("bpl/memtree/LEVEL_MAX",   std::to_string(metadata.vstats.MEMTREE_LEVEL_MAX));
+                statistics_.addTag ("bpl/sizeof/input",        std::to_string(metadata.input_sizeof));
+                statistics_.addTag ("bpl/sizeof/output",       std::to_string(metadata.output_sizeof));
+                statistics_.addTag ("resources/stack_size",    std::to_string(metadata.stack_size));
+                statistics_.addTag ("resources/checksum/restore",  std::to_string(metadata.restoreNbErrors));
+            } // end of for (const MetadataOutput& metadata : __metadata_output__)
 
-        computeCyclesStats (allNbCycles, clocks_per_sec);
+            clocks_per_sec =  __metadata_output__[0].clocks_per_sec;
 
-        AllocatorStats allocator_stats = __metadata_output__[0].allocator_stats;
-
-        statistics_.addTag ("resources/MRAM/used",        std::to_string(allocator_stats.used));
-        statistics_.addTag ("resources/MRAM/pos",         std::to_string(allocator_stats.pos));
-        statistics_.addTag ("resources/MRAM/calls/get",   std::to_string(allocator_stats.nbCallsGet));
-        statistics_.addTag ("resources/MRAM/calls/read",  std::to_string(allocator_stats.nbCallsRead));
-
-        statistics_.addTag ("resources/nbpu",      std::to_string(getProcUnitNumber()));
+            computeCyclesStats (allNbCycles, clocks_per_sec);
+            AllocatorStats allocator_stats = __metadata_output__[0].allocator_stats;
+            statistics_.addTag ("resources/MRAM/used",        std::to_string(allocator_stats.used));
+            statistics_.addTag ("resources/MRAM/pos",         std::to_string(allocator_stats.pos));
+            statistics_.addTag ("resources/MRAM/calls/get",   std::to_string(allocator_stats.nbCallsGet));
+            statistics_.addTag ("resources/MRAM/calls/read",  std::to_string(allocator_stats.nbCallsRead));
+            statistics_.addTag ("resources/nbpu",      std::to_string(getProcUnitNumber()));
+        }
 
         // Possible check -> allTaskletsOrder should be equal to the sum from 0 to N-1 = N*(N-1)/2  (with N=getProcUnitNumber())
         DEBUG_ARCH_UPMEM ("[ArchUpmem::run]  totalResultSize=%ld  maxResultSize=%ld   #allTaskletsOrder=%ld  checksum=(%ld,%d) \n",
@@ -381,10 +383,10 @@ public:
             ArchUpmem* ref_;
             const ArchUpmem& ref() const { return *ref_; }
 
-            const std::vector<uint32_t> heap_pointers;
-            const std::vector<uint32_t> allDPUSize;
-            const std::vector<uint32_t> allTaskletsSize;
-            const std::vector<uint32_t> allTaskletsOrder;
+            std::vector<uint32_t> const& heap_pointers;
+            std::vector<uint32_t> const& allDPUSize;
+            std::vector<uint32_t> const& allTaskletsSize;
+            std::vector<uint32_t> const& allTaskletsOrder;
         };
 
         struct iterable_wrapper
@@ -1078,6 +1080,7 @@ public:
 private:
     std::shared_ptr<TaskUnit> taskunit_;
 
+    bool useStats_ = false;
     bpl::Statistics statistics_;
 
     /** Handle on a set made of ranks or DPUs. */
