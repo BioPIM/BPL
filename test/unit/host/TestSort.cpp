@@ -61,7 +61,7 @@ TEST_CASE ("SortSelectionSimple", "[sort]" )
 
 TEST_CASE ("SortSelection", "[sort]" )
 {
-    constexpr bool full = true;
+    constexpr bool full = false;
     size_t r1 = 20;
     size_t r0 = full ? r1 : r1;
 

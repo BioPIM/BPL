@@ -21,6 +21,7 @@ using namespace bpl;
 #include <tasks/VectorAsInputSplit.hpp>
 #include <tasks/VectorAsInputCustom.hpp>
 #include <tasks/VectorChecksum.hpp>
+#include <tasks/VectorChecksumOnce.hpp>
 #include <tasks/VectorAsOutputUint8.hpp>
 #include <tasks/VectorAsOutputUint16.hpp>
 #include <tasks/VectorAsOutputUint32.hpp>
@@ -384,6 +385,22 @@ struct VectorChecksum_aux
 TEST_CASE ("VectorChecksum", "[Vector]" )
 {
     config::run<VectorChecksum_aux> ();
+}
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorChecksumOnce", "[Vector]" )
+{
+    size_t nbItems = 1UL<<28;
+    size_t nbruns  = 10;
+
+    uint64_t truth = 0;
+    std::vector<uint32_t> v;  for (size_t i=1; i<=nbItems; i++)  { v.push_back(i); truth+=v.back(); }
+
+    Launcher<ArchUpmem> launcher {10_rank};
+
+    for (size_t r=1; r<=nbruns; r++) {
+        auto checksum = launcher.run<VectorChecksumOnce> (split (v));
+        REQUIRE (checksum == truth);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////

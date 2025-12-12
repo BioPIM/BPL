@@ -14,6 +14,7 @@
 #include <tasks/VectorReverseInPlace.hpp>
 #include <tasks/VectorReverseIterator.hpp>
 #include <tasks/VectorChecksum.hpp>
+#include <tasks/VectorChecksumOnce.hpp>
 #include <tasks/VectorAdd.hpp>
 #include <tasks/SketchJaccardDistance.hpp>
 #include <tasks/SketchJaccardDistanceOnce.hpp>
@@ -75,9 +76,25 @@ TEST_CASE ("VectorChecksum", "[benchmark]" )
     };
     Benchmark::run ("VectorChecksum",
 		getDefaultLaunchers(),
-		std::views::iota(10,20),
+		std::vector {20,22,24,26,28},
 		fct
 	);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorChecksumOnce", "[benchmark]" )
+{
+    auto fct = [] (const char* taskname, auto&& launcher, uint64_t input, auto callback, size_t nbruns) {
+        std::vector<uint32_t> v (1UL<<input);
+        std::iota (std::begin(v), std::end(v), 1);
+        auto t = Benchmark::run<VectorChecksumOnce> (launcher, nbruns, true, split(v));
+        callback (taskname, launcher, t, input, nbruns);
+    };
+    Benchmark::run ("VectorChecksumOnce",
+        getDefaultLaunchers(),
+        std::vector {20,22,24,26,28},
+        fct, 5
+    );
 }
 
 //////////////////////////////////////////////////////////////////////////////

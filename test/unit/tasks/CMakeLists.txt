@@ -54,7 +54,7 @@ set (TASKS_LIST
 	"Sum"
 	"Vector1" "Vector2" "Vector3" "VectorCheck" 
 	"VectorAsInput2" "VectorAsInput3" "VectorAsInputCustom" 
-	"VectorChecksum"
+	"VectorChecksum" "VectorChecksumOnce"
 	"VectorAsOutputUint8" "VectorAsOutputUint16" "VectorAsOutputUint32"  
 	"VectorAsInput"  
 	"SketchJaccardTopK"

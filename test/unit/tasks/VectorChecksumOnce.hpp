@@ -10,19 +10,22 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 // @description: Takes a vector as input, iterates its content and compute the
-// checksum. The final result is reduced checksum.
+// checksum. The final result is reduced checksum. We tag the vector with 'once'
+// in order to test successive calls
+// @remark: the first call is not used for time statistics in order to assess
+// the impact of 'once'
 // @benchmark-input: 2^n for n in 20,22,24,26,28
 // @benchmark-split: yes
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
-struct VectorChecksum : bpl::Task<ARCH>
+struct VectorChecksumOnce : bpl::Task<ARCH>
 {
     USING(ARCH);
 
-    auto operator() (vector<uint32_t> const& v)
+    auto operator() (once<vector<uint32_t> const&> v)
     {
         uint64_t checksum = 0;
-        for (auto x : v)  {  checksum += x;  }
+        for (auto x : *v)  {  checksum += x;  }
         return checksum;
     }
 
