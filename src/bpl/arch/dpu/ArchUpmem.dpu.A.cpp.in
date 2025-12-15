@@ -289,6 +289,10 @@ void banner (const char* msg)
             // We may not accurate, so we need some threshold.
             return t > prev ? t-prev : 0;
         }
+        static type diff (type a, type b) { 
+            // We may not accurate, so we need some threshold.
+            return b > a ? b-a : 0;
+        }
     };
 #else
     struct Perf
@@ -402,7 +406,7 @@ void postprocess (
 ////////////////////////////////////////////////////////////////////////////////
 int main()
 {
-    auto initial_time = Perf::init ();
+    auto t0 = Perf::init ();
 
     // shortcut
     int tuid = me();
@@ -544,7 +548,8 @@ int main()
     barrier_wait(&my_barrier);
 
     // Performance stats
-    __metadata_output__.nb_cycles [tuid].unserialize = Perf::since(initial_time);
+    auto t1 = Perf::get ();
+    __metadata_output__.nb_cycles [tuid].unserialize = Perf::diff(t0,t1);
 
     // We compute the actual puid
     uint32_t puid = __metadata_input__.dpuid*NR_TASKLETS + tuid;
@@ -583,7 +588,8 @@ int main()
     }
     
     // Performance stats
-    __metadata_output__.nb_cycles [tuid].split = Perf::since (__metadata_output__.nb_cycles[tuid].unserialize);
+    auto t2 = Perf::get ();
+    __metadata_output__.nb_cycles [tuid].split = Perf::diff(t1,t2);
 
 #endif // WITH_SPLIT_ARGUMENTS
 #endif // #ifndef WITH_FAKE_ARGUMENTS
@@ -629,7 +635,8 @@ int main()
     postprocess (result); 
     
     // Performance stats
-    __metadata_output__.nb_cycles [tuid].exec = Perf::since (__metadata_output__.nb_cycles [tuid].split);
+    auto t3 = Perf::get ();
+    __metadata_output__.nb_cycles [tuid].exec = Perf::diff(t2,t3);
 
     banner("EXEC END");
 
@@ -704,7 +711,8 @@ int main()
     });
 
     // Performance stats
-    __metadata_output__.nb_cycles [tuid].result = Perf::since(__metadata_output__.nb_cycles [tuid].exec);
+    auto t4 = Perf::get ();
+    __metadata_output__.nb_cycles [tuid].result = Perf::diff(t3,t4);
 
     if (tuid==0)  
     {  
@@ -763,7 +771,8 @@ int main()
 
     }
 
-    __metadata_output__.nb_cycles [tuid].all = Perf::since (initial_time);
+    auto t5 = Perf::get ();
+    __metadata_output__.nb_cycles [tuid].all = Perf::diff(t0,t5);
     
     banner("END");
     
