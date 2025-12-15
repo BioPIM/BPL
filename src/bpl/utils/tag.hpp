@@ -31,18 +31,16 @@ struct tag
     using ptr  = type*;
     using ref  = type&;
 
-    constexpr tag() : ptr_(nullptr) {}
-
     template<typename U>
-    tag (U&& u)  : ptr_(std::addressof(u)) {}  // don't use &u since the unary operator& may be deleted.
+    tag (U&& u)  : ref_(u) {}
 
-    ptr  operator-> () const { return  ptr_; }
-    ref  operator*  () const { return *ptr_; }
+    ptr  operator-> () const { return  std::addressof(ref_.get()); }
+    ref  operator*  () const { return  ref_.get();  }
 
-    ptr  operator-> ()       { return  ptr_; }
-    ref  operator*  ()       { return *ptr_; }
+    ptr  operator-> ()       { return  std::addressof(ref_.get()); }
+    ref  operator*  ()       { return  ref_.get();  }
 
-    ptr ptr_;  /* keep the reference as a pointer. */
+    std::reference_wrapper<T> ref_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

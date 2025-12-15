@@ -88,6 +88,15 @@ TEST_CASE ("TransfoTuple", "[metaprog]" )
         >,
         std::tuple<int,float,int>
     >);
+
+    static_assert (std::is_same_v<
+        transform_tuple_t <
+            std::tuple<bpl::global<bpl::once<float>>>,
+            bpl::removetag_once,
+            bpl::removetag_global
+        >,
+        std::tuple<float>
+    >);
 }
 
 //////////////////////////////////////////////////////////////////////////////

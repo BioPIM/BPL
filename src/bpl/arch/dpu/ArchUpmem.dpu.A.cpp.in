@@ -63,7 +63,15 @@ struct GlobalAndVector : std::false_type {};
 
 template<typename T>
 struct GlobalAndVector<bpl::global<T>>  {
-    static constexpr bool value = bpl::CounterTrait_v<bpl::is_vector,std::decay_t<T>> > 0;
+
+    // T might have some tag as well, so we remove them 
+    using notags_t = std::decay_t<std::tuple_element_t<0, bpl::transform_tuple_t <
+        std::tuple<T>,
+        bpl::removetag_once,
+        bpl::removetag_global
+    >>>;
+    
+    static constexpr bool value = bpl::CounterTrait_v<bpl::is_vector,notags_t> > 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -76,7 +84,7 @@ struct ResourcesManager
     using resources_generic_t = task_generic_t::arch_t;
 
     using raw_params_t = bpl::task_params_t<task_generic_t>;
-    
+
     // We get the parameters (still without specific configuration) after removing potential tags
     using params_t = bpl::transform_tuple_t <
         raw_params_t,
@@ -85,7 +93,7 @@ struct ResourcesManager
     >;
 
     // We count how many vectors we have in the parameters
-    static constexpr int nbvectors_in_proto_v = bpl::CounterTrait<bpl::is_vector, raw_params_t>::value;  
+    static constexpr int nbvectors_in_proto_v = bpl::CounterTrait<bpl::is_vector, params_t>::value;  
 
     // We compute the new config with the adaptation of some constants.
     // NB: we inherits from the struct holding default values (from the USING macro) and we override the required constants
@@ -95,12 +103,11 @@ struct ResourcesManager
             resources_generic_t::constants_t::VECTOR_MEMORY_SIZE_LOG2
             - bpl::Log2Ext<nbvectors_in_proto_v>::value;
 
-        static constexpr int MEMTREE_MAX_MEMORY_LOG2 = 
-            resources_generic_t::constants_t::MEMTREE_MAX_MEMORY_LOG2 
-            - bpl::Log2Ext<nbvectors_in_proto_v>::value;
+        static constexpr int MEMTREE_MAX_MEMORY_LOG2 =
+            resources_generic_t::constants_t::MEMTREE_MAX_MEMORY_LOG2;
         
-        static constexpr int MEMTREE_NBITEMS_PER_BLOCK_LOG2 = 
-            resources_generic_t::constants_t::MEMTREE_NBITEMS_PER_BLOCK_LOG2 
+        static constexpr int MEMTREE_NBITEMS_PER_BLOCK_LOG2 =
+            resources_generic_t::constants_t::MEMTREE_NBITEMS_PER_BLOCK_LOG2
             - (MEMTREE_MAX_MEMORY_LOG2<6 ? 1 : 0);
 
 		static constexpr bool hasAtLeastOneGlobalVector = [] <size_t...Is> (std::index_sequence<Is...>) {
@@ -108,7 +115,7 @@ struct ResourcesManager
 		} (std::make_index_sequence<std::tuple_size_v<raw_params_t>>());  
 
 		// We may have to set SHARED_ITER_CACHE to false in case we have at least one global vector in the prototype            
-        static constexpr bool SHARED_ITER_CACHE = hasAtLeastOneGlobalVector ? 
+        static constexpr bool SHARED_ITER_CACHE = hasAtLeastOneGlobalVector ?  
         	false : resources_generic_t::constants_t::SHARED_ITER_CACHE;
     };
 

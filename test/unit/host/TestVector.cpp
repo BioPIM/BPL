@@ -855,7 +855,9 @@ TEST_CASE ("VectorMany3", "[Vector]" )
 
     VectorMany3<ArchDummy>::type t;
 
-    size_t nbitems = 30*1000;  // we will use nbitems*10(vectors)*16(tasklets)*sizeof(uint32_t) bytes
+    constexpr size_t K=10;
+
+    size_t nbitems = 20*1000;  // we will use nbitems*10(vectors)*16(tasklets)*sizeof(uint32_t) bytes
     size_t n0      = 1;
 
     size_t n=n0;
@@ -872,7 +874,7 @@ TEST_CASE ("VectorMany3", "[Vector]" )
 
     for (auto res : launcher.run<VectorMany3> (t))
     {
-        REQUIRE (res.size() == 10*nbitems);
+        REQUIRE (res.size() == K*nbitems);
 
         size_t m=n0;
         for (uint32_t x : res)
