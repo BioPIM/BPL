@@ -14,6 +14,7 @@ struct SketchJaccardTopK : bpl::Task<ARCH>
 {
     struct config  {
         static const int VECTOR_MEMORY_SIZE_LOG2 = 10;
+        static const bool VECTOR_SERIALIZE_OPTIM = true;
     };
 
     USING(ARCH,config);
@@ -23,14 +24,15 @@ struct SketchJaccardTopK : bpl::Task<ARCH>
 
     auto operator() (const vector_view<hash_t>& dbRef, const vector_view<hash_t>& dbQry, size_t ssize)
     {
-        vector<count_t> result;
-
         auto refStart = dbRef.begin();
         auto qryStart = dbQry.begin();
 
         size_t nbSketchRef = dbRef.size() / ssize;
         size_t nbSketchQry = dbQry.size() / ssize;
 
+        vector<count_t> result (nbSketchRef*nbSketchQry);
+
+        size_t k=0;
         for (size_t idxSketchQry=0, offsetQry=0; idxSketchQry<nbSketchQry; idxSketchQry++, offsetQry+=ssize)
         {
             for (size_t idxSketchRef=0, offsetRef=0; idxSketchRef<nbSketchRef; idxSketchRef++, offsetRef+=ssize)
@@ -132,7 +134,7 @@ struct SketchJaccardTopK : bpl::Task<ARCH>
                 }
 #endif
 
-                result.push_back (count);
+                result[k++] = count;
             }
 
             // We notify the progression of the task

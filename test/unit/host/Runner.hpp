@@ -28,38 +28,27 @@ public:
         std::tuple<ARCHS...>
     >;
 
-    using first_t  = std::tuple_element_t<0,arch_t>;
-
     template<template <typename> typename TASK, typename...ARGS>
-    static auto run (ARGS&&...args)
-    {
-        using type     = decltype(TASK<first_t>() (std::forward<ARGS>(args)...));
-        using result_t = std::pair<double, std::vector<type>>;
-
-        std::vector<result_t> allResults (std::tuple_size_v<arch_t>);
-
-        size_t idx=0;
-
-        std::apply ([&](auto&&...arch)
-            {
-               (exec<std::decay_t<decltype(arch)>,TASK,decltype(allResults[0])> (allResults[idx++], std::forward<ARGS>(args)...),...);
-            },
+    static auto run (ARGS&&...args)  {
+        // We might have task results of different types wrt the architecture.
+        // So we return a tuple instead of a vector.
+        return std::apply ([&](auto&&...arch) {
+            return std::make_tuple (
+                exec<std::decay_t<decltype(arch)>,TASK> (std::forward<ARGS>(args)...)...
+            ); },
             arch_t {}
         );
-
-        return allResults;
     }
 
 private:
 
-    template<class ARCH, template <typename> typename TASK, typename result_t, typename...ARGS>
-    static auto exec (result_t& result, ARGS&&...args)
+    template<class ARCH, template <typename> typename TASK, typename...ARGS>
+    static auto exec (ARGS&&...args)
     {
         double t0 = timestamp();
-        for (auto&& x : bpl::Launcher<ARCH>{}.template run<TASK> (std::forward<ARGS>(args)...))  {  result.second.push_back (std::move(x));  }
+        auto results = bpl::Launcher<ARCH>{}.template run<TASK> (std::forward<ARGS>(args)...);
         double t1 = timestamp();
-
-        result.first = (t1-t0)/1000.0;
+        return std::make_pair ((t1-t0)/1000.0, std::move(results));
     }
 
     static inline auto  timestamp()

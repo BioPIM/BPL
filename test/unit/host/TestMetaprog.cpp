@@ -332,3 +332,19 @@ TEST_CASE ("predicate", "[metaprog]" )
 {
     static_assert (count_predicate_match_v<mypredicate, int,char,int> == 2);
 }
+
+//////////////////////////////////////////////////////////////////////////////
+DEFINE_GETTER(SOMETHING);                                                                 \
+
+struct foo {};
+struct bar { static constexpr int SOMETHING = 99;};
+
+TEST_CASE ("define_getter", "[metaprog]" )
+{
+    static_assert (get_SOMETHING_v<foo,42> == 42);
+    static_assert (get_SOMETHING_v<bar,42> == 99);
+
+    static_assert (get_SOMETHING_v<std::tuple<foo,bar>,42> == 99);
+    static_assert (get_SOMETHING_v<std::tuple<bar,foo>,42> == 99);
+    static_assert (get_SOMETHING_v<std::tuple<>,42> == 42);
+}

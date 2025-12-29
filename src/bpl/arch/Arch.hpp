@@ -21,6 +21,7 @@ namespace bpl  {
  */
 #define USING(ARCH,...) \
                                       using arch_t      = NS0(ARCH,__VA_ARGS__);                \
+                                      using traits_t    = std::tuple<__VA_ARGS__>;        \
     template<typename A, typename B>  using pair        = NS (ARCH,__VA_ARGS__) pair<A,B>;      \
     template<class T, std::size_t N>  using array       = NS (ARCH,__VA_ARGS__) array<T,N>;     \
     template<class T>                 using allocator   = NS (ARCH,__VA_ARGS__) allocator<T>;   \

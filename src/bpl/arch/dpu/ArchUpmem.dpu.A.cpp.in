@@ -336,18 +336,18 @@ auto configure (T&& task, ARGS...args)
 // The default implementation does nothing; 
 // only the specialization for bpl::vector (directly or not) does something
 template<typename T> 
-void postprocess (T& result) 
+void postprocess (uint32_t tuid, T& result) 
 {
     DEBUG0 ("postprocess generic: %d  @: 0x%lx \n", sizeof(result), uint64_t(std::addressof(result)));
 }
 
 template<typename...ARGS>
-void postprocess (std::tuple<ARGS...>& result)
+void postprocess (uint32_t tuid, std::tuple<ARGS...>& result)
 {
     DEBUG0 ("postprocess tuple\n");
     bpl::for_each_in_tuple (result, [&] (auto&& p)
     {
-        postprocess (p);
+        postprocess (tuid, p);
     });
 }
 
@@ -361,13 +361,14 @@ template<
     int MEMTREE_NBITEMS_PER_BLOCK_LOG2,
     int MAX_MEMORY_LOG2
 > 
-void postprocess (
+void postprocess (uint32_t tuid, 
     bpl::vector<T,ALLOCATOR,MUTEX,MEMORY_SIZE_LOG2,CACHE_NB_LOG2,SHARED_ITER_CACHE,MEMTREE_NBITEMS_PER_BLOCK_LOG2, MAX_MEMORY_LOG2>& result
 ) 
 {
     DEBUG0 ("postprocess vector\n");
     // FIRST VERSION: to be improved...
     result.update_all();
+    __metadata_output__.vector_info[tuid] = { .address=result.getFillAddress(),  .nbitems=result.size() };
 }
 
 template<
@@ -379,7 +380,7 @@ template<
     int MEMTREE_NBITEMS_PER_BLOCK_LOG2, 
     int MEMTREE_MAX_MEMORY_LOG2
 >
-void postprocess (
+void postprocess (uint32_t tuid,
     resources_t::vector<T,Allocator,
         MEMORY_SIZE_LOG2,CACHE_NB_LOG2,SHARED_ITER_CACHE,MEMTREE_NBITEMS_PER_BLOCK_LOG2, MEMTREE_MAX_MEMORY_LOG2>& result
 ) 
@@ -558,13 +559,6 @@ int main()
 #ifndef WITH_FAKE_ARGUMENTS
 #ifdef WITH_SPLIT_ARGUMENTS
     {
-        __attribute__((unused)) auto popcount = [] (char* ptr, int size)
-        {
-            int res=0;
-            for (int i=0; i<size; i++)  {  for (int j=0; j<8; j++)  { res += (ptr[i] >> j) & 1; } }
-            return res;
-        };
-
         banner("SPLIT PROCESS");
 
         int idx=0;
@@ -632,7 +626,7 @@ int main()
     // We may need some post process on the result.
     // For instance, instances of bpl::vector may need to be 'flushed' if they are
     // in dirty state.
-    postprocess (result); 
+    postprocess (tuid, result); 
     
     // Performance stats
     auto t3 = Perf::get ();

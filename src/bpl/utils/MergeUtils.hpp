@@ -22,7 +22,7 @@ auto merge (auto const& sortedVectors, FCT fct)
     // We create a priority queue with begin/end iterators for all input vectors
 
     using vector_t   = std::decay_t<decltype(sortedVectors[0])>;  // should have at least one vector.
-    using value_type = typename vector_t::const_iterator;
+    using value_type = decltype(sortedVectors[0].begin());
     using queue_type = std::pair<value_type,value_type>;
 
     auto cmp = [](queue_type left, queue_type right) {  return *(left.first) > *(right.first);  };

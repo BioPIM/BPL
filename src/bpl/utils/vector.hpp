@@ -442,7 +442,8 @@ template<
     int CACHE_NB_LOG2,             // log2 of the number of caches
     bool SHARED_ITER_CACHE,
     int MEMTREE_NBITEMS_PER_BLOCK_LOG2,
-    int MAX_MEMORY_LOG2
+    int MAX_MEMORY_LOG2,
+    bool SERIALIZE_OPTIM=false
 >
 class vector : public vector_view<T,ALLOCATOR,MUTEX,MEMORY_SIZE_LOG2,CACHE_NB_LOG2,SHARED_ITER_CACHE>
 {

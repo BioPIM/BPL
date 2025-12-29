@@ -19,7 +19,9 @@
 template<class ARCH>
 struct VectorCreation : bpl::Task<ARCH>
 {
-    USING(ARCH);
+    struct config  {  static const bool VECTOR_SERIALIZE_OPTIM = true;  };
+
+    USING(ARCH,config);
 
     auto operator() (int nbitems) const
     {

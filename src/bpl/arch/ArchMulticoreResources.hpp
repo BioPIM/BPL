@@ -36,7 +36,7 @@ struct ArchMulticoreResources
 
     template<typename T>        using span   = std::span<T>;
 
-    template<typename T>        using vector_view = std::span<T>;
+    template<typename T>        using vector_view = std::vector<T>;
 
     template<typename T>        using allocator = std:: allocator<T>;
 

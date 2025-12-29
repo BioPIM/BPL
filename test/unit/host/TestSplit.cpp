@@ -467,7 +467,9 @@ TEST_CASE ("SplitMyLong2", "[Split]" )
 {
     MyLong ml {42};
 
-    for (auto& [stats,results] : Runner<>::run<SplitMyLong> (split(ml)))  {
+    auto check = [&] (auto&& results) {
         for (auto res : results)  {  REQUIRE (res==ml.value);  }
-    }
+    };
+
+    std::apply ([&](auto...result) {  ( (check(result.second)),...);  }, Runner<>::run<SplitMyLong> (split(ml)));
 }

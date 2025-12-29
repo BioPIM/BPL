@@ -28,19 +28,17 @@ template<typename T>
 struct tag
 {
     using type = T;
-    using ptr  = type*;
-    using ref  = type&;
 
     template<typename U>
     tag (U&& u)  : ref_(u) {}
 
-    ptr  operator-> () const { return  std::addressof(ref_.get()); }
-    ref  operator*  () const { return  ref_.get();  }
+    decltype(auto) operator-> () const { return  std::addressof(ref_); }
+    decltype(auto) operator*  () const { return  ref_;  }
 
-    ptr  operator-> ()       { return  std::addressof(ref_.get()); }
-    ref  operator*  ()       { return  ref_.get();  }
+    decltype(auto) operator-> ()       { return  std::addressof(ref_); }
+    decltype(auto) operator*  ()       { return  ref_;  }
 
-    std::reference_wrapper<T> ref_;
+    const T& ref_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

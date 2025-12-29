@@ -18,8 +18,9 @@ template<class ARCH>
 struct SortSelection : bpl::Task<ARCH>
 {
     struct Config  {
-        static constexpr bool SWAP_USED         = true;
-        static constexpr bool SHARED_ITER_CACHE = false;
+        static constexpr bool SWAP_USED          = true;
+        static constexpr bool SHARED_ITER_CACHE  = false;
+        static const bool VECTOR_SERIALIZE_OPTIM = false;
     };
 
     USING(ARCH,Config);

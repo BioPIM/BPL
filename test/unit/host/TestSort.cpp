@@ -38,7 +38,7 @@ auto SortSelection_aux(auto&& launcher, auto const& v)
     REQUIRE (nberrors==0);
 
     [[maybe_unused]] auto t2 = timestamp();
-    //fmt::println ("arch: {:10}  #items: {}  #result: {}  time: {:5.3} {:5.3}", launcher.name(), v.size(), results.size(), t1-t0, t2-t1);
+    //fmt::println ("arch: {:10}  #items: {:9}  #result: {:6}  time: {:5.3} {:5.3}", launcher.name(), v.size(), results.size(), t1-t0, t2-t1);
 
     return t1-t0;
 }
@@ -74,7 +74,7 @@ TEST_CASE ("SortSelection", "[sort]" )
 
             auto launchers = std::make_tuple (
                 Launcher<ArchMulticore>  {ArchMulticore::Thread{nbtasklets}, 32_thread},
-                Launcher<ArchUpmem>      {ArchUpmem::DPU{nbdpu}}
+                Launcher<ArchUpmem>      {ArchUpmem::DPU{nbdpu},false,true}
             );
 
             REQUIRE (std::get<0>(launchers).getProcUnitNumber() == std::get<1>(launchers).getProcUnitNumber());

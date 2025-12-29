@@ -15,7 +15,9 @@
 #include <tasks/SyracuseReduce.hpp>
 #include <tasks/SyracuseVector.hpp>
 #include <tasks/SketchJaccardDistance.hpp>
+#include <tasks/SketchJaccardDistanceOnce.hpp>
 #include <tasks/SortSelectionVector.hpp>
+#include <tasks/VectorCreation.hpp>
 
 //////////////////////////////////////////////////////////////////////////////
 auto getDefaultUpmemView() {
@@ -88,27 +90,27 @@ TEST_CASE ("VectorChecksumOnce", "[benchmark]" )
 }
 
 //////////////////////////////////////////////////////////////////////////////
-TEST_CASE ("VectorAdd", "[benchmark]" )
-{
-    Benchmark::run (
-		getDefaultLaunchers(),
-		std::views::iota(10,20),
-		[] (auto&& launcher, uint64_t input, size_t nbruns) {
-            std::vector<uint32_t> v1 (1UL<<input);
-            std::vector<uint32_t> v2 (1UL<<input);
-            std::iota (std::begin(v1), std::end(v1),  100);
-            std::iota (std::begin(v2), std::end(v2), 1000);
-            return Benchmark::run<VectorAdd> (launcher, nbruns, false, split(v1), split(v2));
-        }
-	);
-}
+//TEST_CASE ("VectorAdd", "[benchmark]" )
+//{
+//    Benchmark::run (
+//		getDefaultLaunchers(),
+//		std::views::iota(10,20),
+//		[] (auto&& launcher, uint64_t input, size_t nbruns) {
+//            std::vector<uint32_t> v1 (1UL<<input);
+//            std::vector<uint32_t> v2 (1UL<<input);
+//            std::iota (std::begin(v1), std::end(v1),  100);
+//            std::iota (std::begin(v2), std::end(v2), 1000);
+//            return Benchmark::run<VectorAdd> (launcher, nbruns, false, split(v1), split(v2));
+//        }
+//	);
+//}
 
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("VectorReverseInPlace", "[benchmark]" )
 {
     Benchmark::run (
 		getDefaultLaunchers(),
-		std::views::iota(10,18),
+		std::vector {18,20,22,24,26,28},
 		[] (auto&& launcher, uint64_t input, size_t nbruns) {
             using value_type = VectorReverseInPlace<ArchMulticore>::value_type;
             std::vector<value_type> v (1UL<<input);
@@ -148,9 +150,9 @@ TEST_CASE ("SyracuseVector", "[benchmark]" )
 TEST_CASE ("SketchJaccardDistance", "[benchmark]" )
 {
     Benchmark::run (
-		getDefaultLaunchers(),
-		std::views::iota(17,20),
-		[] (auto&& launcher, uint64_t input, size_t nbruns) {
+        getDefaultLaunchers(),
+        std::views::iota(17,20),
+        [] (auto&& launcher, uint64_t input, size_t nbruns) {
 
             using hash_t = SketchJaccardDistance<ArchDummy>::hash_t;
             size_t SSIZE = 1000;
@@ -167,7 +169,35 @@ TEST_CASE ("SketchJaccardDistance", "[benchmark]" )
             for (size_t i=1; i<=refSize; i++)  {  for (size_t j=0; j<SSIZE; j++)  {  ref.push_back (refCoeff*j);   }  }
             for (size_t i=1; i<=qrySize; i++)  {  for (size_t j=0; j<SSIZE; j++)  {  qry.push_back (qryCoeff*j);   }  }
 
-            return Benchmark::run<SketchJaccardDistance> (launcher, nbruns, false, split(ref), qry, SSIZE);
+            return Benchmark::run<SketchJaccardDistance> (launcher, nbruns, true, split(ref), qry, SSIZE);
+        }
+    );
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("SketchJaccardDistanceOnce", "[benchmark]" )
+{
+    Benchmark::run (
+		getDefaultLaunchers(),
+		std::views::iota(17,20),
+        [] (auto&& launcher, uint64_t input, size_t nbruns) {
+
+            using hash_t = SketchJaccardDistanceOnce<ArchDummy>::hash_t;
+            size_t SSIZE = 1000;
+
+            size_t refSize = 1UL<<input;
+            size_t qrySize = 100;
+
+            std::vector<hash_t> ref;
+            std::vector<hash_t> qry;
+
+            size_t refCoeff = 1;
+            size_t qryCoeff = 2;
+
+            for (size_t i=1; i<=refSize; i++)  {  for (size_t j=0; j<SSIZE; j++)  {  ref.push_back (refCoeff*j);   }  }
+            for (size_t i=1; i<=qrySize; i++)  {  for (size_t j=0; j<SSIZE; j++)  {  qry.push_back (qryCoeff*j);   }  }
+
+            return Benchmark::run<SketchJaccardDistanceOnce> (launcher, nbruns, true, split(ref), qry, SSIZE);
         }
 	);
 }
@@ -189,3 +219,62 @@ TEST_CASE ("SortSelection", "[benchmark]" )
         }
     );
 }
+
+#if 0
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorCreationSimple", "[Vector]" )
+{
+    size_t nbErrors1 = 0;
+    size_t nbErrors2 = 0;
+    size_t nbitems = 1<<16;
+    size_t n=0;
+
+    Launcher<ArchUpmem> launcher {20_rank,false,true};
+
+    size_t idx=0;
+    for (auto const& res : launcher.run<VectorCreation>(nbitems))  {
+        nbErrors1 += res.size() == nbitems ? 0 : 1;
+        size_t k=0;
+        for (auto x : res) { nbErrors2 += x==(k+n) ? 0 : 1;   k++; }
+        n++;
+//        fmt::println ("[{:5}]  {::5}", idx, res);
+        idx++;
+    }
+    REQUIRE (nbErrors1 == 0);
+    REQUIRE (nbErrors2 == 0);
+
+    launcher.getStatistics().dump(true);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorCreation", "[Vector]" )
+{
+    size_t nbErrors1 = 0;
+    size_t nbErrors2 = 0;
+
+    //for (size_t nbRanks : {1,2,4,8,16})
+    for (size_t nbRanks=1; nbRanks<=20; nbRanks++)
+    {
+        Launcher<ArchUpmem> launcher (ArchUpmem::Rank{nbRanks});
+
+        for (size_t nbitems_log2=0; nbitems_log2<=18; nbitems_log2++)
+        {
+            size_t nbitems = 1<<nbitems_log2;
+
+            //fmt::println ("nbRanks: {}  nbitems: {}", nbRanks, nbitems);
+
+            size_t n=0;
+            for (auto const& res : launcher.run<VectorCreation> (nbitems))
+            {
+                nbErrors1 += res.size() == nbitems ? 0 : 1;
+
+                size_t k=0;
+                for (auto x : res) { nbErrors2 += x==(k+n) ? 0 : 1;   k++; }
+                n++;
+            }
+        }
+    }
+    REQUIRE (nbErrors1 == 0);
+    REQUIRE (nbErrors2 == 0);
+}
+#endif

@@ -976,13 +976,28 @@ struct compare_tuples<COMPARATOR,std::tuple<A...>, std::tuple<B...>>
 
 ////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/78922921/type-trait-providing-the-static-member-of-a-struct-class-if-available?noredirect=1#comment139150964_78922921
-#define DEFINE_GETTER(NAME)                                                                 \
-  template<typename T, auto DEFAULT>                                                        \
-  static inline constexpr decltype(DEFAULT) get_##NAME##_v =  []() -> decltype(auto)        \
-  {                                                                                         \
-      if constexpr (requires { T::NAME; }) {  return T::NAME;  } else {  return DEFAULT;  } \
-  }();
-
+#define DEFINE_GETTER(NAME)                                                     \
+template<auto DEFAULT,typename T>                                               \
+struct get_##NAME {                                                           \
+    static inline constexpr auto get() {                                        \
+        if constexpr (requires { T::NAME; }) {  return T::NAME;  }              \
+        else {return DEFAULT;  }                                                \
+    };                                                                          \
+};                                                                              \
+template<auto DEFAULT,typename T, typename...Ts>                                \
+struct get_##NAME<DEFAULT,std::tuple<T,Ts...>> {                                \
+    static inline constexpr auto get() {                                        \
+        auto res = get_##NAME<DEFAULT,T>::get();                                \
+        if (res!=DEFAULT) { return res; }                                       \
+        return get_##NAME<DEFAULT,std::tuple<Ts...>>::get();                    \
+    };                                                                          \
+};                                                                              \
+template<auto DEFAULT>                                                          \
+struct get_##NAME<DEFAULT,std::tuple<>> {                                       \
+    static inline constexpr auto get() {  return DEFAULT;  };                   \
+};                                                                              \
+template<typename T, auto DEFAULT>                                              \
+static inline constexpr decltype(DEFAULT) get_##NAME##_v =  get_##NAME<DEFAULT,T>::get();
 
 ////////////////////////////////////////////////////////////////////////////////
 

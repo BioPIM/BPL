@@ -14,7 +14,9 @@
 template<class ARCH>
 struct VectorSerialize
 {
-    USING(ARCH);
+    struct config  {  static const bool VECTOR_SERIALIZE_OPTIM = true;  };
+
+    USING(ARCH,config);
 
     using type = uint32_t;
 

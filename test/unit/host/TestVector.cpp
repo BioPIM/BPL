@@ -291,19 +291,16 @@ auto VectorInputOutput_aux (const std::vector<size_t> sizes)
     {
         std::vector<uint32_t> v;  for (size_t i=1; i<=nb; i++)  { v.push_back(i); }
 
-        for ( [[maybe_unused]] auto& [stats,result] : Runner<>::run<TASK> (v))
-        {
-            for (auto& res : result)
-            {
+        auto check = [&] (auto&& result) {
+            for (auto& res : result)  {
                 REQUIRE (res.size() == v.size());
-
-                for (size_t i=0; i<v.size(); i++)
-                {
-                    //printf ("==> %d %d \n", 2*v[i], res[i]);
+                for (size_t i=0; i<v.size(); i++)  {
                     REQUIRE (2*v[i] == res[i]);
                 }
             }
-        }
+        };
+
+        std::apply ([&](auto...result) {  ( (check(result.second)),...);  }, Runner<>::run<TASK>(v));
     }
 }
 
@@ -608,20 +605,18 @@ TEST_CASE ("VectorFlush", "[Vector]" )
 
 return;
 
-    for (size_t n : {1,2,3,5,8,13,21,34,55,89})
-    {
-        for (auto& [stats,result] : Runner<>::run<VectorFlush> (n))
-        {
-            for (auto& x : result)
-            {
-                REQUIRE (x.size() == n);
-
-                for (size_t i=0; i<n; i++)
-                {
-                    REQUIRE (x[i] == i);
-                }
+    auto check = [&] (auto&& result) {
+        for (auto& x : result)  {
+            REQUIRE (x.size() == n);
+            for (size_t i=0; i<n; i++)  {
+                REQUIRE (x[i] == i);
             }
         }
+    };
+
+    for (size_t n : {1,2,3,5,8,13,21,34,55,89})
+    {
+        std::apply ([&](auto...result) {  ( (check(result.second)),...);  }, Runner<>::run<VectorFlush> (n));
     }
 }
 
@@ -630,18 +625,16 @@ TEST_CASE ("VectorSwap", "[Vector]" )
 {
     auto test = [&] (size_t n)
     {
-        for (auto& [stats,results] : Runner<>::run<VectorSwap> (n))
-        {
-            for (auto&& result : results)
-            {
+        auto check = [&] (auto&& results) {
+            for (auto&& result : results)  {
                 REQUIRE (result.size() == 2*n);
-
-                for (size_t i=0; i<result.size(); i++)
-                {
+                for (size_t i=0; i<result.size(); i++)  {
                     REQUIRE (result[i] == result.size()-i);
                 }
             }
-        }
+        };
+
+        std::apply ([&](auto...result) {  ( (check(result.second)),...);  }, Runner<>::run<VectorSwap> (n));
     };
 
     for (size_t n : {1,10,100,1000,10000})  { test(n);    }
@@ -1345,7 +1338,7 @@ TEST_CASE ("VectorIterator3", "[Vector]")
 
     Launcher<ArchUpmem> launcher { 20_rank, false };
     for (auto const& res : launcher.run<VectorIterator3> (v))   {
-        REQUIRE (res == truth);
+        REQUIRE (std::ranges::equal(res,truth));
         //fmt::println ("{}", res);  break;
     }
 }
@@ -1438,6 +1431,28 @@ TEST_CASE ("VectorCustomAllocator", "[Vector]" )
 }
 
 //////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorCreationSimple", "[Vector]" )
+{
+    size_t nbErrors1 = 0;
+    size_t nbErrors2 = 0;
+    size_t nbitems = 1<<15;
+    size_t n=0;
+
+    Launcher<ArchUpmem> launcher {1_dpu,false,true};
+
+    for (auto const& res : launcher.run<VectorCreation>(nbitems))  {
+        nbErrors1 += res.size() == nbitems ? 0 : 1;
+        size_t k=0;
+        for (auto x : res) { nbErrors2 += x==(k+n) ? 0 : 1;   k++; }
+        n++;
+    }
+    REQUIRE (nbErrors1 == 0);
+    REQUIRE (nbErrors2 == 0);
+
+    //launcher.getStatistics().dump(true);
+}
+
+//////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("VectorCreation", "[Vector]" )
 {
     size_t nbErrors1 = 0;
@@ -1480,7 +1495,7 @@ auto VectorSharedIterator_aux (size_t nbitems)
     Launcher<ArchUpmem> launcher {1_dpu, false};
     for (auto const& res : launcher.run<TASK> (truth))
     {
-        REQUIRE (res == truth);
+        REQUIRE (std::ranges::equal(res,truth));
     }
 }
 
@@ -1494,7 +1509,7 @@ TEST_CASE ("VectorSharedIterator", "[Vector]" )
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("VectorSerialize", "[Vector]" )
 {
-    size_t nbitems = 20000;
+    size_t nbitems = 20'000;
 
     using type = typename VectorSerialize<ArchDummy>::type;
 
@@ -1504,7 +1519,7 @@ TEST_CASE ("VectorSerialize", "[Vector]" )
     Launcher<ArchUpmem> launcher {1_dpu, false};
     for (auto const& res : launcher.run<VectorSerialize> (truth))
     {
-        REQUIRE (res == truth);
+        REQUIRE (std::ranges::equal(res,truth));
     }
 }
 

@@ -9,17 +9,19 @@
 #include <bpl/core/Task.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////
-// @description: Computes Jaccard distances between two sketches. We use 'once'
-// in order broadcast dbRef only on first call.
-// @remark: we first reserve the whole memory for the result vector, so we can
-// avoid to use 'push_back' by directly accessing an item through 'operator[]'
+// @description: Computes Jaccard distances between two sketches.
+// @remark: we first create an empty result vector and after use 'push_back'
+// for adding an item.
 // @benchmark-input: 2^n for n in range(17,20)
 // @benchmark-split: yes (dbRef)
 ////////////////////////////////////////////////////////////////////////////////
 template<class ARCH>
 struct SketchJaccardDistanceOnce : bpl::Task<ARCH>
 {
-    struct config  {  static const int VECTOR_MEMORY_SIZE_LOG2 = 10;  };
+    struct config  {
+        static const int  VECTOR_MEMORY_SIZE_LOG2 = 10;
+        static const bool VECTOR_SERIALIZE_OPTIM = true;
+    };
 
     USING(ARCH,config);
 
@@ -32,7 +34,7 @@ struct SketchJaccardDistanceOnce : bpl::Task<ARCH>
         size_t ssize
     )
     {
-    	auto& dbRef = *dbRefOnce;
+        auto& dbRef = *dbRefOnce;
 
         auto refStart = dbRef.begin();
         auto qryStart = dbQry.begin();
@@ -42,8 +44,7 @@ struct SketchJaccardDistanceOnce : bpl::Task<ARCH>
 
         vector<count_t> result (nbSketchRef*nbSketchQry);
 
-        size_t n=0;
-
+        size_t k=0;
         for (size_t idxSketchQry=0, offsetQry=0;
             idxSketchQry<nbSketchQry;
             idxSketchQry++, offsetQry+=ssize)
@@ -76,7 +77,7 @@ struct SketchJaccardDistanceOnce : bpl::Task<ARCH>
                    }
                 }
 
-                result[n++] = count;
+                result[k++] = count;
             }
         }
 

@@ -17,7 +17,10 @@
 template<class ARCH>
 struct VectorReverseInPlace : bpl::Task<ARCH>
 {
-    struct Config {  static constexpr bool SWAP_USED = true;  };
+    struct Config {
+        static constexpr bool SWAP_USED = true;
+        static constexpr bool VECTOR_SERIALIZE_OPTIM = false;
+    };
 
     USING(ARCH,Config);
 

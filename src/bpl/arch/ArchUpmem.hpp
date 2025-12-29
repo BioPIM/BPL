@@ -38,13 +38,12 @@
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////
-namespace bpl  {
+namespace bpl {
 ////////////////////////////////////////////////////////////////////////////////
 
 /** Enumeration that distinguish sets made of ranks or and sets made of DPUs.
  */
-enum DpuComponentKind_e
-{
+enum DpuComponentKind_e {
     /** Architecture made of ranks. */
     RANK,
     /** Architecture made of DPUs. */
@@ -59,7 +58,23 @@ enum DpuComponentKind_e
 
 ///////////////////////////////////////////////////////////////////////////////
 // We define a type trait that checks that the incoming arguments are compatible with the task parameters.
-template<typename ARG, typename PARAM> struct check_arguments : std::true_type  {};
+template<typename ARG, typename PARAM> struct check_arguments: std::true_type {
+};
+
+///////////////////////////////////////////////////////////////////////////////
+class ArchUpmem;
+
+struct result_data  {
+    ArchUpmem& arch;
+    std::vector<uint32_t> const& heap_pointers;
+    std::vector<uint32_t> const& allDPUSize;
+    std::vector<uint32_t> const& allTaskletsSize;
+    std::vector<uint32_t> const& allTaskletsOrder;
+};
+
+// forward declaration
+template<typename T, bool Optim>
+struct result_wrapper;
 
 // [TBD] We could have some specialization of 'check_arguments', eg. avoid to use 'split' for an argument
 // whose parameter is tagged with 'global'.
@@ -69,50 +84,63 @@ template<typename ARG, typename PARAM> struct check_arguments : std::true_type  
  *
  * \see bpl::Launcher
  */
-class ArchUpmem : public ArchMulticoreResources
-{
+class ArchUpmem: public ArchMulticoreResources {
 public:
 
     // Factory that returns a type with a specific configuration.
-    template<typename CFG=int> using factory = ArchUpmem;
+    template<typename CFG = int> using factory = ArchUpmem;
 
     using config_t = void;
 
     /** To be improved (not really nice to have a 'kind' method that provide some typing info)
      */
-    class Rank : public bpl::TaskUnit
-    {
+    class Rank: public bpl::TaskUnit {
     public:
         using arch_t = ArchUpmem;
         using bpl::TaskUnit::TaskUnit;
-        DpuComponentKind_e kind() const { return DpuComponentKind_e::RANK; }
-        std::size_t getNbUnits() const { return getNbComponents()*64*NR_TASKLETS; }
-        const char*  name() const { return "rank"; }
+        DpuComponentKind_e kind() const {
+            return DpuComponentKind_e::RANK;
+        }
+        std::size_t getNbUnits() const {
+            return getNbComponents() * 64 * NR_TASKLETS;
+        }
+        const char* name() const {
+            return "rank";
+        }
         constexpr static int LEVEL = 1;
     };
 
-    class DPU : public bpl::TaskUnit
-    {
+    class DPU: public bpl::TaskUnit {
     public:
         using arch_t = ArchUpmem;
         using bpl::TaskUnit::TaskUnit;
-        DpuComponentKind_e kind() const { return DpuComponentKind_e::DPU; }
-        std::size_t getNbUnits() const { return getNbComponents()*NR_TASKLETS; }
-        const char*  name() const { return "dpu"; }
+        DpuComponentKind_e kind() const {
+            return DpuComponentKind_e::DPU;
+        }
+        std::size_t getNbUnits() const {
+            return getNbComponents() * NR_TASKLETS;
+        }
+        const char* name() const {
+            return "dpu";
+        }
         constexpr static int LEVEL = 2;
     };
 
-    class Tasklet : public TaskUnit
-    {
+    class Tasklet: public TaskUnit {
     public:
         using arch_t = ArchUpmem;
         using TaskUnit::TaskUnit;
-        DpuComponentKind_e kind() const { return DpuComponentKind_e::TASKLET; }
-        std::size_t getNbUnits() const { return getNbComponents(); }
-        const char*  name() const { return "tasklet"; }
+        DpuComponentKind_e kind() const {
+            return DpuComponentKind_e::TASKLET;
+        }
+        std::size_t getNbUnits() const {
+            return getNbComponents();
+        }
+        const char* name() const {
+            return "tasklet";
+        }
         constexpr static int LEVEL = 3;
     };
-
 
     // Shortcut
     using arch_t = ArchUpmem;
@@ -136,7 +164,6 @@ public:
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
-
     struct ArchUpmemConfiguration {
         std::shared_ptr<TaskUnit> taskunit;
         DpuComponentKind_e kind;
@@ -146,89 +173,88 @@ public:
         bool reset;
     };
 
-    template<typename TASKUNIT=Rank>
-    static std::any make_configuration (
-        TASKUNIT taskunit = TASKUNIT(1),
-        bool trace=false,
-        bool stats=false,
-        bool reset=false
-    )
-    {
-        return ArchUpmemConfiguration {
-            std::shared_ptr<TaskUnit> (new TASKUNIT(taskunit)),
-                    taskunit.kind(),taskunit.getNbComponents(), trace, stats, reset
-        };
+    template<typename TASKUNIT = Rank>
+    static std::any make_configuration(TASKUNIT taskunit = TASKUNIT(1),
+            bool trace = false, bool stats = false, bool reset = false) {
+        return ArchUpmemConfiguration { std::shared_ptr < TaskUnit
+                > (new TASKUNIT(taskunit)), taskunit.kind(),
+                taskunit.getNbComponents(), trace, stats, reset };
     }
 
-    ArchUpmem (std::any config)
-    {
+    ArchUpmem(std::any config) {
         try {
-            auto cfg = std::any_cast<ArchUpmemConfiguration>(config);
-            taskunit_  = cfg.taskunit;
+            auto cfg = std::any_cast < ArchUpmemConfiguration > (config);
+            taskunit_ = cfg.taskunit;
 
             auto ts = statistics_.produceCumulTimestamp("init", "alloc");
 
-            dpuSet_ = std::make_shared<details::dpu_set_handle_t> (cfg.kind,cfg.nbcomponents, nullptr, cfg.trace);
+            dpuSet_ = std::make_shared < details::dpu_set_handle_t> (cfg.kind, cfg.nbcomponents, nullptr, cfg.trace);
 
             useStats_ = cfg.stats;
 
             // We may need to reset resources between each call to 'run' (like MRAM memory management for instance).
             reset_ = cfg.reset;
 
-            statistics_.addTag ("dpu/options", dpuSet_->getOptions());
+            statistics_.addTag("dpu/options", dpuSet_->getOptions());
 
-    #ifdef WITH_THREADPOOL
-            threadpool_ = std::make_unique<BS::thread_pool<>> (8);
-    #endif
+#ifdef WITH_THREADPOOL
+            threadpool_ = std::make_unique<BS::thread_pool<>>(8);
+#endif
+        } catch (const std::bad_any_cast &e) {
+            std::cout << e.what() << '\n';
         }
-        catch (const std::bad_any_cast& e)  {  std::cout << e.what() << '\n';  }
+
+        // We look for binaries files.
+        buildBinariesMap();
     }
 
     /** Constructor.
      */
-    template<typename TASKUNIT=Rank>
-    ArchUpmem (
-        TASKUNIT taskunit = TASKUNIT(1),
-        bool trace=false,
-        bool stats=false,
-        bool reset=false
-    ) : ArchUpmem (make_configuration(taskunit, trace, stats, reset)) {}
+    template<typename TASKUNIT = Rank>
+    ArchUpmem(TASKUNIT taskunit = TASKUNIT(1), bool trace = false, bool stats =
+            false, bool reset = false) :
+            ArchUpmem(make_configuration(taskunit, trace, stats, reset)) {
+    }
 
     /** Return the name of the current architecture.
      * \return the architecture name
      */
-    std::string name() { return "upmem"; }
+    std::string name() {
+        return "upmem";
+    }
 
     /** Return the total number of tasklets.
      * \return the number of process units
      */
-    size_t getProcUnitNumber() const
-    {
+    size_t getProcUnitNumber() const {
         return dpuSet_->getProcUnitNumber();
     }
 
     /** Return the total number of DPU.
      * \return the number of DPU
      */
-    size_t getDpuNumber() const
-    {
+    size_t getDpuNumber() const {
         return dpuSet_->getDpuNumber();
     }
 
     /** Return the total number of ranks.
      * \return the number of ranks
      */
-    size_t getRanksNumber() const
-    {
+    size_t getRanksNumber() const {
         return dpuSet_->getRanksNumber();
     }
 
-    auto getProcUnitDetails()  const
-    {
-        return std::make_tuple ( getRanksNumber(), getDpuNumber(), getProcUnitNumber());
+    auto getProcUnitDetails() const {
+        return std::make_tuple(getRanksNumber(), getDpuNumber(),
+            getProcUnitNumber());
     }
 
-    auto getTaskUnit () const { return taskunit_; }
+    auto getTaskUnit() const {
+        return taskunit_;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    DEFINE_GETTER(VECTOR_SERIALIZE_OPTIM);                                                                 \
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //
@@ -300,7 +326,7 @@ public:
         // We first retrieve heap pointer information.
         std::vector<uint32_t> heap_pointers;
 
-        std::vector<MetadataOutput> __metadata_output__ (getDpuNumber());
+        __metadata_output__.resize (getDpuNumber());
 
         // We retrieve all the metadata output from the DPU.
         DPU_FOREACH(set(), dpu, each_dpu)
@@ -377,222 +403,12 @@ public:
             getProcUnitNumber()*(getProcUnitNumber()-1)/2,
             std::accumulate(allTaskletsOrder.begin(), allTaskletsOrder.end(), 0)
         );
-
-        struct Data
-        {
-            ArchUpmem* ref_;
-            const ArchUpmem& ref() const { return *ref_; }
-
-            std::vector<uint32_t> const& heap_pointers;
-            std::vector<uint32_t> const& allDPUSize;
-            std::vector<uint32_t> const& allTaskletsSize;
-            std::vector<uint32_t> const& allTaskletsOrder;
-        };
-
-        struct iterable_wrapper
-        {
-            struct iterator
-            {
-                iterator (Data data, size_t idx, size_t last) : data_(data), idx_(idx), last_(last)
-                {
-                    // We initialize the DPU iterator.
-                    dpu_it_ = dpu_set_dpu_iterator_from (& data.ref().set());
-
-                    retrieve ();
-                }
-
-                bool operator!= (const size_t & sentinel) const { return idx_ != sentinel; }
-
-                iterator& operator++ () { ++idx_;  retrieve();  return *this; }
-
-                const result_t& operator* () const { return result_; }
-
-                void retrieve ()
-                {
-                    if (idx_ < last_)
-                    {
-                        // Do we begin to retrieve information from a new DPU ?
-                        if ((idx_%NR_TASKLETS) == 0 and dpu_it_.has_next)
-                        {
-                            size_t each_dpu = idx_ / NR_TASKLETS;
-
-                            size_t bufferSize = data_.allDPUSize [each_dpu];
-
-                            buffer_.resize (bufferSize);
-
-                            offset_ = 0;
-
-                            DPU_ASSERT(dpu_copy_from_mram (
-                                dpu_it_.next.dpu,
-                                (uint8_t*) buffer_.data(),
-                                data_.heap_pointers [each_dpu],
-                                bufferSize
-                            ));
-
-                            dpu_set_dpu_iterator_next (&dpu_it_);
-                        }
-
-                        size_t actualIdx = data_.allTaskletsOrder[idx_];
-
-                        // We deserialize the current result from the incoming data
-                        Serializer::from ((char*) buffer_.data() + offset_, result_);
-
-                        offset_ += data_.allTaskletsSize[actualIdx];
-                    }
-                }
-
-                Data data_;
-                size_t   idx_;
-                size_t   last_;
-                result_t result_;
-                std::vector<uint8_t> buffer_;
-                size_t  offset_=0;
-
-                struct dpu_set_dpu_iterator_t dpu_it_;
-            };
-
-            iterable_wrapper (Data data) : data_(data) {}
-
-            auto begin() const  { return iterator (data_, 0, data_.ref().getProcUnitNumber()); }
-            auto end()   const  { return size_t { data_.ref().getProcUnitNumber() }; }  // sentinel
-
-            size_t size() const { return data_.ref().getProcUnitNumber(); }
-
-            // Return the results of the last 'run' call as a vector of objects.
-            // It means that all the objects exist at the same time in memory (which could be costly).
-            // On the other hand, it is possible to iterate the result one after one (see begin/end)
-            // so only one result object is available.
-            auto to_vector()
-            {
-                // We declare the vector that will hold the results coming from the tasklets (one result per tasklet)
-                std::vector<result_t> results (data_.ref().getProcUnitNumber());
-
-                // We retrieve rank information (ptr and DPU nb) for each rank of the set.
-                auto rankInfo = data_.ref().getRanksInfo(data_.ref().set());
-
-                // We compute the cumulative number of DPU
-                std::vector<size_t> dpuPerRankCumul (rankInfo.size()+1);
-                dpuPerRankCumul[0] = 0;
-                for (size_t i=0; i<rankInfo.size(); i++)  {  dpuPerRankCumul[i+1] = dpuPerRankCumul[i] + rankInfo[i].second; }
-
-                // We iterate each rank in parallel.
-               data_.ref().threadpool_->template submit_loop<unsigned int> (0, rankInfo.size(),  [&] (std::size_t idxRank)
-               {
-                   // We get the current rank.
-                   struct dpu_rank_t* rank = rankInfo[idxRank].first;
-
-                   // We get the number of DPU for this rank.
-                   size_t nbDpu4rank = rankInfo[idxRank].second;
-
-                   // We retrieve the smallest MRAM start among all the DPU of the current
-
-                   // We compute the smallest MRAM pointer
-                   size_t minHeapPtr = std::numeric_limits<size_t>::max();
-                   for (size_t i=0; i<nbDpu4rank; i++)
-                   {
-                       auto val = data_.heap_pointers [dpuPerRankCumul[idxRank] + i];
-                       if (val<minHeapPtr)  { minHeapPtr = val; }
-                   }
-
-                   // We compute the total size for the DPU of the current rank.
-                   size_t maxDpuSize = 0;
-                   size_t totalSize  = 0;
-                   for (size_t i=0; i<nbDpu4rank; i++)
-                   {
-                       size_t actualIdx = dpuPerRankCumul[idxRank] + i;
-
-                       auto val = data_.allDPUSize [actualIdx];
-
-                       // we have to take into account the MRAM start delta compared to the smallest one.
-                       val += data_.heap_pointers [actualIdx] - minHeapPtr;
-
-                       if (maxDpuSize<val)  { maxDpuSize=val; }
-                       totalSize +=  val;
-                   }
-
-                   // Since we don't use scatter/gather, we must have DPU transfer of the same size,
-                   // so we have to take the max size value for all the DPU of the current rank.
-                   totalSize = maxDpuSize * nbDpu4rank;
-
-                   // We need one buffer for un-serialization; we use only one holding the different parts for the DPU
-                   // which is better than having several buffers (ie. only one alloc)
-                   std::vector<uint8_t> buffer;
-                   buffer.reserve (totalSize);  // don't need a resize here, just interested in the memory buffer
-
-                   // We will need a transfer matrix.
-                   struct dpu_transfer_matrix matrix;
-
-                   matrix.type   = DPU_DEFAULT_XFER_MATRIX;
-                   matrix.offset = minHeapPtr;
-                   matrix.size   = maxDpuSize;
-
-                   // We must be sure that the unused ptr will be set to null (for instance if a rank doesn't use all DPUs)
-                   for (size_t i=0; i<MAX_NR_DPUS_PER_RANK; i++)  {  matrix.ptr[i] = nullptr;  }
-
-                   struct dpu_t *dpu;
-                   [[maybe_unused]] size_t idxDpu    = 0;
-                   size_t offsetDPU = 0;
-
-                   // We configure the transfer matrix for all the DPU of the current rank.
-                   _STRUCT_DPU_FOREACH_I(rank, dpu, idxDpu)
-                   {
-                       // We configure the DPU for the transfer matrix.
-                       dpu_transfer_matrix_add_dpu (dpu, &matrix, buffer.data() + offsetDPU);
-
-                       // We update the offset for the next DPU
-                       offsetDPU += maxDpuSize; // data_.allDPUSize [dpuPerRankCumul[idxRank] + idxDpu];
-
-                   }
-
-                   // We read the results of all DPU for the current rank.
-                   [[maybe_unused]] auto res = dpu_copy_from_mrams (rank, &matrix);
-
-                   // We iterate each DPU index for the current rank.
-                   offsetDPU = 0;
-                   for (size_t idxDpu=0; idxDpu<nbDpu4rank; idxDpu++)
-                   {
-                       size_t idxDpuGlobal = dpuPerRankCumul[idxRank] + idxDpu;
-
-                       // We may need to shift from the actual MRAM start
-                        size_t deltaMRAM = data_.heap_pointers [idxDpuGlobal] - minHeapPtr;;
-
-                       size_t offsetTasklet = 0;
-                       for (int k=0; k<NR_TASKLETS; k++)
-                       {
-                           // We compute the current tasklet index.
-                           size_t idxTasklet = idxDpuGlobal*NR_TASKLETS + k;
-
-                           // We get the buffer for this tasklet
-                           char* buf = (char*) buffer.data() + deltaMRAM + offsetDPU + offsetTasklet;
-
-                           // We un-serialize the current result from the incoming data
-                           Serializer::from (buf, results [idxTasklet]);
-
-                           // We update the offset in the buffer for the next tasklet.
-                           offsetTasklet += data_.allTaskletsSize[idxTasklet];
-                       }
-
-                       // We update the offset for the next DPU
-                       offsetDPU += maxDpuSize; //data_.allDPUSize [idxDpuGlobal];
-                   }
-
-                }).wait();
-
-                return results;
-            }
-
-            Data data_;
-        };
-
         DEBUG_ARCH_UPMEM ("[ArchUpmem::run]  'results' filled\n");
 
         // we may want to dump the logs
         statistics_.dump();
 
         dpuSet_->dump();
-
-        // We return the result.
-        auto result = iterable_wrapper (Data {this,heap_pointers,allDPUSize,allTaskletsSize,allTaskletsOrder});
 
     //----------------------------------------------------------------------
     ts_post_launch.stop();
@@ -602,7 +418,13 @@ public:
     auto ts_final_result = statistics_.produceCumulTimestamp("run", "result");
     //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-        auto finalResult = result.to_vector();
+        constexpr bool VECTOR_SERIALIZE_OPTIM = get_VECTOR_SERIALIZE_OPTIM_v<typename task_t::traits_t,false>;
+
+        // We build the result. Its type may differ according to the result_t type
+        // ie. one might have some template specialization for result_wrapper.
+        auto finalResult = result_wrapper<result_t,VECTOR_SERIALIZE_OPTIM>{} (
+            result_data {*this,heap_pointers,allDPUSize,allTaskletsSize,allTaskletsOrder}
+        );
 
     //----------------------------------------------------------------------
         ts_final_result.stop();
@@ -1089,11 +911,17 @@ private:
 
     bool reset_ = false;
 
+    std::vector<MetadataOutput> __metadata_output__;
+
     std::vector<size_t> oncePaddingPerDpu_;
 
     bool isLoaded_ = false;
     bool isLoaded() const { return isLoaded_; }
     void setLoaded (bool b) { isLoaded_ = b; }
+
+    // We keep a map holding [filename,path] for .dpu files in the directory (or subdir) defined
+    // in the DPU_BINARIES_DIR env var.
+    std::map<std::string,std::string> binariesMap_;
 
     struct BinaryInfo
     {
@@ -1191,6 +1019,22 @@ private:
         return 0;
     }
 
+    /** */
+    void buildBinariesMap ()
+    {
+        binariesMap_.clear();
+        char* d = getenv("DPU_BINARIES_DIR");
+        if (d!=nullptr) {
+            for (bpl::directory_entry entry : bpl::recursive_directory_iterator(d))  {
+                std::string filePath = entry.path().string();
+                std::string last_element(filePath.substr(filePath.rfind("/") + 1));
+                if (last_element.ends_with(".dpu")) {
+                    binariesMap_[last_element] = filePath;
+                }
+            }
+        }
+    }
+
     /** \brief Look for a DPU binary file that fulfills the task name and the type
      * The directory where the binary is looked from is provided by a environment variable.
      * \param[in] taskname : name of task
@@ -1201,29 +1045,18 @@ private:
     std::string look4binary (std::string_view taskname, char type, size_t size, int wramGlobalDecadePercent)
     {
         // We compute the actual size of the buffer
-        [[maybe_unused]] size_t actualSize = getAllowedBufferSizeMBytes (size);
-        [[maybe_unused]] size_t stackSize  = getAllowedStackSizePercent (wramGlobalDecadePercent);
-
         std::stringstream ss;
         ss << taskname << '.' << type << "." << "dpu";
         std::string result = ss.str();
 
-        char* d = getenv("DPU_BINARIES_DIR");
-        if (d!=nullptr)
-        {
-            for (bpl::directory_entry entry : bpl::recursive_directory_iterator(d))
-            {
-                std::string filePath = entry.path().string();
-                std::string last_element(filePath.substr(filePath.rfind("/") + 1));
-                if (last_element == result)  { result = filePath; break; }
-            }
+        auto lookup = binariesMap_.find(result);
+        if (lookup != binariesMap_.end())  {
+            DEBUG_ARCH_UPMEM ("[look4binary]  name='%s'  type='%c'  size=%ld  ->  file='%s' \n",
+                std::string(taskname).data(), type, size, result.c_str()
+            );
+            return lookup->second;
         }
-
-        DEBUG_ARCH_UPMEM ("[look4binary]  name='%s'  type='%c'  size=%ld  stackSize=%ld  -> actualSize=%ld   file='%s' \n",
-            std::string(taskname).data(), type, size, stackSize, actualSize, result.c_str()
-        );
-
-        return result;
+        throw std::runtime_error(std::string{"no found binary for taskname "} + std::string{taskname});
     }
 
     void computeCyclesStats (const std::vector<TimeStats>& nbCycles, uint32_t clocks_per_sec)
@@ -1297,14 +1130,255 @@ private:
         _STRUCT_DPU_FOREACH_I(rank, dpu, dpu_index)  {  result.push_back (std::make_pair(dpu,dpu_index)); }
         return result;
     }
+
+    template<class T, bool> friend class result_wrapper;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// result_wrapper template generic case
+////////////////////////////////////////////////////////////////////////////////
+template<typename T, bool Optim>
+struct result_wrapper  {
+
+    using type = std::vector<T>;
+
+    type operator() (result_data const& data)  {
+
+        //printf ("============> NO OPTIM\n");
+
+        // We declare the vector that will hold the results coming from the tasklets (one result per tasklet)
+        type results (data.arch.getProcUnitNumber());
+
+        // We retrieve rank information (ptr and DPU nb) for each rank of the set.
+        auto rankInfo = data.arch.getRanksInfo(data.arch.set());
+
+        // We compute the cumulative number of DPU
+        std::vector<size_t> dpuPerRankCumul (rankInfo.size()+1);
+        dpuPerRankCumul[0] = 0;
+        for (size_t i=0; i<rankInfo.size(); i++)  {  dpuPerRankCumul[i+1] = dpuPerRankCumul[i] + rankInfo[i].second; }
+
+        // We iterate each rank in parallel.
+       data.arch.threadpool_->template submit_loop<unsigned int> (0, rankInfo.size(),  [&] (std::size_t idxRank)
+       {
+           // We get the current rank.
+           struct dpu_rank_t* rank = rankInfo[idxRank].first;
+
+           // We get the number of DPU for this rank.
+           size_t nbDpu4rank = rankInfo[idxRank].second;
+
+           // We retrieve the smallest MRAM start among all the DPU of the current
+
+           // We compute the smallest MRAM pointer
+           size_t minHeapPtr = std::numeric_limits<size_t>::max();
+           for (size_t i=0; i<nbDpu4rank; i++)
+           {
+               auto val = data.heap_pointers [dpuPerRankCumul[idxRank] + i];
+               if (val<minHeapPtr)  { minHeapPtr = val; }
+           }
+
+           // We compute the total size for the DPU of the current rank.
+           size_t maxDpuSize = 0;
+           size_t totalSize  = 0;
+           for (size_t i=0; i<nbDpu4rank; i++)
+           {
+               size_t actualIdx = dpuPerRankCumul[idxRank] + i;
+
+               auto val = data.allDPUSize [actualIdx];
+
+               // we have to take into account the MRAM start delta compared to the smallest one.
+               val += data.heap_pointers [actualIdx] - minHeapPtr;
+
+               if (maxDpuSize<val)  { maxDpuSize=val; }
+               totalSize +=  val;
+           }
+
+           // Since we don't use scatter/gather, we must have DPU transfer of the same size,
+           // so we have to take the max size value for all the DPU of the current rank.
+           totalSize = maxDpuSize * nbDpu4rank;
+
+           // We need one buffer for un-serialization; we use only one holding the different parts for the DPU
+           // which is better than having several buffers (ie. only one alloc)
+           std::vector<uint8_t> buffer;
+           buffer.reserve (totalSize);  // don't need a resize here, just interested in the memory buffer
+
+           // We will need a transfer matrix.
+           struct dpu_transfer_matrix matrix;
+
+           matrix.type   = DPU_DEFAULT_XFER_MATRIX;
+           matrix.offset = minHeapPtr;
+           matrix.size   = maxDpuSize;
+
+           // We must be sure that the unused ptr will be set to null (for instance if a rank doesn't use all DPUs)
+           for (size_t i=0; i<MAX_NR_DPUS_PER_RANK; i++)  {  matrix.ptr[i] = nullptr;  }
+
+           struct dpu_t *dpu;
+           [[maybe_unused]] size_t idxDpu    = 0;
+           size_t offsetDPU = 0;
+
+           // We configure the transfer matrix for all the DPU of the current rank.
+           _STRUCT_DPU_FOREACH_I(rank, dpu, idxDpu)
+           {
+               // We configure the DPU for the transfer matrix.
+               dpu_transfer_matrix_add_dpu (dpu, &matrix, buffer.data() + offsetDPU);
+
+               // We update the offset for the next DPU
+               offsetDPU += maxDpuSize;
+
+           }
+
+           // We read the results of all DPU for the current rank.
+           [[maybe_unused]] auto res = dpu_copy_from_mrams (rank, &matrix);
+
+           // We iterate each DPU index for the current rank.
+           offsetDPU = 0;
+           for (size_t idxDpu=0; idxDpu<nbDpu4rank; idxDpu++)
+           {
+               size_t idxDpuGlobal = dpuPerRankCumul[idxRank] + idxDpu;
+
+               // We may need to shift from the actual MRAM start
+                size_t deltaMRAM = data.heap_pointers [idxDpuGlobal] - minHeapPtr;;
+
+               size_t offsetTasklet = 0;
+               for (int k=0; k<NR_TASKLETS; k++)
+               {
+                   // We compute the current tasklet index.
+                   size_t idxTasklet = idxDpuGlobal*NR_TASKLETS + k;
+
+                   // We get the buffer for this tasklet
+                   char* buf = (char*) buffer.data() + deltaMRAM + offsetDPU + offsetTasklet;
+
+                   // We un-serialize the current result from the incoming data
+                   std::decay_t<decltype(data.arch)>::Serializer::from (buf, results [idxTasklet]);
+
+                   // We update the offset in the buffer for the next tasklet.
+                   offsetTasklet += data.allTaskletsSize[idxTasklet];
+               }
+
+               // We update the offset for the next DPU
+               offsetDPU += maxDpuSize;
+           }
+        }).wait();
+
+        return results;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// result_wrapper template specialization for vectors
+////////////////////////////////////////////////////////////////////////////////
+template<typename T>
+struct result_wrapper<std::vector<T>, true> {
+
+    using value_type = typename std::vector<T>::value_type;
+
+    // We define a structure whose instantiation will provide the result of the 'run' call.
+    // In this specific case, each one of the N sub-results is a vector. Instead of creating
+    // N vectors, we allocate a big buffer and then create N spans that will point to the
+    // correct part of the big buffer. The big buffer can be allocated once (after having
+    // computed the total size of MRAM from all DPUs of all ranks) and is alive as long as
+    // the 'result' instance lives (so the spans will point to valid information as long as
+    // 'result' exists).
+    // The 'result' API offers at least iteration (begin/end) and random access (operator[])
+    struct type {
+        auto begin () const { return spans.begin(); }
+        auto end   () const { return spans.end();   }
+        auto size  () const { return spans.size();  }
+        auto operator[] (std::size_t i) const { return spans[i]; }
+        std::vector<std::span<value_type>> spans;
+        std::shared_ptr<uint8_t[]> data;
+    };
+
+    type operator() (result_data const& data) {
+
+        type result;
+
+        // printf ("============> OPTIM\n");
+
+        size_t globalMinAddress = std::numeric_limits<size_t>::max();
+        size_t globalMaxsize    = std::numeric_limits<size_t>::min();
+        size_t totalOutputSize  = 0;
+
+        // We first compute the total MRAM size (from all DPUs of all ranks) to be retrieved.
+        for (auto&& m : data.arch.__metadata_output__)  {
+            auto [minVecInfo,maxVecInfo] = std::minmax_element (std::begin(m.vector_info), std::end(m.vector_info),
+                [] (auto a, auto b) { return a.address<b.address; });
+
+            size_t len = (maxVecInfo->address-minVecInfo->address) + sizeof(value_type)*maxVecInfo->nbitems;
+            len = roundUp<64>(len);  // seems to speedup a little bit ?
+
+            if (globalMaxsize<len)  { globalMaxsize = len; }
+            if (globalMinAddress>minVecInfo->address)  { globalMinAddress = minVecInfo->address; }
+
+            totalOutputSize += len;
+        }
+
+        // We can now allocate our big buffer.
+        result.data = std::make_shared<uint8_t[]>(totalOutputSize);
+
+        data.arch.statistics_.addTag ("result/buffer", std::to_string(totalOutputSize));
+
+        size_t idxDpu = 0;
+        // Now we create the spans and make them point to the correct location in the big buffer.
+        for (auto&& m :data.arch.__metadata_output__)  // DPUs iteration
+        {
+            auto [minVecInfo,maxVecInfo] = std::minmax_element (std::begin(m.vector_info), std::end(m.vector_info),
+                [] (auto a, auto b) { return a.address<b.address; });
+
+            for (auto e : m.vector_info) {  // tasklets iteration
+                result.spans.push_back (std::span<value_type>(
+                    (value_type*) (result.data.get() + globalMaxsize*idxDpu + e.address-minVecInfo->address),
+                    e.nbitems
+                ));
+            }
+            idxDpu++;
+        }
+        // We retrieve rank information (ptr and DPU nb) for each rank of the set.
+        auto rankInfo = data.arch.getRanksInfo(data.arch.set());
+
+        // We compute the cumulative number of DPU for all the ranks.
+        std::vector<size_t> dpuPerRankCumul (rankInfo.size()+1);  // 1 + number of ranks
+        dpuPerRankCumul[0] = 0;
+        for (size_t i=0; i<rankInfo.size(); i++)  {  dpuPerRankCumul[i+1] = dpuPerRankCumul[i] + rankInfo[i].second; }
+
+        // We retrieve (in //) the MRAM information from all DPUs of all ranks.
+        data.arch.threadpool_->template submit_loop<unsigned int> (0, rankInfo.size(),  [&] (std::size_t idxRank)
+        {
+            // We retrieve a handle of the rank used in the current thread.
+            struct dpu_rank_t* rank = rankInfo[idxRank].first;
+
+            struct dpu_transfer_matrix matrix;
+            for (size_t i=0; i<MAX_NR_DPUS_PER_RANK; i++)  {  matrix.ptr[i] = nullptr;  }
+            matrix.type   = DPU_DEFAULT_XFER_MATRIX;
+            matrix.offset = globalMinAddress;
+            matrix.size   = globalMaxsize;
+
+            size_t idxDpu = 0;
+            struct dpu_t* dpu;
+            _STRUCT_DPU_FOREACH_I(rank, dpu, idxDpu) {
+                // Note: we must add a (potentially variable) offset (with dpuPerRankCumul)
+                // because the number of used DPUs might change between the ranks.
+                dpu_transfer_matrix_add_dpu (dpu, &matrix, result.data.get() + globalMaxsize*(dpuPerRankCumul[idxRank]+idxDpu));
+                idxDpu++;
+            }
+            // We retrieve the MRAM information from all the DPUs of the current rank.
+            // As a consequence, all the result spans should now point to the correct information.
+            [[maybe_unused]] auto res = dpu_copy_from_mrams (rank, &matrix);
+        }).wait();
+
+        return result;
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 };  // end of namespace
 ////////////////////////////////////////////////////////////////////////////////
 
-inline auto operator""_rank    (unsigned long long int nb)  {   return bpl::ArchUpmem::Rank    {nb};  }
-inline auto operator""_dpu     (unsigned long long int nb)  {   return bpl::ArchUpmem::DPU     {nb};  }
-inline auto operator""_tasklet (unsigned long long int nb)  {   return bpl::ArchUpmem::Tasklet {nb};  }
+inline auto operator""_rank(unsigned long long int nb) {
+    return bpl::ArchUpmem::Rank { nb };
+}
+inline auto operator""_dpu(unsigned long long int nb) {
+    return bpl::ArchUpmem::DPU { nb };
+}
+inline auto operator""_tasklet(unsigned long long int nb) {
+    return bpl::ArchUpmem::Tasklet { nb };
+}

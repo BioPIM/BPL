@@ -127,9 +127,15 @@ struct MetadataInput
 ////////////////////////////////////////////////////////////////////////////////
 struct MetadataOutput
 {
+    struct VectorInfo {
+        uint32_t address = 0;
+        uint32_t nbitems = 0;
+    };
+
     uint32_t        result_tasklet_order [NR_TASKLETS];
     uint32_t        result_tasklet_size  [NR_TASKLETS];
     TimeStats       nb_cycles            [NR_TASKLETS];
+    VectorInfo      vector_info          [NR_TASKLETS];
     AllocatorStats  allocator_stats;
     uint32_t        heap_pointer      = 0;
     uint32_t        heap_pointer_init = 0;

@@ -18,7 +18,10 @@
 template<class ARCH>
 struct SketchJaccardDistance : bpl::Task<ARCH>
 {
-    struct config  {  static const int VECTOR_MEMORY_SIZE_LOG2 = 10;  };
+    struct config  {
+        static const int VECTOR_MEMORY_SIZE_LOG2 = 10;
+        static const bool VECTOR_SERIALIZE_OPTIM = true;
+    };
 
     USING(ARCH,config);
 
@@ -31,13 +34,15 @@ struct SketchJaccardDistance : bpl::Task<ARCH>
         size_t ssize
     )
     {
-        vector<count_t> result;
-
         auto refStart = dbRef.begin();
         auto qryStart = dbQry.begin();
 
         size_t nbSketchRef = dbRef.size() / ssize;
         size_t nbSketchQry = dbQry.size() / ssize;
+
+        vector<count_t> result (nbSketchRef*nbSketchQry);
+
+        size_t k=0;
 
         for (size_t idxSketchQry=0, offsetQry=0;
             idxSketchQry<nbSketchQry;
@@ -71,7 +76,7 @@ struct SketchJaccardDistance : bpl::Task<ARCH>
                    }
                 }
 
-                result.push_back (count);
+                result[k++] = count;
             }
         }
 

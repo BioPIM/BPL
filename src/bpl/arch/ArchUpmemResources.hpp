@@ -207,6 +207,7 @@ struct ArchUpmemResources
         DEFINE_GETTER (MEMTREE_MAX_MEMORY_LOG2);
         DEFINE_GETTER (SWAP_USED);
         DEFINE_GETTER (SHARED_ITER_CACHE);
+        DEFINE_GETTER (VECTOR_SERIALIZE_OPTIM);                                                                 \
 
         static constexpr bool SWAP_USED                     = get_SWAP_USED_v                       <config_t,false>;
         static constexpr int VECTOR_MEMORY_SIZE_LOG2        = get_VECTOR_MEMORY_SIZE_LOG2_v         <config_t,8>;
@@ -214,6 +215,7 @@ struct ArchUpmemResources
         static constexpr int MEMTREE_NBITEMS_PER_BLOCK_LOG2 = get_MEMTREE_NBITEMS_PER_BLOCK_LOG2_v  <config_t,3>;
         static constexpr int MEMTREE_MAX_MEMORY_LOG2        = get_MEMTREE_MAX_MEMORY_LOG2_v         <config_t,8>;
         static constexpr bool SHARED_ITER_CACHE             = get_SHARED_ITER_CACHE_v               <config_t,true>;
+        static constexpr bool VECTOR_SERIALIZE_OPTIM        = get_VECTOR_SERIALIZE_OPTIM_v          <config_t,false>;
     };
 
     template<typename T, typename S> using pair = std::pair<T,S>;
@@ -576,6 +578,8 @@ namespace bpl {
         static auto iterate (bool transient, int depth, const TYPE& t, FCT fct, void* context)
         {
             using serial_size_t = typename Serialize<ARCH,BUFITER,ROUNDUP>::serial_size_t;
+
+            if constexpr(ARCH::constants_t::VECTOR_SERIALIZE_OPTIM)  { if (t.hasBeenFilled())  { return; } }
 
             // We serialize the size of the vector.
             serial_size_t n = t.size();
