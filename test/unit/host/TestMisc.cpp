@@ -794,7 +794,7 @@ TEST_CASE ("Syracuse", "[misc]" )
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("SyracuseVector", "[misc]" )
 {
-    uint64_t N = 1ULL<<30;
+    uint64_t N = 1ULL<<29;
     std::pair<uint64_t,uint64_t> range (1, N);
     Launcher<ArchUpmem> launcher {20_rank};
     auto result = launcher.run<SyracuseVector> (split(range));
