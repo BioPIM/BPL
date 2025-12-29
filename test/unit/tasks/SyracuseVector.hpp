@@ -22,7 +22,9 @@ using namespace bpl;
 template<class ARCH>
 struct SyracuseVector : bpl::Task<ARCH>
 {
-    USING(ARCH);
+    struct config  {  static const bool VECTOR_SERIALIZE_OPTIM = true;  };
+
+    USING(ARCH,config);
 
     using range_t = pair<uint64_t,uint64_t>;
 

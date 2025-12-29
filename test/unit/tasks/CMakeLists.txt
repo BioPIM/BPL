@@ -108,7 +108,7 @@ set (TASKS_LIST
 	"VectorCreation"
 	"VectorSharedIteratorTrue" "VectorSharedIteratorFalse"
 	"VectorSerialize"
-	"SyracuseReduce" "SyracuseVector"
+	"Syracuse" "SyracuseReduce" "SyracuseVector"
 )
 
 ################################################################################

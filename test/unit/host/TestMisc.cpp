@@ -33,6 +33,8 @@ using namespace bpl;
 #include <tasks/TemplateSpecialization.hpp>
 #include <tasks/SyracuseReduce.hpp>
 #include <tasks/Syracuse.hpp>
+#include <tasks/SyracuseVector.hpp>
+
 
 #include <iostream>
 #include <list>
@@ -783,11 +785,17 @@ return;
 //////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("Syracuse", "[misc]" )
 {
-return;
+    uint64_t N = 1ULL<<29;
+    std::pair<uint64_t,uint64_t> range (1, N);
+    Launcher<ArchUpmem> launcher {20_rank};
+    auto result = launcher.run<Syracuse> (split(range));
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("SyracuseVector", "[misc]" )
+{
     uint64_t N = 1ULL<<30;
     std::pair<uint64_t,uint64_t> range (1, N);
-
-//    Launcher<ArchUpmem> launcher {20_rank};
-    Launcher<ArchMulticore> launcher {ArchMulticore::Thread{16*64*20}, 32_thread};
-    auto result = launcher.run<Syracuse> (split(range));
+    Launcher<ArchUpmem> launcher {20_rank};
+    auto result = launcher.run<SyracuseVector> (split(range));
 }
