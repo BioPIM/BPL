@@ -1280,11 +1280,11 @@ struct result_wrapper<std::vector<T>, true> {
     // 'result' exists).
     // The 'result' API offers at least iteration (begin/end) and random access (operator[])
     struct type {
-        auto begin () const { return spans.begin(); }
-        auto end   () const { return spans.end();   }
-        auto size  () const { return spans.size();  }
-        auto operator[] (std::size_t i) const { return spans[i]; }
-        std::vector<std::span<value_type>> spans;
+        auto begin () const { return spans->begin(); }
+        auto end   () const { return spans->end();   }
+        auto size  () const { return spans->size();  }
+        auto operator[] (std::size_t i) const { return *(spans.get()) [i]; }
+        std::shared_ptr<std::vector<std::span<value_type>>> spans;
         std::shared_ptr<uint8_t[]> data;
     };
 
@@ -1299,21 +1299,32 @@ struct result_wrapper<std::vector<T>, true> {
         size_t totalOutputSize  = 0;
 
         // We first compute the total MRAM size (from all DPUs of all ranks) to be retrieved.
-        for (auto&& m : data.arch.__metadata_output__)  {
-            auto [minVecInfo,maxVecInfo] = std::minmax_element (std::begin(m.vector_info), std::end(m.vector_info),
+        for (auto&& m : data.arch.__metadata_output__)  {  // iterate one DPU metadata output
+
+            auto [minVecAddr,maxVecAddr] = std::minmax_element (std::begin(m.vector_info), std::end(m.vector_info),
                 [] (auto a, auto b) { return a.address<b.address; });
 
-            size_t len = (maxVecInfo->address-minVecInfo->address) + sizeof(value_type)*maxVecInfo->nbitems;
-            len = roundUp<64>(len);  // seems to speedup a little bit ?
+            auto [minVecNbitems,maxVecNbitems] = std::minmax_element (std::begin(m.vector_info), std::end(m.vector_info),
+                [] (auto a, auto b) { return a.nbitems<b.nbitems; });
+
+            // We compute the MRAM size to be retrieved for the current DPU
+            size_t len = (maxVecAddr->address-minVecAddr->address) + sizeof(value_type)*maxVecNbitems->nbitems;
+
+            // We need some alignment there.
+            len = roundUp<8>(len);
 
             if (globalMaxsize<len)  { globalMaxsize = len; }
-            if (globalMinAddress>minVecInfo->address)  { globalMinAddress = minVecInfo->address; }
+            if (globalMinAddress>minVecAddr->address)  { globalMinAddress = minVecAddr->address; }
 
             totalOutputSize += len;
         }
 
+        // We add a few more bytes
+        totalOutputSize += 256;
+
         // We can now allocate our big buffer.
-        result.data = std::make_shared<uint8_t[]>(totalOutputSize);
+        result.data  = std::make_shared<uint8_t[]>(totalOutputSize);
+        result.spans = std::make_shared<std::vector<std::span<value_type>>>();
 
         data.arch.statistics_.addTag ("result/buffer", std::to_string(totalOutputSize));
 
@@ -1325,7 +1336,7 @@ struct result_wrapper<std::vector<T>, true> {
                 [] (auto a, auto b) { return a.address<b.address; });
 
             for (auto e : m.vector_info) {  // tasklets iteration
-                result.spans.push_back (std::span<value_type>(
+                result.spans->push_back (std::span<value_type>(
                     (value_type*) (result.data.get() + globalMaxsize*idxDpu + e.address-minVecInfo->address),
                     e.nbitems
                 ));
@@ -1354,12 +1365,19 @@ struct result_wrapper<std::vector<T>, true> {
 
             size_t idxDpu = 0;
             struct dpu_t* dpu;
+            uint64_t reached = 0;
             _STRUCT_DPU_FOREACH_I(rank, dpu, idxDpu) {
                 // Note: we must add a (potentially variable) offset (with dpuPerRankCumul)
                 // because the number of used DPUs might change between the ranks.
+                reached = globalMaxsize*(dpuPerRankCumul[idxRank]+idxDpu);
                 dpu_transfer_matrix_add_dpu (dpu, &matrix, result.data.get() + globalMaxsize*(dpuPerRankCumul[idxRank]+idxDpu));
                 idxDpu++;
             }
+
+            if (reached + globalMaxsize > totalOutputSize)  {
+                throw std::runtime_error ("buffer overflow while retrieving MRAM contents");
+            }
+
             // We retrieve the MRAM information from all the DPUs of the current rank.
             // As a consequence, all the result spans should now point to the correct information.
             [[maybe_unused]] auto res = dpu_copy_from_mrams (rank, &matrix);
