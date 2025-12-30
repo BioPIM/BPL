@@ -1299,6 +1299,7 @@ struct result_wrapper<std::vector<T>, true> {
         size_t totalOutputSize  = 0;
 
         // We first compute the total MRAM size (from all DPUs of all ranks) to be retrieved.
+        size_t nbdpus = 0;
         for (auto&& m : data.arch.__metadata_output__)  {  // iterate one DPU metadata output
 
             auto [minVecAddr,maxVecAddr] = std::minmax_element (std::begin(m.vector_info), std::end(m.vector_info),
@@ -1316,11 +1317,11 @@ struct result_wrapper<std::vector<T>, true> {
             if (globalMaxsize<len)  { globalMaxsize = len; }
             if (globalMinAddress>minVecAddr->address)  { globalMinAddress = minVecAddr->address; }
 
-            totalOutputSize += len;
+            nbdpus++;
         }
 
         // We add a few more bytes
-        totalOutputSize += 256;
+        totalOutputSize += nbdpus * globalMaxsize;
 
         // We can now allocate our big buffer.
         result.data  = std::make_shared<uint8_t[]>(totalOutputSize);

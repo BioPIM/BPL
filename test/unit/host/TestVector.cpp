@@ -1373,6 +1373,16 @@ auto VectorReverseInPlace_aux  (auto& launcher, size_t nbitems)
 }
 
 //////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorReverseInPlaceSimple", "[Vector]" )
+{
+    size_t nbranks = 2;
+    Launcher<ArchUpmem> launcher {ArchUpmem::Rank{nbranks}};
+
+    size_t nbitems = nbranks*64*16*(1ULL<<16);
+    VectorReverseInPlace_aux (launcher, nbitems);
+}
+
+//////////////////////////////////////////////////////////////////////////////
 TEST_CASE ("VectorReverseInPlace", "[Vector]" )
 {
     for (size_t nbranks : {1,2,4,8,16})
