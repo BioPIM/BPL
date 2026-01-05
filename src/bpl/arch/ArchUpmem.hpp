@@ -1144,8 +1144,6 @@ struct result_wrapper  {
 
     type operator() (result_data const& data)  {
 
-        //printf ("============> NO OPTIM\n");
-
         // We declare the vector that will hold the results coming from the tasklets (one result per tasklet)
         type results (data.arch.getProcUnitNumber());
 
@@ -1292,8 +1290,6 @@ struct result_wrapper<std::vector<T>, true> {
 
         type result;
 
-        // printf ("============> OPTIM\n");
-
         size_t globalMinAddress = std::numeric_limits<size_t>::max();
         size_t globalMaxsize    = std::numeric_limits<size_t>::min();
         size_t totalOutputSize  = 0;
@@ -1320,7 +1316,8 @@ struct result_wrapper<std::vector<T>, true> {
             nbdpus++;
         }
 
-        // We add a few more bytes
+        // We take the max size reached for some DPU and multiply by the DPU number.
+        // (might not be optimal but should be ok)
         totalOutputSize += nbdpus * globalMaxsize;
 
         // We can now allocate our big buffer.
@@ -1353,6 +1350,7 @@ struct result_wrapper<std::vector<T>, true> {
         for (size_t i=0; i<rankInfo.size(); i++)  {  dpuPerRankCumul[i+1] = dpuPerRankCumul[i] + rankInfo[i].second; }
 
         // We retrieve (in //) the MRAM information from all DPUs of all ranks.
+        // Each rank is handled by one thread of the threads pool.
         data.arch.threadpool_->template submit_loop<unsigned int> (0, rankInfo.size(),  [&] (std::size_t idxRank)
         {
             // We retrieve a handle of the rank used in the current thread.
