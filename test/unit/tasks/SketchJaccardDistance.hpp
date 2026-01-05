@@ -10,7 +10,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 // @description: Computes Jaccard distances between two sketches.
-// @remark: we first create an empty result vector and after use 'push_back'
+// @remark: we first create a result vector of N items and populate it with []
 // for adding an item.
 // @benchmark-input: 2^n for n in range(17,20)
 // @benchmark-split: yes (dbRef)
