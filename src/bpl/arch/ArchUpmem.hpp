@@ -1283,7 +1283,7 @@ struct result_wrapper<std::vector<T>, true> {
         auto begin () const { return spans->begin(); }
         auto end   () const { return spans->end();   }
         auto size  () const { return spans->size();  }
-        auto operator[] (std::size_t i) const { return *(spans.get()) [i]; }
+        auto operator[] (std::size_t i) const { return spans->operator[] (i); }
         std::shared_ptr<std::vector<std::span<value_type>>> spans;
         std::shared_ptr<uint8_t[]> data;
     };

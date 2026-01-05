@@ -31,11 +31,11 @@ auto SortSelection_aux(auto&& launcher, auto const& v)
     [[maybe_unused]] auto t1 = timestamp();
 
     value_type i=1;
-    size_t nberrors=0;
+    size_t nbok=0;
 
     // We sort-merge the N partial results and check that we have integers from 1 to N
-    merge (results, [&] (auto x) {  nberrors += (i++ == x) ? 0 : 1; });
-    REQUIRE (nberrors==0);
+    merge (results, [&] (auto&& x) {  nbok += (i++ == x) ? 1 : 0; });
+    REQUIRE (nbok==v.size());
 
     [[maybe_unused]] auto t2 = timestamp();
     //fmt::println ("arch: {:10}  #items: {:9}  #result: {:6}  time: {:5.3} {:5.3}", launcher.name(), v.size(), results.size(), t1-t0, t2-t1);
