@@ -37,6 +37,9 @@
 \chapter*{Introduction}
 The purpose of this document is to present the \bpl (also known as \BPL) to the end user, enabling the design and implementation of programs that can run on different hardware architectures, such as multicore and \PIM architectures like the \UPMEM architecture.
 
+The underlying idea is also to accelerate the development process, particularly when targeting the UPMEM architecture, 
+by encapsulating all low-level SDK calls within the library. The expected advantage is to avoid discouraging developers with what might be perceived as an overly low-level SDK, thereby reaching a broader developer community.
+
 This document also outlines the compilation toolchain requirements and provides the fundamentals for creating programs from scratch.
 
 The \BPL is written in C++, and therefore programs that use it should also be written in this language
@@ -429,6 +432,10 @@ As a result, functional differences may occur when running such methods on multi
 \section{vector and vector\_view}
 \subsection{MemoryTree}
 
+\section{Tags}
+\subsection{global}
+\subsection{once}
+
 \section{Activating debug traces}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -681,13 +688,137 @@ This makes it possible to compare two versions and identify any improvements in 
 A dedicated Jupyter notebook can be created to visualize the differences between the two versions using graphics.
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{The LOC metric}
 
- 
+So far, we have tested the BPL through unit tests and benchmarks.
+There is an additional way to evaluate the BPL, from the developer's perspective, in cases where one wants to use the UPMEM architecture: does the BPL allow for faster development compared to using the UPMEM SDK?
 
+To ensure a fair comparison, we will assume here that the developer has equivalent knowledge of (1) the UPMEM SDK and (2) the BPL API; in other words, that they possess sufficient understanding of both APIs to write code directly using either approach.
+\footnote{In practice, the learning curve for the UPMEM SDK remains more complex than that of the BPL.}
 
+Therefore, the metric that comes to mind is the number of lines of code required to write a program, either using the UPMEM API or the BPL API.
+From now on, this metric will be referred to as LOC, for "Lines Of Code."
 
+Of course, it is not practical to write every program using both approaches in order to compare the LOC, since the goal is primarily to develop using the BPL API. However, it is still interesting to perform this exercise on a few examples.
 
+\subsection{Example}
+We will start with the task of calculating the checksum of a buffer, as this is an example provided in the UPMEM documentation. We can therefore simply write the BPL version and compare the LOC in both cases.
 
+Here is the UPMEM SDK version. First the DPU part (with all comments removed):
+\begin{minted}[bgcolor=bg,linenos]{c++}
+#include <mram.h>
+#include <stdbool.h>
+#include <stdint.h>
+#define CACHE_SIZE 256
+#define BUFFER_SIZE (1 << 16)
+__mram_noinit uint8_t buffer[BUFFER_SIZE];
+__host uint32_t checksum;
+int main() {
+  __dma_aligned uint8_t local_cache[CACHE_SIZE];
+  checksum = 0;
+  for (unsigned int bytes_read = 0; bytes_read < BUFFER_SIZE;) {
+    mram_read(&buffer[bytes_read], local_cache, CACHE_SIZE);
+    for (unsigned int byte_index = 0; (byte_index < CACHE_SIZE) 
+		&& (bytes_read < BUFFER_SIZE); byte_index++, bytes_read++) {
+      checksum += (uint32_t)local_cache[byte_index];
+    }
+  }
+  return checksum;
+}
+\end{minted}
+and the host part
+\begin{minted}[bgcolor=bg,linenos]{c++}
+#include <dpu.h>
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#ifndef DPU_BINARY
+#define DPU_BINARY "trivial_checksum_example"
+#endif
+#define BUFFER_SIZE (1 << 16)
+void populate_mram(struct dpu_set_t set, uint32_t nr_dpus) {
+  struct dpu_set_t dpu;
+  uint32_t each_dpu;
+  uint8_t *buffer = malloc(BUFFER_SIZE * nr_dpus);
+  DPU_FOREACH(set, dpu, each_dpu) {
+    for (int byte_index = 0; byte_index < BUFFER_SIZE; byte_index++) {
+      buffer[each_dpu * BUFFER_SIZE + byte_index] = (uint8_t)byte_index;
+    }
+    buffer[each_dpu * BUFFER_SIZE] += each_dpu; 
+    DPU_ASSERT(dpu_prepare_xfer(dpu, &buffer[each_dpu * BUFFER_SIZE]));
+  }
+  DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "buffer", 0, BUFFER_SIZE, 
+  	DPU_XFER_DEFAULT));
+  free(buffer);
+}
+void print_checksums(struct dpu_set_t set, uint32_t nr_dpus) {
+  struct dpu_set_t dpu;
+  uint32_t each_dpu;
+  uint32_t checksums[nr_dpus];
+  DPU_FOREACH(set, dpu, each_dpu) {
+    DPU_ASSERT(dpu_prepare_xfer(dpu, &checksums[each_dpu]));
+  }
+  DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_FROM_DPU, "checksum", 0, 
+  	sizeof(uint32_t), DPU_XFER_DEFAULT));
+  DPU_FOREACH(set, dpu, each_dpu) {
+    printf("[%u] checksum = 0x%08x\n", each_dpu, checksums[each_dpu]);
+  }
+}
+int main() {
+  struct dpu_set_t set, dpu;
+  DPU_ASSERT(dpu_alloc(DPU_ALLOCATE_ALL, NULL, &set));
+  DPU_ASSERT(dpu_load(set, DPU_BINARY, NULL));
+  DPU_ASSERT(dpu_get_nr_dpus(set, &nr_dpus));
+  populate_mram(set, nr_dpus);
+  DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
+  print_checksums(set, nr_dpus);
+  DPU_ASSERT(dpu_free(set));
+  return 0;
+}
+}\end{minted}
+which totals $19+47$ lines, or $66$ in all.
+
+Now, using the BPL API, we have:
+\begin{minted}[bgcolor=bg,linenos]{c++}
+#include <bpl/core/Task.hpp>
+template<class ARCH>
+struct VectorChecksum : bpl::Task<ARCH>  {
+    USING(ARCH);
+    auto operator() (vector<uint32_t> const& v)  {
+        return accumulate(v.begin(), v.end(), uint64_t{0});
+    }
+    static uint64_t reduce (uint64_t a, uint64_t b)  { return a+b; }
+};
+\end{minted}
+and
+\begin{minted}[bgcolor=bg,linenos]{c++}
+#include <vector>
+#include <cstdio>
+#include <bpl/bpl.hpp>
+int main() {
+    std::vector<uint32_t> v;  
+    for (size_t i=1; i<=1<<16; i++)  {  v.push_back(i);  }
+    Launcher<ArchUpmem> launcher {1_dpu};
+    printf ("checksum: %ld\n", launcher.run<VectorChecksum>(split(v)));
+}
+}\end{minted}
+which totals $9+9$ lines, or $18$ in all. 
+
+Thus, we have 66 LOC for the UPMEM SDK and 18 LOC for the BPL.
+
+In addition to the significant reduction in code size with the BPL, code written using the BPL 
+is also much more readable than with the UPMEM SDK. Indeed, reading the BPL code makes it immediately
+clear that the task is to compute the checksum of a vector, which is far less obvious in the UPMEM SDK version, 
+where all the low-level SDK calls reduce overall readability.
+
+Of course, it would be worthwhile to extend this LOC comparison to other examples, but it seems fairly clear that the advantage would still favor the BPL.
+The remaining point to determine is the overhead of the BPL compared to writing directly using the UPMEM SDK. 
+If a BPL version were consistently 50\% slower than a SDK version, its usefulness could be limited.
+In this regard, benchmark tests can provide a typology of algorithms that are likely to benefit from execution via the BPL on a UPMEM architecture, and conversely, those that might be penalized.
+
+Related to readability, it is also conceivable that a developer could implement a simple algorithm using the BPL to run on a UPMEM architecture 
+without needing to know the UPMEM SDK, which would represent a significant benefit of the BPL.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \end{document}
