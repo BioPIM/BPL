@@ -3,6 +3,8 @@
 \usepackage{minted}
 \usepackage[dvipsnames]{xcolor}
 
+\usepackage{graphicx}
+
 \usepackage[a4paper]{geometry}
 \newgeometry{vmargin={30mm}, hmargin={20mm,20mm}}   % set the margins
 
@@ -288,7 +290,7 @@ You should also have a recent \verb+C/C+++ compiler installed on your system tha
 
 Currently, the simplest way to get the \BPL is to clone the following GIT repository:
 \begin{verbatim}
-git@gitlab.inria.fr:pim/org.pim.bpl.git
+https://github.com/BioPIM/BPL.git
 \end{verbatim}
 
 Once the repository is cloned, you can do the following to build the unit tests from the cloned directory
@@ -306,6 +308,8 @@ The unit tests\footnote{the unit tests are based on the \cxx{Catch2} framework} 
 \begin{verbatim}
 ./test/unit/host/bpl-unittests.host
 \end{verbatim}
+
+\subsection{Creating a project from scratch}
 
 It is possible to write a new program from this content but this repository is rather focused on the development of the library itself.
 A useful way to create an independant \BPL project is to create a \verb+tar.gz+ archive holding the minimal source code and \cxx{CMake}
@@ -435,13 +439,7 @@ and \UPMEM architectures.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\chapter{API}
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\chapter{API}
+\chapter{Application Programming Interface}
 
 \section{Preliminary remarks}
 
@@ -467,15 +465,307 @@ and \UPMEM architectures.
 \section{Customizing BPL}
 
 \section{Task}
+\subsection{Reduce}
 
 \section{mutex}
 
 \section{Launcher}
+\subsection{Getting statistics}
 
 \section{LauncherPool}
 
-
 \section{vector and vector\_view}
+\subsection{MemoryTree}
+
+\section{Activating debug traces}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{The design of the BPL}
+
+\section{C++ metaprogrammation}
+
+\section{Broadcast}
+
+\section{Serialization}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Testing the BPL}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Unit tests}
+
+\subsection{Introduction}
+
+Unit tests represent an important part of a library: it makes it possible (a) to check that the available features
+provide the required results and (b) to detect potential regressions in a new version of the library. The second point 
+is paramount when an important source code modification has occurred in a new version. 
+
+Therefore, the number of unit tests might grow from one version to the next one in order to check as much aspects
+as possible. In other words, the number of unit tests must not decrease over time.
+
+Even more important, the existing tests must not be modified over time or at least in very specific cases such as
+an API modification when it is absolutely necessary.
+
+\subsection{Tests categories}
+
+For the BPL, the unit tests are roughly categorized as follows:
+\begin{itemize}
+\item TestLauncher:  tests for the \cxx{bpl::Launcher} class 
+\item TestMemoryTree: tests for the \cxx{MemoryTree} class ("directly" tested, ie. not in the context of its regular usage inside a \cxx{bpl::vector}) 
+\item TestMetaprog: tests for some C++ metaprogramming tools
+\item TestMisc: miscellanous tests like \cxx{global} and \cxx{once} tags
+\item TestSerialize: tests about serialization of objects.
+\item TestSketch: tests that compare sketches
+\item TestSort:   tests for sorting vectors
+\item TestSplit: tests for the \cxx{split} BPL concept, ie. something that split input data as a parallelization scheme
+\item TestSynchro: tests for synchronizing data access (e.g. \cxx{mutex})
+\item TestVector: tests for using \cxx{bpl::vector}
+\end{itemize}
+ 
+Some tests are processed with a launcher configured with an UPMEM architecture and/or multicore architecture but
+some of them don't require to use a launcher (see for instance the TestMetaprog).
+
+Note that we won't detail all the unit tests here. The reader can directly browse the source code to get an idea
+of the content of each test.
+
+\subsection{Unit test framework}
+ 
+The \BPL uses the \cxx{Catch2} unit tests framework since it is popular and still active on github. 
+
+The \BPL uses \cxx{Catch2} in a quite straightforward way, so there is nothing specific to add here; the reader
+can consult the following URL \verb+https://github.com/catchorg/Catch2+ for further details if needed.
+
+Here is a minimal test file based on \cxx{Catch2} in the context of the \BPL
+\begin{minted}[bgcolor=bg]{c++}
+#include <common.hpp>
+#include <tasks/VectorCreation.hpp>
+
+using namespace bpl;
+
+TEST_CASE ("VectorCreationSimple", "[Vector]" )
+{
+    size_t nbErrors1 = 0;
+    size_t nbErrors2 = 0;
+    size_t nbitems = 1<<15;
+    size_t n=0;
+
+    Launcher<ArchUpmem> launcher {1_dpu};
+
+    for (auto const& res : launcher.run<VectorCreation>(nbitems))  {
+        nbErrors1 += res.size() == nbitems ? 0 : 1;
+        size_t k=0;
+        for (auto x : res) { nbErrors2 += x==(k+n) ? 0 : 1;   k++; }
+        n++;
+    }
+    REQUIRE (nbErrors1 == 0);
+    REQUIRE (nbErrors2 == 0);
+}
+\end{minted}
+
+A few remarks
+\begin{itemize}
+	\item one includes a \cxx{common.hpp} file that holds a minimal set of includes for using the \BPL
+	\item one include the header file of the task we want to test, \cxx{VectorCreation} in this example
+	\item one defines a \cxx{VectorCreationSimple} test case where
+	\begin{itemize}
+		\item one declares a \cxx{bpl::Launcher}
+		\item one runs the \cxx{VectorCreation} task through the launcher
+		\item one iterates each result generated by the call to \cxx{run}; one checks the content of the result
+		according to the expected result
+		\item one checks with the \cxx{REQUIRE} command if everything is ok.
+    \end{itemize}
+\end{itemize}
+
+Almost every unit test follows this pattern. 
+
+It might happen that the test is processed with different inputs. This 
+helps to check more deeply the task but only in the context of unit tests: here we care only about the ok/ko status
+of the test regarding to the expected result but we don't care at this stage about performance; this will be addressed
+by the benchmark test suite.
+
+\subsection{Source code hierarchy}
+
+As previously said, the \BPL relies on \cxx{CMake} as building system. For the unit tests part, we have 
+the following files structure:
+\begin{itemize}
+	\item \textbf{host}: directory holding the tests written with the \cxx{Catch2} framework
+	\item \textbf{tasks}: directory holding the tasks (one file per task)
+\end{itemize}
+
+In order to test a new task \cxx{MyTask}, one should do the following :
+\begin{itemize}
+	\item implement the task in a \cxx{MyTask.hpp} file and put it in the \cxx{tasks} directory
+	\item in the \cxx{tasks/CMakeLists.txt}, add the name of the new task to the \cxx{TASKS\_LIST} variable
+	\item add a \cxx{TEST\_CASE} in some file of the \cxx{host} directory that implements the unit test. 
+	The \cxx{\#include} of the task (e.g. \cxx{tasks/MyTask.hpp}) must be done at the beginning of the file.
+\end{itemize}
+
+\subsection{Building and running the unit tests}
+
+The unit tests are generated with the \cxx{bpl-unittests.host} target of the makefile generated by \cxx{CMake}.
+One can generate the binary with (from the \cxx{build} directory):
+\begin{minted}[bgcolor=bg]{c++}
+make bpl-unittests.host
+\end{minted}
+then one can launch the unit tests suite with
+\begin{minted}[bgcolor=bg]{c++}
+./test/unit/host/bpl-unittests.host -d y
+\end{minted}
+The \cxx{-d y} option is not mandatory; it will display each test name and its execution time.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Benchmark tests}
+
+\subsection{Introduction}
+
+The global idea of the BIOPIM project is to implement algorithms on PIM architectures (e.g. UPMEM) and see how much one can
+speed up things. It is therefore important to be able to compare the results in terms of execution time compared to a more
+standard approach, for instance by using a multithreading approach.
+
+One key point of the BPL is the ability to write a single source code that can be processed on architectures such as Multicore
+and UPMEM. It means that we can thus compare the execution times of the very same algorithm implementation for different architectures.
+For instance, we could write the following
+\begin{minted}[bgcolor=bg]{c++}
+{
+  auto t0 = timestamp()
+  Launcher<Multicore>{}.run<SomeAlgorithm> (data);
+  auto t1 = timestamp()
+  Launcher<Upmem>{}.run<SomeAlgorithm> (data);
+  auto t2 = timestamp()
+}
+\end{minted}
+where $t1-t0$ would be the execution time of the algorithm on a multicore architecture and $t2-t1$ the execution time 
+on a UPMEM architecture. So, it is possible to generate benchmark reports showing the scalability of a given architecture and also
+the speedups of a given architecture (e.g. UPMEM) compared to another one (e.g. multicore). 
+ 
+As a matter of fact, using the UPMEM part of the BPL (and UPMEM SDK under the hood) implies some overheads, e.g. broadcasting data from/to the host to/from the DPUs, somewhat
+like broadcasting data over a network. So benchmarking the BPL is important in order to point how much such overheads can cost. 
+The BPL is able to generate statistics about these overheads, allowing the expert to check whether or not a given overhead seems far too
+important.
+
+Actually, the tests used during the benchmark of the BPL are a subset of the BPL unit tests, with different input data. The advantage
+is that we don't need to write specific tests for benchmarking since we have already plenty unit tests. Keep in mind however that 
+at the benchmarking stage, we won't check the results since we are interested only in the execution times. Checking whether or not the
+results are ok is done during the unit tests stage.
+
+Benchmark reporting needs to provide much more information than the unit tests stage, where basically we just need to know if a test is ok or ko.
+During benchmarking, we might need to generate different kinds of graphics that will help the expert. The BPL proposes a Jupyter notebook
+that will automatically runs the benchmark tests and produces at the end a pdf report with many graphics we will now describe.
+
+\subsection{The benchmark report}
+
+The Jupyter notebook to be launched is located in the \cxx{test/benchmark/notebooks} and is named \cxx{1.Benchmark.ipynb}.
+
+After some introduction, a section named with the test name is generated for each test with the following sub-sections
+\begin{itemize}
+	\item \textbf{Description}:  a short description of the test. This description should be written in the source code of the test file as a comment
+	following some metadata rules.
+	\item \textbf{Remarks}: some potential extra remarks (also as comment in the source code)
+	\item \textbf{Benchmark-input}: defines the input range, i.e. each value for which the test will be processed
+	\item \textbf{Benchmark-split}: tells whether an input argument has been 'split'
+	\item \textbf{Source code}: the C++ source code of the test. Having the code in the report is useful, but one should take care of having not too long source code here.
+	\item \textbf{Multicore vs Upmem}: this part compare the two execution times on a log scale. One graphic is generated per input value.
+	Example:
+	\begin{figure}[H]
+        \centering
+		\includegraphics[scale=0.3]{images/figure1.png}
+	\end{figure}
+	\item \textbf{Speedup Upmem vs Multicore}: the ratio of execution time for 1 thread divided by the execution time for 1 rank.
+	Example:
+	\begin{figure}[H]
+	    \centering
+		\includegraphics[scale=0.3]{images/figure2.png}
+	\end{figure}
+    \item \textbf{Scalability per architecture}: for Multicore and UPMEM, one displays the scalability per process units, i.e. for a given number N of process
+    units (threads or tasklets), the ratio between the execution time for 1 process unit divided by the execution time for N process units.
+	Example:
+	\begin{figure}[H]
+	    \centering
+		\includegraphics[scale=0.3]{images/figure3.png}
+	\end{figure}
+	\item \textbf{Overheads for the UPMEM arch}: the BPL provides some statistics for the overheads in case of the UPMEM architecture.
+	These timings are taken from the host point of view and not from the DPU side.  
+	\begin{itemize}
+		\item launch: execution time of the task, i.e. execution of the \cxx{operator()} method of the class implementing the task.
+		\item pre: preparation and broadcast to the DPU of the input data taken by the task 
+		\item post:   retrieval of the output metadata from the DPU to the host. These metadata hold statistics and information used for 
+		retrieving the task result.
+	    \item result: preparation and broadcast to the host of the output data generated by the task
+		\item unknown: some parts (e.g. destructors) can't be measured in the previous parts, so they are measured as "unknown"
+	\end{itemize}
+	In the following example, one can see that preparing/sending the input data to the DPU takes a large amount of time compared to the
+	actual processing.
+	\begin{figure}[H]
+	    \centering
+		\includegraphics[scale=0.4]{images/figure4.png}
+	\end{figure}
+\end{itemize}
+
+The execution times generated during the benchmark are put into tables at the end of the benchmark report. It is surely verbose 
+but might be useful when one wants to find some value in the report of a previous version. 
+
+\subsection{Annotation of a test}
+ As previously said, the source code of a benchmark test must provide a few annotations that will be used for the benchmark report.
+ An annotation has to be written inside a C++ comment. The label of the annotation begins by a @ character (e.g. \cxx{@description})
+ then followed by a \cxx{:} and a free text related to the annotation.
+ Here is a full example of the source code of a test with benchmark annotations:
+ \begin{minted}[bgcolor=bg]{c++}
+//////////////////////////////////////////////////////////////////////////
+// @description: Takes a vector as input, iterates its content and compute
+// the checksum. The final result is reduced checksum.
+// @benchmark-input: 2^n for n in 20,22,24,26,28
+// @benchmark-split: yes
+//////////////////////////////////////////////////////////////////////////
+template<class ARCH>
+struct VectorChecksum : bpl::Task<ARCH>
+{
+    USING(ARCH);
+
+    auto operator() (vector<uint32_t> const& v)
+    {
+        uint64_t checksum = 0;
+        for (auto x : v)  {  checksum += x;  }
+        return checksum;
+    }
+};
+\end{minted}
+  
+\subsection{Other remarks}
+Creating a benchmark test suite is not simple because there is no clear limit where one should add one test or not. 
+A rule of thumb is to try to be fair regarding to the features of the library, i.e. putting tests where the library
+shows a good efficiency for the UPMEM arch compared to the multicore arch (few data/many work), 
+but also use cases where the UPMEM overheads are known to be huge (many data/few work).
+
+For instance, the \cxx{SketchJaccardDistance} compares all possible couples of sketches, so we will have in the end
+a triple loop scanning the data for comparison, which is likely a use case in favour to the UPMEM architecture because
+the broadcast cost is largely minimized by the total execution time of the comparisons.
+On the other hand, sorting a vector with a $O(n.log(n))$ algorithm is likely to be faster on a multicore architecture 
+because, for UPMEM, the broadcasts (host/DPU for input and DPU/host for result) might take a large amount of time
+compared to the sort itself.
+So one should select which tests are interesting for benchmarking by assessing what kind of complexity the test involves
+regarding to the data size to be broadcasted.
+  
+Another point concerns the total execution time of the benchmark suite. Since the same test is launched with many different 
+input parameters, execution times can easily grow, so it is also important to put not too many tests because the benchmark
+could take a very long time to be executed.
+
+\subsection{Future improvements}
+Each new version of the BPL should commit the raw data generated during the benchmark execution. It would thus be possible 
+to compare two versions in order to see if there is some improvement in terms of execution time between two versions. A
+dedicated Jupyter notebook could be written in order to point out the differences via some graphics between the two 
+compared versions.
+
+
+
+ 
+
+
+
+
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
