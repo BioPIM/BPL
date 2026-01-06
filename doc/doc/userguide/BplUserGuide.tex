@@ -6,7 +6,7 @@
 \usepackage{graphicx}
 
 \usepackage[a4paper]{geometry}
-\newgeometry{vmargin={30mm}, hmargin={20mm,20mm}}   % set the margins
+\newgeometry{vmargin={30mm}, hmargin={30mm,30mm}}   % set the margins
 
 \setlength{\parskip}{4pt}
 
@@ -35,17 +35,11 @@
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter*{Introduction}
-The purpose of this document is to present the \bpl 
-(also known as \BPL) for the end user in order to design and implement programs that can be launched on different hardware architectures, 
-\eg multicore and  \PIM architectures such as \UPMEM architecture.
+The purpose of this document is to present the \bpl (also known as \BPL) to the end user, enabling the design and implementation of programs that can run on different hardware architectures, such as multicore and \PIM architectures like the \UPMEM architecture.
 
-\
+This document also outlines the compilation toolchain requirements and provides the fundamentals for creating programs from scratch.
 
-It presents the compilation toolchain requirements and the basics for creating programs from scratch. 
-
-\
-
-The \BPL is writen in C++ and therefore the programs using it should also be writen in this language.
+The \BPL is written in C++, and therefore programs that use it should also be written in this language
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
@@ -57,12 +51,11 @@ The \BPL is writen in C++ and therefore the programs using it should also be wri
 
 \subsection{Task and launcher}
 
-As a starter, here is a small program using the \BPL that shows the global philosophy of the library. 
-This program just computes the sum of the content of an input integers vector.
-
-For doing so, one needs to implement a struct/class holding a method that runs the actual job to do, 
-this method being an overload of \cxx{operator()} method. In the following, we will often refer such a structure as a \textbf{task}.
-In the following example, the task will be a structure named \cxx{Sum}.
+As an introduction, here is a small program using the \BPL that illustrates the overall philosophy of the library.
+This program simply computes the sum of the elements of an input integer vector.
+To do so, one must implement a struct or class that provides a method performing the actual computation; this method is an overload of the 
+\cxx{operator()} function.
+In the following, we will often refer to such a structure as a \textbf{task}. In this example, the task is a structure named \cxx{Sum}.
 
 \begin{minted}[bgcolor=bg]{c++}
 template<typename ARCH>
@@ -79,36 +72,31 @@ struct Sum
 } ;
 \end{minted}
 
-For the moment, we don’t bother with the \cxx{USING} macro that will be explained later.
+For the moment, we do not discuss the \cxx{USING} macro, which will be explained later.
 
-A few important preliminary remarks :
+A few important preliminary remarks:
 \begin{itemize}
-  \item the \cxx{Sum} struct has to be templated by a parameter ARCH that represents the hardware architecture where the task will
-   be processed on. As a consequence, the implementation of the task should be agnostic regarding to the actual architecture that 
-   will be used in the end. 
-  So, if one follows this scheme, the task can in theory be processed on potentially very different kinds of hardware architectures.
-  \item The code itself is rather straightforward : one receives as argument an \cxx{in} vector that we iterate while updating the overall sum of the items. 
-  The important point here is that the only data \footnote{we might encounter some exceptions to that remark}  that can be processed by the task are the input arguments 
-  of the \cxx{operator()} method; for instance, there is no way to retrieve data from some file in a filesystem. 
-  On the other hand, the body of the task can hold new objects (allocated in the execution stack) that can be returned if needed like 
-  the \cxx{result} variable as the result data from the task.
-  \item Since we want to create fast algorithms, we might want to use parallelization features such as threads in a multicore architecture. 
-  Note that from the task point of view (here our \cxx{Sum} struct), there is no reference to threads or other features, 
-  the parallelization scheme being done at another level. 
-  In other words, the task is agnostic regarding to its own parallelization ; 
-  it just receives incoming data, processes it and returns some result.
-  \item The \BPL requires that the task (the \cxx{Sum} struct in our example) has to be put in a header file with a specific name convention, 
-  i.e. this header file has to be named \cxx{X.hpp} if the name of the structure is \cxx{X}. In our example, the header file has to be named 
-  \cxx{Sum.hpp}
+	
+	\item The \cxx{Sum} struct must be templated with a parameter \cxx{ARCH} that represents the hardware architecture on which the task will be executed. As a consequence, the implementation of the task should be agnostic with respect to the actual architecture that will ultimately be used.  
+	Following this approach, the task can, in theory, be executed on potentially very different kinds of hardware architectures.
+
+	\item The code itself is rather straightforward: it receives an \cxx{in} vector as an argument, which is iterated over while updating the overall sum of its elements.  
+	The important point here is that the only data\footnote{There may be some exceptions to this remark.} that can be processed by the task are the input arguments of the \cxx{operator()} method; for instance, there is no way to retrieve data from a file in a filesystem.  
+	On the other hand, the body of the task may define new objects (allocated on the execution stack) that can be returned if needed, such as the \cxx{result} variable holding the output of the task.
+
+	\item Since we aim to design fast algorithms, we may want to leverage parallelization features such as threads on a multicore architecture.  
+	Note that, from the task’s point of view (here, our \cxx{Sum} struct), there is no reference to threads or other parallelization mechanisms; the parallelization scheme is handled at another level.  
+	In other words, the task is agnostic with respect to its own parallelization: it simply receives input data, processes it, and returns a result.
+
+	\item The \BPL requires that the task (the \cxx{Sum} struct in our example) be placed in a header file following a specific naming convention.  
+	That is, the header file must be named \cxx{X.hpp} if the structure is named \cxx{X}. In our example, the header file must therefore be named \cxx{Sum.hpp}.
 \end{itemize}
 
-Once we have writen our \cxx{Sum} task, the \BPL provides means to use it, ie. call it and retrieve some result. 
-For doing so, the \BPL introduces the concept of \textbf{launcher}, something that can take as parameter a task (through the name of the structure that
- implements its logic) and the input arguments to be processed. 
+Once we have written our \cxx{Sum} task, the \BPL provides mechanisms to use it, that is, to invoke it and retrieve a result.
+To do so, the \BPL introduces the concept of a \textbf{launcher}, an object that takes as parameters a task (via the name of the structure that implements its logic) and the input arguments to be processed.
 
-This is achieved through the \cxx{bpl::Launcher} class. 
-This is this class that knows about the hardware architecture to be used, so when you want to use a launcher, 
-you must instanciate it with a template argument representing the target hardware architecture. 
+This is achieved through the \cxx{bpl::Launcher} class.
+This class is responsible for handling the hardware architecture to be used; therefore, when creating a launcher, it must be instantiated with a template argument representing the target hardware architecture.
 For instance, if we want to use a multicore architecture, we would write
 \begin{minted}[bgcolor=bg]{c++}
 Launcher<ArchMulticore> launcher;
@@ -119,24 +107,25 @@ If we want to use an \UPMEM architecture, we would write
 Launcher<ArchUpmem> launcher;
 \end{minted}
 
-There, we should be done with the hardware architecture to be used : it is defined through the \cxx{Launcher} instanciation and only there.
+At this point, we are done with specifying the hardware architecture to be used: it is defined through the instantiation of the \cxx{Launcher}, and only there.
 
-For running our \cxx{Sum} task, we use the \cxx{run} method from the \cxx{Launcher} class
+To run our \cxx{Sum} task, we use the \cxx{run} method of the \cxx{Launcher} class.
 \begin{minted}[bgcolor=bg]{c++}
 vector<int32_t> myvector = {1,2,3,5,8};
 auto results = launcher.run<Sum> (myvector);
 \end{minted}
 
-Note the following :
+Note the following:
 \begin{itemize}
-  \item the task to be executed is provided as a template argument of the \cxx{Launcher::run} method
-  \item the arguments (\cxx{myvector} in the example) are provided as arguments to the instanciated version of \cxx{Launcher::run}
-  \item one retrieves the result of the execution of \cxx{Sum::operator()} in the \cxx{results} variable. 
-  Right now, note the ‘s’ in ‘results’ : it turns out that we can retrieve several results and not a single one 
-  (i.e. a mere \cxx{int32\_t} in our \cxx{Sum} example). 
+  \item The task to be executed is provided as a template argument to the \cxx{Launcher::run} method.
+  \item The arguments (\cxx{myvector} in the example) are passed as parameters to the instantiated version of \cxx{Launcher::run}.
+  \item The result of the execution of \cxx{Sum::operator()} is retrieved in the \cxx{results} variable.  
+  At this point, note the \emph{s} in \cxx{results}: it turns out that multiple results can be retrieved, rather than a single one
+  (i.e., a simple \cxx{int32\_t} in our \cxx{Sum} example).
 \end{itemize}
 
-For running this example, we can put all the stuff in some \cxx{main.cpp} file holding the following code:
+
+To run this example, we can put everything into a \cxx{main.cpp} file containing the following code:
 \begin{minted}[bgcolor=bg]{c++}
 #include <bpl/bpl.hpp>
 #include <Sum.hpp>
@@ -152,9 +141,8 @@ int main()
     return 0 ;
 }
 \end{minted}
- Note the  include of the the \cxx{bpl.hpp} file for using the API of the \cxx{Launcher} class. 
-Note that we also need to include the \cxx{Sum.hpp} file where our task is defined ; 
-indeed, this definition is required for calling the \cxx{Launcher::run} method with the \cxx{Sum} template argument.
+Note the inclusion of the \cxx{bpl.hpp} file to use the API of the \cxx{Launcher} class.
+We also need to include the \cxx{Sum.hpp} file, where our task is defined; indeed, this definition is required in order to call the \cxx{Launcher::run} method with \cxx{Sum} as a template argument.
 
 A one-liner version would be
 \begin{minted}[bgcolor=bg]{c++}
@@ -171,7 +159,7 @@ int main()
 }
 \end{minted}
 
-Note that we could either have used another architecture while declaring our launcher, for instance by using \cxx{ArchUpmem} instead:
+Note that we could have used a different architecture when declaring our launcher, for instance by using \cxx{ArchUpmem} instead:
 \begin{minted}[bgcolor=bg]{c++}
 #include <bpl/bpl.hpp>
 #include <Sum.hpp>
@@ -185,43 +173,34 @@ int main()
 }
 \end{minted}
 
-Now, compiling our program can be done with the CMake tool. Actually, the \BPL provides a compilation toolchain that makes it possible 
-to hide a lot of low level details ; this toolchain is an important part of the \BPL and will be detailed later.
+Now, our program can be compiled using the CMake tool. In fact, the \BPL provides a compilation toolchain that hides many low-level details; this toolchain is an important part of the \BPL and will be described in detail later.
 
-From the end-user point of view, all we have seen so far looks like regular C++ development ; 
-we have a small  algorithm to implement (summing the items of a vector) as a functor, i.e. a struct with an overloaded \cxx{operator()} method. 
-Then we use the \cxx{bpl::Launcher} class to run it. Nothing in our code is related to low level details of the \UPMEM architecture for instance, 
-everything is managed by the \BPL itself. 
-On the other hand, we haven’t talked about how to parallelize our algorithm and thus taking advantage of the underlying hardware architecture.
+From the end-user’s perspective, everything we have seen so far resembles regular C++ development.
+We implement a small algorithm (summing the items of a vector) as a functor—that is, a struct with an overloaded \cxx{operator()} method.
+We then use the \cxx{bpl::Launcher} class to run it. Nothing in our code is specific to low-level details of the \UPMEM architecture, for example; everything is handled by the \BPL itself.
+On the other hand, we have not yet discussed how to parallelize our algorithm to take full advantage of the underlying hardware architecture.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{Parallelization}
 
-Modern hardware architectures allow to greatly speed up programs by parallelizing algorithms, e.g. splitting the algorithm 
-in tiny pieces that can be processed at the same time and at the end aggregating the final result from the result of each tiny piece. 
+Modern hardware architectures can greatly speed up programs by parallelizing algorithms; for example, by splitting an algorithm into small pieces that can be processed simultaneously and then aggregating the final result from the results of each piece.
 
-In multicore architectures, it is often achieved through the well known concept of thread. 
-Broadly speaking, using N threads can potentially divide the algorithm execution time by N since each thread can be processed on a 
-specific CPU of the underlying architecture. On the other hand, the \UPMEM architecture uses the concept of tasklet that is similar 
-at first glance to the concept of thread but with significant differences we will see later. 
-For the moment, we define the concept of \textbf{process unit} for unifying both concepts of thread and tasklet, 
-i.e. something that can run a piece of program on a part of the underlying hardware architecture.
+In multicore architectures, this is often achieved using the well-known concept of a thread. Broadly speaking, using 
+N threads can potentially divide the execution time of an algorithm by 
+N, since each thread can run on a specific CPU of the underlying architecture.
+On the other hand, the \UPMEM architecture uses the concept of a tasklet, which is similar at first glance to a thread but with significant differences that we will examine later.
+For now, we introduce the concept of a \textbf{process unit} to unify both concepts of thread and tasklet—that is, an entity that can execute a portion of a program on part of the underlying hardware architecture.
 
-One of the main challenge while desiging the \BPL was to make it possible for the developer to write one code that could
- be run on different architectures (mainly multicore and \UPMEM right now). 
- It means that while we implement our task, the underlying architecture is known as a template parameter \cxx{ARCH} and therefore
-  we should not make any assumption about a specific architecture. 
-  This is when we declare a \cxx{bpl::Launcher} with a specific architecture and then call the \cxx{Launcher::run} method for 
-  the target class that all the specificities of the target architecture are taken into account.
+One of the main challenges in designing the \BPL was to allow developers to write a single codebase that can run on different architectures (currently mainly multicore CPUs and \UPMEM).
+This means that, when implementing a task, the underlying architecture is known only through the template parameter \cxx{ARCH}, so no assumptions should be made about a specific architecture.
+It is only when a \cxx{bpl::Launcher} is declared with a specific architecture and the \cxx{Launcher::run} method is called for the target class that all the specifics of the underlying architecture are taken into account.
 
-As a consequence, the \BPL design had to take care of different parallelization schemes like in multicore and/or \UPMEM environments. 
-This is the purpose of the \cxx{bpl::Launcher} class to deal with it : a launcher not only knows about the underlying architecture but 
-it also has to know how to parallelize the task for the target architecture.
+Consequently, the \BPL design had to accommodate different parallelization schemes, both for multicore and \UPMEM environments.
+This is the role of the \cxx{bpl::Launcher} class: a launcher not only knows about the underlying architecture but also knows how to parallelize the task for the target architecture.
 
-Another point concerns how many resources we want to use for running our task. On a 32 cores architecture, we may want to use only 8 cores, 
-which can be achieved by providing the number of process units (threads in this case) we want to use as argument to the constructor 
-%\footnote{for a better readibility, we will omit from now the namespace \cxx{bpl} in code examples}
-of \cxx{bpl::Launcher}
+Another consideration is how many resources we want to allocate to run our task. On a 32-core architecture, for example, we might want to use only 8 cores.
+This can be achieved by providing the number of process units (threads, in this case) to use as an argument to the constructor of \cxx{bpl::Launcher}.
+
 \begin{minted}[bgcolor=bg]{c++}
 Launcher<ArchMulticore> launcher (Thread{8});
 \end{minted}
@@ -230,9 +209,9 @@ which can also be writen with
 // launcher will use 8 process units (i.e. threads)
 Launcher<ArchMulticore> launcher (8_thread);  
 \end{minted}
-So 8 threads will be used when calling \verb+laucher.run<Sum>(myvector)+, each one doing the same summation on the input vector.
+So 8 threads will be used when calling \verb+launcher.run<Sum>(myvector)+, each performing the same summation on the input vector.
 
-When using \UPMEM architecture, it is possible to define the amount of resources with a number of ranks or DPUs, \eg
+When using the \UPMEM architecture, it is possible to specify the amount of resources by setting the number of ranks or DPUs, e.g.,
 \begin{minted}[bgcolor=bg]{c++}
 // launcher1 will use 20*64*16 process units (i.e. tasklets)
 Launcher<ArchUpmem> launcher1 (20_rank);  
@@ -240,19 +219,19 @@ Launcher<ArchUpmem> launcher1 (20_rank);
 Launcher<ArchUpmem> launcher2 (500_dpu);   
 \end{minted}
 
-What we have just done here is to define how many resources a launcher can use and the underlying number of process units running the task.
-However, the task processed on each process unit will handle the same input data and therefore will produce the same result.
-We need now to specify how to parallelize the algorithm; the \BPL provides a solution \emph{by splitting the input arguments of the task and
-then providing each specific split to a specific process unit}. In our example, the input vector \cxx{in} will be split in sub vectors and
-each sub vector (potentially empty) will be provided as argument to each instanciation of the \cxx{Sum} structure, one per process unit.
-This parallelization scheme can be simply invoked by encapsulating the \cxx{myvector} argument by the \cxx{bpl::split} method
+What we have just done is define how many resources a launcher can use and the corresponding number of process units running the task.
+However, each process unit will process the same input data and therefore produce the same result.
+We now need to specify how to parallelize the algorithm. The \BPL provides a solution by splitting the input arguments of the task and assigning each specific split to a dedicated process unit.
+In our example, the input vector \cxx{in} will be divided into sub-vectors, and each sub-vector (potentially empty) will be provided as an argument to a separate instantiation of the \cxx{Sum} structure—one per process unit.
+This parallelization scheme can be easily applied by wrapping the \cxx{myvector} argument with the \cxx{bpl::split} method.
 \begin{minted}[bgcolor=bg]{c++}
 auto results = launcher.run<Sum> (split(myvector));
 \end{minted}
 
-Now a word about the 's' in \cxx{results}: each process unit will run a \cxx{Sum} instance and produce a result, so if we have $N$ process
-units, \cxx{results} will be a vector of $N$ \verb+int32_t+ objects\footnote{note that \cxx{results} could be something iterable rather than a
-full-fledged vector}. So we could write
+Now, a word about the 's' in \cxx{results}: each process unit runs an instance of \cxx{Sum} and produces a result.
+Therefore, if we have N process units, \cxx{results} will be a vector of 
+N \verb+int32_t+ objects\footnote{Note that \cxx{results} could be any iterable type rather than a full-fledged vector.}.
+Thus, we could write
 \begin{minted}[bgcolor=bg]{c++}
 // Iterate over the result of each process unit
 for (auto result : launcher.run<Sum> (split(myvector)))  
@@ -261,25 +240,20 @@ for (auto result : launcher.run<Sum> (split(myvector)))
 }
 \end{minted}
 
-We will see later that \cxx{bpl::split} can be (template) parameterized in order to get more specific behaviour. For the moment, we just
-keep in mind the default parallelization model of the \BPL: \emph{the task itself doesn't know about parallelization, it is up to
-the end user (through the launcher) to provide a specific part of the data that will feed each instance of the task processed on a given process unit. 
-}
+We will see later that \cxx{bpl::split} can be (template) parameterized to achieve more specific behavior. For now, we just keep in mind the default parallelization model of the \BPL: the task itself does not know about parallelization; it is up to the end user (through the launcher) to provide a specific portion of the data that will feed each instance of the task running on a given process unit.
 
-Note that this model is quite simple and might not be sufficient in every parallelization scheme. Other models could be
-proposed in the future.
+Note that this model is quite simple and may not be sufficient for every parallelization scheme. Other models could be proposed in the future.
 
-We have quickly seen some of the main concepts of the \BPL, such as task and launcher. Now, we go a step further
-by retrieving the \BPL, create a new \BPL project and compile it.  
+We have now briefly covered some of the main concepts of the \BPL, such as tasks and launchers. Next, we will go a step further by retrieving the \BPL, creating a new \BPL project, and compiling it.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Getting and using the \BPL}
 
 \subsection{Requirements}
-Since one of the main target architectures of the BPL is the \UPMEM one, you should install the \UPMEM SDK; in particular, the
-\BPL works with the $2023.2$ version (see \verb+https://sdk.upmem.com+) so please prefer this version.
+Since one of the main target architectures of the \BPL is the \UPMEM architecture, you should install the \UPMEM SDK. In particular, the \BPL works with version 2023.2 (see \verb+https://sdk.upmem.com+
+), so it is recommended to use this version.
 
-Once installed, you should have to define the \verb+UPMEM_HOME+ environment variable pointing to the \UPMEM SDK, e.g. 
+Once installed, you need to define the \verb+UPMEM_HOME+ environment variable to point to the \UPMEM SDK, for example:
 \begin{verbatim}
     UPMEM_HOME=/opt/upmem-2023.2.0
 \end{verbatim}
@@ -288,43 +262,40 @@ You should also have a recent \verb+C/C+++ compiler installed on your system tha
 
 \subsection{Getting the \BPL}
 
-Currently, the simplest way to get the \BPL is to clone the following GIT repository:
+Currently, the simplest way to obtain the \BPL is to clone the following Git repository:
 \begin{verbatim}
 https://github.com/BioPIM/BPL.git
 \end{verbatim}
 
-Once the repository is cloned, you can do the following to build the unit tests from the cloned directory
+Once the repository has been cloned, you can do the following to build the unit tests from the cloned directory:
 \begin{itemize}
   \item mkdir build
   \item cd build
   \item cmake ..
   \item make
 \end{itemize}
-During the build, you should have a trace telling to set the \verb+DPU_BINARIES_DIR+ environment variable to a specific value; 
-this is mandatory in order to run the unit tests because the \BPL needs to know where are the binaries generated for the 
-\UPMEM architecture (more on this later).
+During the build, you should see a message instructing you to set the \verb+DPU_BINARIES_DIR+ environment variable to a specific value.
+This is mandatory in order to run the unit tests, because the \BPL needs to know where the binaries generated for the \UPMEM architecture are located (more on this later).
 
-The unit tests\footnote{the unit tests are based on the \cxx{Catch2} framework} can be lauch with the following from the build directory
+The unit tests\footnote{The unit tests are based on the \cxx{Catch2} framework} can be launched from the build directory as follows:
 \begin{verbatim}
 ./test/unit/host/bpl-unittests.host
 \end{verbatim}
 
 \subsection{Creating a project from scratch}
 
-It is possible to write a new program from this content but this repository is rather focused on the development of the library itself.
-A useful way to create an independant \BPL project is to create a \verb+tar.gz+ archive holding the minimal source code and \cxx{CMake}
-files for building a \BPL project running both on multicore and \UPMEM architecture.  
+It is possible to write a new program from this content, but this repository is primarily focused on the development of the library itself.
+A useful way to create an independent \BPL project is to generate a \verb+tar.gz+ archive containing the minimal source code and \cxx{CMake} files required to build a \BPL project that can run on both multicore and \UPMEM architectures.
 
-To do so, you can use \cxx{CMake} while providing the name of you project. For instance, if you want to name your projet \cxx{MyProject},
-you will have to do the following
+To do this, you can use \cxx{CMake} while specifying the name of your project. For example, if you want to name your project \cxx{MyProject}, you would do the following:
 \begin{verbatim}
 cmake -DNEWPROJECT_NAME=MyProject ..
 \end{verbatim}
-This will add a specific target \verb+create_bpl_project_MyProject+ and the project can be generated with
+This will add a specific target, \verb+create_bpl_project_MyProject+, and the project can then be generated with:
 \begin{verbatim}
 make create_bpl_project_MyProject
 \end{verbatim}
-This will produce a \verb+MyProject.tar.gz+ archive file holding the minimal resources for your project. Then you can do
+This will produce a \verb+MyProject.tar.gz+ archive containing the minimal resources for your project. You can then do:
 \begin{enumerate}
   \item \verb+tar xvfz MyProject.tar.gz+
   \item \verb+cd MyProject+
@@ -333,44 +304,35 @@ This will produce a \verb+MyProject.tar.gz+ archive file holding the minimal res
   \item \verb+cmake ..+
   \item \verb+make+
 \end{enumerate}
-Don't forget to set the \verb+DPU_BINARIES_DIR+ environment variable as displayed in the traces. Then you can launch the program with
+Don’t forget to set the \verb+DPU_BINARIES_DIR+ environment variable as indicated in the build output. You can then run the program with:
 \begin{verbatim}
 ./src/main/MyProject
 \end{verbatim}
 
 \subsection{Compilation toolchain with the \BPL}
-The \BPL tries to make the code agnostic regarding to the underlying architecture. This is somewhat challeging for an archicture
-like \UPMEM; for such an architecture, the developer has normally to write two programs, one for the host using standard C/C++
-and one for the DPU chipset using the \UPMEM SDK. With the \BPL, the developer should not worry about such details and only
-focus on writing only one code. For achieving this, the \BPL introduces a compilation toolchain based on \emph{CMake} 
-that will take in charge the generation of the two binaries (one for host and the other for the DPU) when the \UPMEM architecture
-has to be used.
+The \BPL aims to make the code agnostic with respect to the underlying architecture. This can be quite challenging for architectures like \UPMEM. Normally, a developer would have to write two programs: one for the host using standard C/C++, and one for the DPU chipset using the \UPMEM SDK.
+With the \BPL, the developer does not need to worry about these details and can focus on writing a single codebase.
+To achieve this, the \BPL provides a compilation toolchain based on \emph{CMake}, which handles the generation of the two binaries (one for the host and one for the DPU) whenever the \UPMEM architecture is targeted.
 
-This compilation toolchain requires that the developer follows some convention such as
+This compilation toolchain requires that the developer follow certain conventions:
 \begin{enumerate}
-  \item the task is implemented as a functor, i.e. a structure that defines an \cxx{operator()} method that does the job
-  \item this structure is a template one, where the template \cxx{ARCH} parameter refers to some hardware architecture
-  \item this structure has to be implemented in a \cxx{.hpp} file holding the name of the structure, i.e. if the structure is named
-   \cxx{X} then the header file must be named \cxx{X.hpp} and put in the \cxx{src/tasks} directory
-  \item the task \cxx{operator()} method can take input parameters; these parameters will be the only data source the task can work on
-  \item using the task can be done through the \cxx{bpl::Launcher} class and its \cxx{run} method
-  \item the launcher can be defined for instance in the \cxx{main} function of the program, or in any source file located in the 
-        \cxx{src/main} directory 
-  \item the \cxx{bpl::Launcher} class takes as template parameter the actual hardware architecture to be used (multicore, \UPMEM, \ldots); 
-        it is possible to provide some arguments to the constructor for defining what resources has to be used (number of threads, tasklets, \ldots)
-  \item normally, the only location where an hardware architecture is referred is while instanciating the \cxx{bpl::Launcher} class;
-        all the remaining code should not rely on explicit reference to a specific architecture
-  \item when $N$ process units are used, one can use the \cxx{bpl::split} function on one or more input arguments, which will
-        ``split'' the argument in such a way that each process unit will receive a specific part as input argument.   
+\item The task is implemented as a functor, i.e., a structure that defines an \cxx{operator()} method performing the computation.
+\item This structure is templated, with a \cxx{ARCH} template parameter representing the target hardware architecture.
+\item The structure must be implemented in a \cxx{.hpp} file named after the structure; that is, if the structure is named \cxx{X}, the header file must be named \cxx{X.hpp} and placed in the \cxx{src/tasks} directory.
+\item The task’s \cxx{operator()} method can take input parameters; these parameters are the only data the task can process.
+\item The task is invoked through the \cxx{bpl::Launcher} class and its \cxx{run} method.
+\item The launcher can be defined, for instance, in the program’s \cxx{main} function or in any source file located in the \cxx{src/main} directory.
+\item The \cxx{bpl::Launcher} class takes the target hardware architecture as a template parameter (e.g., multicore, \UPMEM, etc.); additional arguments can be provided to the constructor to define the resources to use (number of threads, tasklets, etc.).
+\item Normally, the only place where a hardware architecture is explicitly referenced is when instantiating the \cxx{bpl::Launcher} class; all other code should not rely on architecture-specific details.
+\item When $N$ process units are used, the \cxx{bpl::split} function can be applied to one or more input arguments, splitting each argument so that each process unit receives a specific portion as input.
 \end{enumerate}
 
-In brief, the toolchain supposes that the code related to the tasks is put in the \cxx{src/tasks} directory 
-and the code related to the launcher in order to run one or more task is put in the \cxx{src/main} directory. From that, the \BPL
-is able to generate the required binaries, one if the multicore architecture is used and one plus $N$ ($N$ being the number of tasks)
-when the \UPMEM architecture is used. 
+In brief, the toolchain assumes that task-related code is placed in the \cxx{src/tasks} directory,
+and launcher-related code for running one or more tasks is placed in the \cxx{src/main} directory.
+Based on this structure, the \BPL can generate the required binaries: one for the multicore architecture, and one plus $N$ (where $N$ is the number of tasks) when targeting the \UPMEM architecture.
 
 \subsection{Implementing a task with the \BPL}
-As already observed, a task is a template structure that looks like
+As noted earlier, a task is a templated structure that looks like
 \begin{minted}[bgcolor=bg]{c++}
 template<typename ARCH>
 struct Sum
@@ -384,16 +346,12 @@ struct Sum
     }
 } ;
 \end{minted}
-At first glance, it looks like standard C++ but a closer look would raise a question: what is the actual class for \cxx{vector} ?
- We don't refer here to the \cxx{std::vector} class (supposing we
- have not used a \cxx{using namespace std} before), so the compiler should notify an error telling that \cxx{vector} is unknown.
-  
- %We have to remember here one of the main target of the \BPL, i.e. being agnostic to the underlying architecture. 
- 
- A type such as \cxx{std::vector} normally relies on dynamic allocation (i.e. \cxx{new/delete}). 
- This is however not possible on \UPMEM architecture, so if we want a class that looks like \cxx{std::vector}, we have to
- provide a specific implementation that doesn't come from \cxx{std} but from another namespace. Somewhat the actual \cxx{vector}
- class should depend on the template parameter \cxx{ARCH} so one could write something like 
+At first glance, it looks like standard C++, but a closer look raises a question: what is the actual class for \cxx{vector}?
+We are not referring here to the \cxx{std::vector} class (assuming we have not used \cxx{using namespace std} earlier), so the compiler would report an error indicating that \cxx{vector} is unknown.
+
+A type such as \cxx{std::vector} normally relies on dynamic allocation (i.e., \cxx{new/delete}).
+This is not possible on the \UPMEM architecture, so if we want a class that behaves like \cxx{std::vector}, we must provide a specific implementation from another namespace rather than \cxx{std}.
+In fact, the actual \cxx{vector} class should depend on the template parameter \cxx{ARCH}, so one could write something like
 \begin{minted}[bgcolor=bg]{c++}
 template<typename ARCH>
 struct Sum
@@ -402,16 +360,14 @@ struct Sum
     { /* same as before */ }
 } ;
 \end{minted}
- This actually won't compile and the correct type for \cxx{in} should be instead
+This will not compile, and the correct type for \cxx{in} should instead be:
 \begin{minted}[bgcolor=bg]{c++}
 typename ARCH::vector<int32_t> const& 
 \end{minted}
- which is a little bit verbose. In order to avoid this, one can use the \cxx{USING} macro
- that will act as some \cxx{using} directive for a set of predefined types. With the \cxx{USING} macro, 
- it becomes possible to skip prefixing by \cxx{ARCH} each type such as \cxx{vector}
- \footnote{Technically, we don't use namespaces here like in \cxx{using namespace} but rather 
- define type traits 
- }, and we can indeed write something like
+This is somewhat verbose. To avoid this, one can use the \cxx{USING} macro, which acts like a \cxx{using} directive for a set of predefined types.
+With the \cxx{USING} macro, it becomes possible to skip prefixing each type (such as \cxx{vector}) with \cxx{ARCH}
+\footnote{Technically, we are not using namespaces here as in \cxx{using namespace}, but rather defining type aliases.},
+and we can write something like
  \begin{minted}[bgcolor=bg]{c++}
 template<typename ARCH>
 struct Sum
@@ -421,20 +377,16 @@ struct Sum
     { /* same as before */ }
 };
 \end{minted}
-In this example, \cxx{std::vector} will be used in case we use a multicore architecture and 
-\cxx{bpl::vector} will be used if we want an \UPMEM architecture, where \cxx{bpl::vector} is
-a specific implementation that allows to cope with the lack of dynamic allocation on \UPMEM.
-Note however that  \cxx{bpl::vector} implements a subset of the methods of the \cxx{std::vector}
-class, so one should rely only on this subset if we want that the task code remains compatible
-for both multicore and \UPMEM architectures.
+In this example, \cxx{std::vector} will be used when targeting a multicore architecture, while \cxx{bpl::vector} will be used for the \UPMEM architecture.
+Here, \cxx{bpl::vector} is a specific implementation that handles the lack of dynamic allocation on \UPMEM.
+Note, however, that \cxx{bpl::vector} implements only a subset of the methods available in \cxx{std::vector}.
+Therefore, one should rely only on this subset to ensure that the task code remains compatible with both multicore and \UPMEM architectures.
 
-This last remark is important to understand a potential caveat for the \BPL: we want to have
-a single code working on different architectures but at a cost: it is nice to be able to use
-data structures such as \cxx{vector} in a homogeneous way but sometimes it won't be possible to
-keep the exact identical semantics between a multicore and \UPMEM implementation. This is for instance
-the case for \cxx{std} methods supporting exceptions; there is no possible exceptions in the context of
-\UPMEM and possibly functional divergences might occur when running such methods on multicore 
-and \UPMEM architectures.
+This remark highlights an important caveat for the \BPL: the goal is to have a single codebase that works across different architectures, but this comes at a cost.
+While it is convenient to use data structures like \cxx{vector} in a uniform way, it is not always possible to maintain identical semantics between multicore and \UPMEM implementations.
+For example, methods in \cxx{std::vector} that rely on exceptions cannot be used on \UPMEM, as exceptions are not supported there.
+As a result, functional differences may occur when running such methods on multicore versus \UPMEM architectures.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
@@ -500,19 +452,15 @@ and \UPMEM architectures.
 
 \subsection{Introduction}
 
-Unit tests represent an important part of a library: it makes it possible (a) to check that the available features
-provide the required results and (b) to detect potential regressions in a new version of the library. The second point 
-is paramount when an important source code modification has occurred in a new version. 
+Unit tests represent an important part of a library: they make it possible to (a) verify that the available features produce the expected results, and (b) detect potential regressions in a new version of the library. The second point is particularly important when significant changes have been made to the source code in a new version.
 
-Therefore, the number of unit tests might grow from one version to the next one in order to check as much aspects
-as possible. In other words, the number of unit tests must not decrease over time.
+Consequently, the number of unit tests may increase from one version to the next to cover as many aspects as possible. In other words, the number of unit tests should never decrease over time.
 
-Even more important, the existing tests must not be modified over time or at least in very specific cases such as
-an API modification when it is absolutely necessary.
+Even more importantly, existing tests should not be modified over time, except in very specific cases, such as an API change, and only when absolutely necessary.
 
 \subsection{Tests categories}
 
-For the BPL, the unit tests are roughly categorized as follows:
+For the \BPL, the unit tests are generally categorized as follows:
 \begin{itemize}
 \item TestLauncher:  tests for the \cxx{bpl::Launcher} class 
 \item TestMemoryTree: tests for the \cxx{MemoryTree} class ("directly" tested, ie. not in the context of its regular usage inside a \cxx{bpl::vector}) 
@@ -526,20 +474,18 @@ For the BPL, the unit tests are roughly categorized as follows:
 \item TestVector: tests for using \cxx{bpl::vector}
 \end{itemize}
  
-Some tests are processed with a launcher configured with an UPMEM architecture and/or multicore architecture but
-some of them don't require to use a launcher (see for instance the TestMetaprog).
+Some tests are run using a launcher configured for either the \UPMEM architecture or a multicore architecture, while others do not require a launcher (see, for example, the TestMetaprog).
 
-Note that we won't detail all the unit tests here. The reader can directly browse the source code to get an idea
-of the content of each test.
+Note that we will not detail all the unit tests here. Readers can directly browse the source code to get an overview of the content of each test.
 
 \subsection{Unit test framework}
  
-The \BPL uses the \cxx{Catch2} unit tests framework since it is popular and still active on github. 
+The \BPL uses the \cxx{Catch2} unit testing framework because it is popular and actively maintained on GitHub.
 
-The \BPL uses \cxx{Catch2} in a quite straightforward way, so there is nothing specific to add here; the reader
-can consult the following URL \verb+https://github.com/catchorg/Catch2+ for further details if needed.
+The \BPL uses \cxx{Catch2} in a straightforward way, so there is nothing specific to add here. Readers can consult \verb+https://github.com/catchorg/Catch2+
+ for further details if needed.
 
-Here is a minimal test file based on \cxx{Catch2} in the context of the \BPL
+Here is a minimal test file using \cxx{Catch2} in the context of the \BPL:
 \begin{minted}[bgcolor=bg]{c++}
 #include <common.hpp>
 #include <tasks/VectorCreation.hpp>
@@ -566,69 +512,64 @@ TEST_CASE ("VectorCreationSimple", "[Vector]" )
 }
 \end{minted}
 
-A few remarks
+A few remarks:
 \begin{itemize}
-	\item one includes a \cxx{common.hpp} file that holds a minimal set of includes for using the \BPL
-	\item one include the header file of the task we want to test, \cxx{VectorCreation} in this example
-	\item one defines a \cxx{VectorCreationSimple} test case where
-	\begin{itemize}
-		\item one declares a \cxx{bpl::Launcher}
-		\item one runs the \cxx{VectorCreation} task through the launcher
-		\item one iterates each result generated by the call to \cxx{run}; one checks the content of the result
-		according to the expected result
-		\item one checks with the \cxx{REQUIRE} command if everything is ok.
-    \end{itemize}
+\item Include the \cxx{common.hpp} file, which provides a minimal set of includes for using the \BPL.
+\item Include the header file of the task to be tested; in this example, \cxx{VectorCreation}.
+\item Define a \cxx{VectorCreationSimple} test case where:
+\begin{itemize}
+\item Declare a \cxx{bpl::Launcher}.
+\item Run the \cxx{VectorCreation} task through the launcher.
+\item Iterate over each result generated by the call to \cxx{run} and check the content against the expected result.
+\item Use the \cxx{REQUIRE} command to verify that everything is correct.
+\end{itemize}
 \end{itemize}
 
-Almost every unit test follows this pattern. 
+Almost every unit test follows this pattern.
 
-It might happen that the test is processed with different inputs. This 
-helps to check more deeply the task but only in the context of unit tests: here we care only about the ok/ko status
-of the test regarding to the expected result but we don't care at this stage about performance; this will be addressed
-by the benchmark test suite.
+Sometimes, a test is run with different inputs. This allows a deeper verification of the task, but only in the context of unit tests.
+Here, we are concerned only with whether the test passes or fails relative to the expected result; performance is not considered at this stage and will be addressed separately in the benchmark test suite.
 
 \subsection{Source code hierarchy}
 
-As previously said, the \BPL relies on \cxx{CMake} as building system. For the unit tests part, we have 
-the following files structure:
+As mentioned earlier, the \BPL relies on \cxx{CMake} as its build system. For the unit tests, the file structure is as follows:
 \begin{itemize}
-	\item \textbf{host}: directory holding the tests written with the \cxx{Catch2} framework
-	\item \textbf{tasks}: directory holding the tasks (one file per task)
+\item \textbf{host}: directory containing tests written using the \cxx{Catch2} framework.
+\item \textbf{tasks}: directory containing the tasks (one file per task).
 \end{itemize}
 
-In order to test a new task \cxx{MyTask}, one should do the following :
+To test a new task, \cxx{MyTask}, follow these steps:
 \begin{itemize}
-	\item implement the task in a \cxx{MyTask.hpp} file and put it in the \cxx{tasks} directory
-	\item in the \cxx{tasks/CMakeLists.txt}, add the name of the new task to the \cxx{TASKS\_LIST} variable
-	\item add a \cxx{TEST\_CASE} in some file of the \cxx{host} directory that implements the unit test. 
-	The \cxx{\#include} of the task (e.g. \cxx{tasks/MyTask.hpp}) must be done at the beginning of the file.
+\item Implement the task in a \cxx{MyTask.hpp} file and place it in the \cxx{tasks} directory.
+\item In \cxx{tasks/CMakeLists.txt}, add the name of the new task to the \cxx{TASKS\_LIST} variable.
+\item Add a \cxx{TEST\_CASE} in a file within the \cxx{host} directory to implement the unit test.
+The task header (e.g., \cxx{tasks/MyTask.hpp}) must be included at the beginning of the file.
 \end{itemize}
 
 \subsection{Building and running the unit tests}
 
-The unit tests are generated with the \cxx{bpl-unittests.host} target of the makefile generated by \cxx{CMake}.
-One can generate the binary with (from the \cxx{build} directory):
+The unit tests are built using the \cxx{bpl-unittests.host} target in the Makefile generated by \cxx{CMake}.
+From the \cxx{build} directory, you can generate the binary with:
 \begin{minted}[bgcolor=bg]{c++}
 make bpl-unittests.host
 \end{minted}
-then one can launch the unit tests suite with
+You can then run the unit test suite with:
 \begin{minted}[bgcolor=bg]{c++}
 ./test/unit/host/bpl-unittests.host -d y
 \end{minted}
-The \cxx{-d y} option is not mandatory; it will display each test name and its execution time.
+The \cxx{-d y} option is optional; it displays each test name along with its execution time.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Benchmark tests}
 
 \subsection{Introduction}
 
-The global idea of the BIOPIM project is to implement algorithms on PIM architectures (e.g. UPMEM) and see how much one can
-speed up things. It is therefore important to be able to compare the results in terms of execution time compared to a more
-standard approach, for instance by using a multithreading approach.
+The main idea of the BIOPIM project is to implement algorithms on PIM architectures (e.g., \UPMEM) and evaluate the potential speedup.
+It is therefore important to be able to compare execution times against a more standard approach, for example using multithreading.
 
-One key point of the BPL is the ability to write a single source code that can be processed on architectures such as Multicore
-and UPMEM. It means that we can thus compare the execution times of the very same algorithm implementation for different architectures.
-For instance, we could write the following
+A key feature of the \BPL is the ability to write a single source code that can run on different architectures, such as multicore and \UPMEM.
+This allows us to directly compare the execution times of the exact same algorithm implementation across different architectures.
+For example, we could write the following:
 \begin{minted}[bgcolor=bg]{c++}
 {
   auto t0 = timestamp()
@@ -638,81 +579,71 @@ For instance, we could write the following
   auto t2 = timestamp()
 }
 \end{minted}
-where $t1-t0$ would be the execution time of the algorithm on a multicore architecture and $t2-t1$ the execution time 
-on a UPMEM architecture. So, it is possible to generate benchmark reports showing the scalability of a given architecture and also
-the speedups of a given architecture (e.g. UPMEM) compared to another one (e.g. multicore). 
- 
-As a matter of fact, using the UPMEM part of the BPL (and UPMEM SDK under the hood) implies some overheads, e.g. broadcasting data from/to the host to/from the DPUs, somewhat
-like broadcasting data over a network. So benchmarking the BPL is important in order to point how much such overheads can cost. 
-The BPL is able to generate statistics about these overheads, allowing the expert to check whether or not a given overhead seems far too
-important.
+Here, $t1 - t0$ represents the execution time of the algorithm on a multicore architecture, while $t2 - t1$ represents the execution time on a \UPMEM architecture.
+This makes it possible to generate benchmark reports showing both the scalability of a given architecture and the speedup of one architecture (e.g., \UPMEM) compared to another (e.g., multicore).
 
-Actually, the tests used during the benchmark of the BPL are a subset of the BPL unit tests, with different input data. The advantage
-is that we don't need to write specific tests for benchmarking since we have already plenty unit tests. Keep in mind however that 
-at the benchmarking stage, we won't check the results since we are interested only in the execution times. Checking whether or not the
-results are ok is done during the unit tests stage.
+In practice, using the \UPMEM part of the \BPL (and the UPMEM SDK under the hood) introduces some overhead, such as broadcasting data between the host and the DPUs—similar to sending data over a network.
+Benchmarking the \BPL is therefore important to quantify the cost of these overheads. The \BPL can generate statistics about these overheads, allowing experts to assess whether a particular overhead is significant.
 
-Benchmark reporting needs to provide much more information than the unit tests stage, where basically we just need to know if a test is ok or ko.
-During benchmarking, we might need to generate different kinds of graphics that will help the expert. The BPL proposes a Jupyter notebook
-that will automatically runs the benchmark tests and produces at the end a pdf report with many graphics we will now describe.
+The tests used for benchmarking the \BPL are a subset of the unit tests, but with different input data.
+This approach has the advantage that no additional tests need to be written specifically for benchmarking, since the unit tests already cover the functionality.
+Keep in mind, however, that during benchmarking, we do not verify the correctness of the results—we are only interested in execution times. Correctness is ensured during the unit testing stage.
+
+Benchmark reporting requires much more information than unit testing, where we only need to know whether a test passes or fails.
+During benchmarking, we may need to generate various types of visualizations to assist the expert.
+The \BPL provides a Jupyter notebook that takes as input the benchmark tests output and produces a PDF report containing multiple graphics, which we will now describe.
 
 \subsection{The benchmark report}
 
-The Jupyter notebook to be launched is located in the \cxx{test/benchmark/notebooks} and is named \cxx{1.Benchmark.ipynb}.
+The Jupyter notebook to be launched is located in \cxx{test/benchmark/notebooks} and is named \cxx{1.Benchmark.ipynb}.
+It takes as input the traces generated during the execution of the benchmark.
 
-After some introduction, a section named with the test name is generated for each test with the following sub-sections
+After some introductory text, a section named after each test is generated with the following sub-sections:
 \begin{itemize}
-	\item \textbf{Description}:  a short description of the test. This description should be written in the source code of the test file as a comment
-	following some metadata rules.
-	\item \textbf{Remarks}: some potential extra remarks (also as comment in the source code)
-	\item \textbf{Benchmark-input}: defines the input range, i.e. each value for which the test will be processed
-	\item \textbf{Benchmark-split}: tells whether an input argument has been 'split'
-	\item \textbf{Source code}: the C++ source code of the test. Having the code in the report is useful, but one should take care of having not too long source code here.
-	\item \textbf{Multicore vs Upmem}: this part compare the two execution times on a log scale. One graphic is generated per input value.
-	Example:
-	\begin{figure}[H]
-        \centering
-		\includegraphics[scale=0.3]{images/figure1.png}
-	\end{figure}
-	\item \textbf{Speedup Upmem vs Multicore}: the ratio of execution time for 1 thread divided by the execution time for 1 rank.
-	Example:
-	\begin{figure}[H]
-	    \centering
-		\includegraphics[scale=0.3]{images/figure2.png}
-	\end{figure}
-    \item \textbf{Scalability per architecture}: for Multicore and UPMEM, one displays the scalability per process units, i.e. for a given number N of process
-    units (threads or tasklets), the ratio between the execution time for 1 process unit divided by the execution time for N process units.
-	Example:
-	\begin{figure}[H]
-	    \centering
-		\includegraphics[scale=0.3]{images/figure3.png}
-	\end{figure}
-	\item \textbf{Overheads for the UPMEM arch}: the BPL provides some statistics for the overheads in case of the UPMEM architecture.
-	These timings are taken from the host point of view and not from the DPU side.  
-	\begin{itemize}
-		\item launch: execution time of the task, i.e. execution of the \cxx{operator()} method of the class implementing the task.
-		\item pre: preparation and broadcast to the DPU of the input data taken by the task 
-		\item post:   retrieval of the output metadata from the DPU to the host. These metadata hold statistics and information used for 
-		retrieving the task result.
-	    \item result: preparation and broadcast to the host of the output data generated by the task
-		\item unknown: some parts (e.g. destructors) can't be measured in the previous parts, so they are measured as "unknown"
-	\end{itemize}
-	In the following example, one can see that preparing/sending the input data to the DPU takes a large amount of time compared to the
-	actual processing.
-	\begin{figure}[H]
-	    \centering
-		\includegraphics[scale=0.4]{images/figure4.png}
-	\end{figure}
+\item \textbf{Description}: a short description of the test. This description should be written as a comment in the test source code following specific metadata rules.
+\item \textbf{Remarks}: additional comments or notes, also included as comments in the source code.
+\item \textbf{Benchmark-input}: defines the input range, i.e., the values for which the test will be executed.
+\item \textbf{Benchmark-split}: indicates whether an input argument has been "split" among process units.
+\item \textbf{Source code}: the C++ source code of the test. Including the code in the report is useful, but it is recommended to avoid excessively long snippets.
+\item \textbf{Multicore vs \UPMEM}: compares execution times on a logarithmic scale. One graph is generated per input value.
+The x-axis represents threads in the case of multicore architectures and ranks in the case of UPMEM.
+\begin{figure}[H]
+\centering
+\includegraphics[scale=0.3]{images/figure1.png}
+\end{figure}
+\item \textbf{Speedup \UPMEM vs Multicore}: the ratio of execution time for 1 thread on multicore divided by the execution time for 1 rank on \UPMEM.
+\begin{figure}[H]
+\centering
+\includegraphics[scale=0.3]{images/figure2.png}
+\end{figure}
+\item \textbf{Scalability per architecture}: for both multicore and \UPMEM, this section displays scalability per process unit.
+ For a given number $N$ of process units (threads or ranks, ie. 16*64*tasklets per rank), the ratio of the execution time for 1 process unit to that for $N$ process units is shown.
+\begin{figure}[H]
+\centering
+\includegraphics[scale=0.3]{images/figure3.png}
+\end{figure}
+\item \textbf{Overheads for the \UPMEM architecture}: the \BPL provides statistics for overheads specific to \UPMEM. These timings are measured from the host's perspective, not the DPU's.
+\begin{itemize}
+\item \textbf{launch}: execution time of the task, i.e., the execution of the \cxx{dpu\_launch} function (with \cxx{DPU\_SYNCHRONOUS} argument).
+\item \textbf{pre}: preparation and broadcasting of the input data from the host to the DPU (including call to scatter/gather function \cxx{dpu\_push\_sg\_xfer})
+\item \textbf{post}: retrieval of output metadata from the DPU to the host (call to \cxx{dpu\_push\_xfer} function). This metadata is used to reconstruct the task result.
+\item \textbf{result}: preparation and transmission of the task’s output data back to the host (calls to \cxx{dpu\_copy\_from\_mrams} for instance)
+\item \textbf{unknown}: parts that cannot be measured in the previous categories (e.g., destructors) are included here.
+\end{itemize}
+In the following example, preparing and sending the input data to the DPU takes a significant amount of time compared to the actual processing.
+\begin{figure}[H]
+\centering
+\includegraphics[scale=0.4]{images/figure4.png}
+\end{figure}
 \end{itemize}
 
-The execution times generated during the benchmark are put into tables at the end of the benchmark report. It is surely verbose 
-but might be useful when one wants to find some value in the report of a previous version. 
+The execution times recorded during benchmarking are summarized in tables at the end of the report.
+While this may appear verbose, it can be very useful for referencing specific values from previous benchmark runs.
 
 \subsection{Annotation of a test}
- As previously said, the source code of a benchmark test must provide a few annotations that will be used for the benchmark report.
- An annotation has to be written inside a C++ comment. The label of the annotation begins by a @ character (e.g. \cxx{@description})
- then followed by a \cxx{:} and a free text related to the annotation.
- Here is a full example of the source code of a test with benchmark annotations:
+As mentioned earlier, the source code of a benchmark test must include a few annotations that are used to generate the benchmark report.
+Each annotation should be written inside a C++ comment. The annotation label begins with the @ character (e.g., \cxx{@description}), followed by a : and a free text describing the annotation.
+Here is a complete example of a test source file with benchmark annotations:
  \begin{minted}[bgcolor=bg]{c++}
 //////////////////////////////////////////////////////////////////////////
 // @description: Takes a vector as input, iterates its content and compute
@@ -735,29 +666,19 @@ struct VectorChecksum : bpl::Task<ARCH>
 \end{minted}
   
 \subsection{Other remarks}
-Creating a benchmark test suite is not simple because there is no clear limit where one should add one test or not. 
-A rule of thumb is to try to be fair regarding to the features of the library, i.e. putting tests where the library
-shows a good efficiency for the UPMEM arch compared to the multicore arch (few data/many work), 
-but also use cases where the UPMEM overheads are known to be huge (many data/few work).
+Creating a benchmark test suite is not straightforward, as there is no clear rule for deciding when to add a test.
+A good rule of thumb is to be fair with respect to the library’s features: include tests where the library performs well on the \UPMEM architecture compared to multicore (e.g., small data / heavy computation), but also include cases where \UPMEM overheads are significant (e.g., large data / light computation).
 
-For instance, the \cxx{SketchJaccardDistance} compares all possible couples of sketches, so we will have in the end
-a triple loop scanning the data for comparison, which is likely a use case in favour to the UPMEM architecture because
-the broadcast cost is largely minimized by the total execution time of the comparisons.
-On the other hand, sorting a vector with a $O(n.log(n))$ algorithm is likely to be faster on a multicore architecture 
-because, for UPMEM, the broadcasts (host/DPU for input and DPU/host for result) might take a large amount of time
-compared to the sort itself.
-So one should select which tests are interesting for benchmarking by assessing what kind of complexity the test involves
-regarding to the data size to be broadcasted.
-  
-Another point concerns the total execution time of the benchmark suite. Since the same test is launched with many different 
-input parameters, execution times can easily grow, so it is also important to put not too many tests because the benchmark
-could take a very long time to be executed.
+For example, \cxx{SketchJaccardDistance} compares all possible pairs of sketches, resulting in a triple loop scanning the data. This is a scenario that favors \UPMEM because the broadcast cost is small compared to the total computation time.
+On the other hand, sorting a vector with an $O(n \log n)$ algorithm is likely faster on multicore, because on \UPMEM the broadcasts (host → DPU for input and DPU → host for output) can take a significant amount of time relative to the sorting itself.
+Therefore, it is important to select tests for benchmarking based on the computational complexity relative to the data size to be broadcast.
+
+Another consideration is the total execution time of the benchmark suite. Since the same test is run with multiple input parameters, execution times can grow quickly. It is therefore important not to include too many tests, or the benchmark could take an excessively long time to complete.
 
 \subsection{Future improvements}
-Each new version of the BPL should commit the raw data generated during the benchmark execution. It would thus be possible 
-to compare two versions in order to see if there is some improvement in terms of execution time between two versions. A
-dedicated Jupyter notebook could be written in order to point out the differences via some graphics between the two 
-compared versions.
+Each new version of the BPL should commit the raw data generated during benchmark execution.
+This makes it possible to compare two versions and identify any improvements in execution time.
+A dedicated Jupyter notebook can be created to visualize the differences between the two versions using graphics.
 
 
 
