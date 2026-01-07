@@ -3,9 +3,189 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{The design of the BPL}
 
-\section{C++ metaprogrammation}
+\section{Introduction}
 
-\section{Broadcast}
+The BPL was designed with the goal of providing a programming model very close to a standard C++ approach, 
+notably through the use of the standard library.
+
+Its design process proceeded as follows: numerous user snippets were written to get an idea of what developers
+ would like to be able to write. Analyzing these snippets allowed us to distinguish what was feasible from what was not,
+  given the constraints of the UPMEM architecture (data broadcast, tasklet model, etc.), notably by rewriting the 
+  equivalent of these snippets using the UPMEM SDK.
+
+It quickly became apparent that it was possible to achieve a programming model close to a “standard” C++ style,
+ by hiding low-level UPMEM SDK calls in various parts of the library.
+
+In this context, the C++ language has the important capability of “modifying” source code according to certain 
+statically known criteria, allowing the generation of source code that will ultimately be compiled into an executable. 
+This capability is generally referred to as metaprogramming.
+ 
 
 \section{Serialization}
-% Parler de cereal par exemple
+One of the crucial aspects of UPMEM programming is the need to transfer the data to be processed from the host
+ to the DPUs, and conversely to retrieve the computation results from the DPUs back to the host. 
+ From this point of view, this is very close to a data transfer model over a network.
+This has two implications:
+\begin{itemize}
+\item the data to be transferred can be of very different types (scalars, vectors, etc.), potentially including 
+user-defined types. In order to be able to carry this information, it must first be serialized, i.e., 
+converted into a generic format. The result is a byte buffer that can be transported over a network, 
+or in the case of UPMEM, between the host and the DPUs.
+\item once the data have been serialized into a buffer, the UPMEM SDK must then be used to perform a host/DPU 
+or DPU/host broadcast. There are several ways, with varying efficiency, to perform these transfers. 
+A naïve approach assumes a single buffer to be broadcast from the host to the DPUs, for example.
+ If the data to be broadcast on the host side are not contiguous in memory, this requires copying all 
+ the data beforehand in order to obtain a contiguous buffer in memory, which implies an expensive copy 
+ both in terms of memory space and execution time. However, the UPMEM SDK provides a mechanism called scatter/gather 
+ that allows broadcasting non-contiguous regions in host memory, and this is therefore the option favored by the BPL,
+  albeit with increased implementation complexity.
+\end{itemize}
+
+Another point concerns the need to handle the “split” of certain arguments provided as input to the task at the 
+serialization level. This additional requirement must be managed on top of the use of scatter/gather.
+
+Ultimately, all these specificities make it difficult to use an existing serialization framework. 
+For example, it had been considered to use the “cereal” framework 
+(more details can be found at https://uscilab.github.io/cereal), but adapting it to the context of the BPL proved challenging, 
+which led to the development of a custom implementation for the serialization part.
+
+From an implementation point of view, serialization is handled by the \cxx{Serialize} class. 
+This is a template class whose template parameters are:
+\begin{itemize}
+\item \cxx{class ARCH}: the architecture used, defined when instantiating the launcher
+\item \cxx{class BUFITER}: the buffer type used to scan a buffer containing the information to be deserialized
+\item \cxx{int ROUNDUP}: an integer used to round certain values when specific memory alignment constraints 
+must be respected (e.g., memory alignment to 8 bytes)
+\end{itemize}	
+
+In a generic way, the \cxx{Serialize} class provides two methods: 
+\cxx{iterate}, which allows serializing an object into a buffer, 
+and \cxx{restore}, which allows initializing an object from a serialized buffer.
+Serialization for different types uses template specialization of the \cxx{Serialize} class. 
+Thus, a given type can provide its own specialization in order to become serializable.
+
+The \cxx{serialize.hpp} file therefore provides template specializations for a number of commonly used types
+(scalars, vectors, arrays, tuples, PODs, etc.).
+The developer has still the possibility to provide their own specialization for a specific type.
+
+Historically, the SFINAE approach was used to implement the various specializations. By moving to the C++20 standard, 
+it became possible to use the concept feature, which makes the code lighter and more understandable.
+
+For reference, we will illustrate here two cases of serialization:
+\begin{itemize}
+\item \cxx{vector}: Since the number of elements is only known at runtime, we must serialize 
+(a) the number of elements in the vector and (b) the buffer containing the vector’s data.
+\item \cxx{array}: Unlike the vector, the number of elements is known statically, so it is sufficient 
+to serialize the buffer containing the array’s data.
+\end{itemize} 
+		
+It should be noted that the situation is a bit more subtle: it is only possible to serialize the internal data buffer 
+directly if the type of the data is POD (Plain Old Data).
+
+As mentioned previously, the handling of \cxx{split} and \cxx{scatter/gather} makes the implementation relatively complex. 
+The reader can refer directly to the implementation in the \cxx{serialize.hpp} file to understand the finer details, 
+as well as the implementation of other type specializations.
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{DPU source code}
+%Une des problématiques de la BPL pour l'architecture UPMEM est de permettre
+%au développeur de ne pas s'occuper des aspects bas niveau du SDK UPMEM.
+%De plus, il est aussi important d'avoir un modèle de programmation aussi
+%standard que possible, tel que l'utilisation de la bibliothèque standard C++.
+%
+%Un point délicat de la programmation UPMEM est qu'il est nécessaire de 
+%développer non pas un mais deux programmes: un pour la partie host et l'autre
+%pour la partie DPU. Du point de vue de la BPL, et afin de garder un modèle de
+%programmation aussi générique que possible, il est important de gommer cette spécificité
+%et de faire comme si l'on avait besoin de développer un seul programme.
+%
+%Une possibilité est de faire en sorte que l'on ait un seul code source générique pour le
+%binaire DPU. Dans la mesure où ce code doit exécuter en pratique la tâche souhaitée, 
+%ce code générique doit pouvoir include le code source de la tâche. La contraite va donc 
+%être la suivante: le code source du binaire DPU est générique avec une inclusion du 
+%fichier header contenant le code source de la tâche.
+One of the challenges of the BPL for the UPMEM architecture is to allow the developer not to deal with the low-level aspects 
+of the UPMEM SDK. In addition, it is also important to provide a programming model that is as standard as possible, 
+such as the use of the C++ standard library.
+
+A delicate aspect of UPMEM programming is that it is necessary to develop not one but two programs: one for the host side 
+and the other for the DPU side. From the BPL’s perspective, and in order to keep the programming model as generic as possible, 
+it is important to smooth out this specificity and behave as if only a single program had to be developed.
+
+One possible approach is to ensure that there is a single generic source code for the DPU binary. Since this code must in 
+practice execute the desired task, this generic code must be able to include the source code of the task. The constraint is 
+therefore as follows: the source code of the DPU binary is generic, with an inclusion of the header file containing the 
+source code of the task.
+
+%On peut tirer partie de l'outil CMake et de sa capacité à configurer un fichier générique en l'adaptant en fonction
+%d'une ou plusieurs variables. Dans la suite, on appelera "ArchUpem.dpu.A.cpp.in" le nom du fichier générique pour le
+%code source DPU. Afin de fixer les idées, voici un extrait de ce fichier (ce n'est pas exactement le fichier réel
+%mais cela donne l'idée globale):
+One can take advantage of the CMake tool and its ability to configure a generic file by adapting it according to one 
+or more variables. In the following, we will refer to \cxx{ArchUpem.dpu.A.cpp.in} as the name of the generic file for the 
+DPU source code. To fix ideas, here is an excerpt from this file (this is not exactly the real file, but it conveys 
+the overall idea):
+
+\begin{minted}[bgcolor=bg]{c++}
+#include <bpl/core/Task.hpp>
+#include <bpl/arch/ArchUpmemResources.hpp>
+#include <tasks/@TASKNAME@.hpp>
+
+static const std::size_t ARGS_SIZE = 62*1024*1024;
+
+// This is the main buffer holding the information from the host.
+__mram_noinit  uint8_t __args__ [ARGS_SIZE];
+
+int main() 
+{
+   // we define the type of the task 
+   using task_t = @TASKNAME@ <bpl::ArchUpmemResources<>>;
+	
+   // we instantiate a task object
+   task_t task;
+
+   // we retrieve the actual arguments from the serialized buffer 
+   // coming from the host
+   auto args = unserialize (__args__);
+
+   // we execute the task with the incoming arguments
+   auto result = task (std::forward<decltype(args)>(args)...);	
+   
+   // we prepare the result for DPU->host broadcast
+   serialize (result);
+}
+\end{minted}
+
+%Du point de vue du fichier CMakeLists.txt, on aura
+From the point of view of the \cxx{CMakeLists.txt} file, we will have:
+\begin{minted}[bgcolor=bg]{cmake}
+configure_file(
+  ${PROJECT_SOURCE_DIR}/src/bpl/arch/dpu/ArchUpmem.dpu.A.cpp.in
+  ${OUTNAME}.cpp
+  @ONLY
+)
+\end{minted}
+%ce qui va générer le fichier \cxx{.cpp} final pour le code source du binaire DPU.
+which will generate the final \cxx{.cpp} file for the source code of the DPU binary.
+
+This is the general scheme for building the DPU binary. There are a number of implementation 
+details that will not be discussed here, but which can be listed for reference:
+\begin{itemize}
+\item computation of certain constants at compile time (e.g., vector cache sizes)
+\item handling of the \cxx{MetadataInput} metadata coming from the host; these metadata include, 
+for example, information required for deserialization (e.g., the \cxx{once} tag);
+\item partitioning of arguments into two categories depending on the presence of the \cxx{global} tag; 
+by default, arguments are declared on the execution stack, i.e., inside the \cxx{main} function. 
+Arguments tagged with \cxx{global} are declared outside the \cxx{main} function and are therefore accessible 
+by the different tasklets;
+\item handling of arguments encapsulated by \cxx{split}; that is, an argument can be “split” into different 
+parts, each part being specific to a tasklet;
+\item handling of the \cxx{MetadataOutput} metadata, which provide the host with the information required for
+deserialization. These metadata also include statistical information that can be used by an expert to study
+potential overheads related to the BPL.
+\item for certain return types, post-processing is required; for example, a vector may potentially be in a dirty
+ state, meaning that the internal cache has not been flushed to MRAM, and therefore the vector must be flushed to 
+ MRAM before preparing serialization to the host.
+\item preparation of the broadcast of the result to the host
+\end{itemize}	
+
