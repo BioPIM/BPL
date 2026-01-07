@@ -5,10 +5,12 @@
 
 \section{Introduction}
 
-The BPL was designed with the goal of providing a programming model very close to a standard C++ approach, 
+The BPL has been designed with the goal of providing a programming model very close to a standard C++ approach, 
 notably through the use of the standard library.
+The underlying idea has always remained the same, namely the ability to write a single piece of code 
+that can run on different hardware architectures; many design choices were driven by this objective.
 
-Its design process proceeded as follows: numerous user snippets were written to get an idea of what developers
+The BPL design process proceeded as follows: numerous user snippets were written to get an idea of what developers
  would like to be able to write. Analyzing these snippets allowed us to distinguish what was feasible from what was not,
   given the constraints of the UPMEM architecture (data broadcast, tasklet model, etc.), notably by rewriting the 
   equivalent of these snippets using the UPMEM SDK.
@@ -18,8 +20,20 @@ It quickly became apparent that it was possible to achieve a programming model c
 
 In this context, the C++ language has the important capability of “modifying” source code according to certain 
 statically known criteria, allowing the generation of source code that will ultimately be compiled into an executable. 
-This capability is generally referred to as metaprogramming.
- 
+This capability is generally referred to as metaprogramming and it was widely used during the implementation of the BPL.
+
+In addition to this document, interested readers are invited to consult documents \cxx{BPL\_PreliminaryIdeas.odp} and
+ \cxx{BPL\_ShortPresentation.odp}
+which detail the ideas developed during the initial design of the BPL and that ultimately led to its current implementation.
+
+\section{Task and Launcher}
+
+
+\section{Tagging classes for behaviour customization}
+\subsection{Why tags?}
+\subsection{Tag \cxx{global}}
+\subsection{Tag \cxx{once}}
+\subsection{Tag \cxx{glonce}}
 
 \section{Serialization}
 One of the crucial aspects of UPMEM programming is the need to transfer the data to be processed from the host
@@ -88,22 +102,6 @@ as well as the implementation of other type specializations.
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{DPU source code}
-%Une des problématiques de la BPL pour l'architecture UPMEM est de permettre
-%au développeur de ne pas s'occuper des aspects bas niveau du SDK UPMEM.
-%De plus, il est aussi important d'avoir un modèle de programmation aussi
-%standard que possible, tel que l'utilisation de la bibliothèque standard C++.
-%
-%Un point délicat de la programmation UPMEM est qu'il est nécessaire de 
-%développer non pas un mais deux programmes: un pour la partie host et l'autre
-%pour la partie DPU. Du point de vue de la BPL, et afin de garder un modèle de
-%programmation aussi générique que possible, il est important de gommer cette spécificité
-%et de faire comme si l'on avait besoin de développer un seul programme.
-%
-%Une possibilité est de faire en sorte que l'on ait un seul code source générique pour le
-%binaire DPU. Dans la mesure où ce code doit exécuter en pratique la tâche souhaitée, 
-%ce code générique doit pouvoir include le code source de la tâche. La contraite va donc 
-%être la suivante: le code source du binaire DPU est générique avec une inclusion du 
-%fichier header contenant le code source de la tâche.
 One of the challenges of the BPL for the UPMEM architecture is to allow the developer not to deal with the low-level aspects 
 of the UPMEM SDK. In addition, it is also important to provide a programming model that is as standard as possible, 
 such as the use of the C++ standard library.
@@ -117,10 +115,6 @@ practice execute the desired task, this generic code must be able to include the
 therefore as follows: the source code of the DPU binary is generic, with an inclusion of the header file containing the 
 source code of the task.
 
-%On peut tirer partie de l'outil CMake et de sa capacité à configurer un fichier générique en l'adaptant en fonction
-%d'une ou plusieurs variables. Dans la suite, on appelera "ArchUpem.dpu.A.cpp.in" le nom du fichier générique pour le
-%code source DPU. Afin de fixer les idées, voici un extrait de ce fichier (ce n'est pas exactement le fichier réel
-%mais cela donne l'idée globale):
 One can take advantage of the CMake tool and its ability to configure a generic file by adapting it according to one 
 or more variables. In the following, we will refer to \cxx{ArchUpem.dpu.A.cpp.in} as the name of the generic file for the 
 DPU source code. To fix ideas, here is an excerpt from this file (this is not exactly the real file, but it conveys 
@@ -156,7 +150,6 @@ int main()
 }
 \end{minted}
 
-%Du point de vue du fichier CMakeLists.txt, on aura
 From the point of view of the \cxx{CMakeLists.txt} file, we will have:
 \begin{minted}[bgcolor=bg]{cmake}
 configure_file(
@@ -165,7 +158,6 @@ configure_file(
   @ONLY
 )
 \end{minted}
-%ce qui va générer le fichier \cxx{.cpp} final pour le code source du binaire DPU.
 which will generate the final \cxx{.cpp} file for the source code of the DPU binary.
 
 This is the general scheme for building the DPU binary. There are a number of implementation 
@@ -188,4 +180,12 @@ potential overheads related to the BPL.
  MRAM before preparing serialization to the host.
 \item preparation of the broadcast of the result to the host
 \end{itemize}	
+
+\section{The genesis of the \cxx{bpl::vector} class}
+
+\subsection{The companion \cxx{bpl::MemoryTree} class}
+
+\section{The "split" process in the BPL}
+
+\section{The CMake toolchain}
 

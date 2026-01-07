@@ -2,12 +2,9 @@
 
 \usepackage{minted}
 \usepackage[dvipsnames]{xcolor}
-
 \usepackage{graphicx}
-
 \usepackage[a4paper]{geometry}
 \newgeometry{vmargin={30mm}, hmargin={30mm,30mm}}   % set the margins
-
 \setlength{\parskip}{4pt}
 
 \newcommand{\bpl}{\emph{BioPim Library} }
@@ -23,29 +20,17 @@
 \title{BioPim Library User Guide}
 \author{Erwan Drézen}
 \date{\today}
-
-
 \begin{document}
 
 \maketitle
 \tableofcontents
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\chapter*{Introduction}
-The purpose of this document is to present the \bpl (also known as \BPL) to the end user, enabling the design and implementation of programs that can run on different hardware architectures, such as multicore and \PIM architectures like the \UPMEM architecture.
-
-The underlying idea is also to accelerate the development process, particularly when targeting the UPMEM architecture, 
-by encapsulating all low-level SDK calls within the library. The expected advantage is to avoid discouraging developers with what might be perceived as an overly low-level SDK, thereby reaching a broader developer community.
-
-This document also outlines the compilation toolchain requirements and provides the fundamentals for creating programs from scratch.
-
-The \BPL is written in C++, and therefore programs that use it should also be written in this language
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\input{chapter1.tex}
-\input{chapter2.tex}
+%\input{intro.tex}
+%\input{chapter1.tex}
+%\input{chapter2.tex}
 \input{chapter3.tex}
-\input{chapter4.tex}
+%\input{chapter4.tex}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \end{document}
