@@ -1052,6 +1052,67 @@ independent of its use within the \cxx{bpl::vector} class.
  
 \subsection{The vector\_view class}
 
+Sometimes, we need to provide a vector as an input parameter for the task, without the need to add new elements. 
+In such cases, it is possible to not use a \cxx{MemoryTree} because the data of the vector broadcasted from 
+the host to the DPU will be contiguous in MRAM. In this case, the vector only needs to know the MRAM address 
+of the beginning of the data in order to either iterate over the elements or access a given index. 
+This specific type of vector, immutable and therefore not requiring a \cxx{MemoryTree} attribute, 
+is implemented by the \cxx{bpl::vector\_view} class.
+
+In fact, \cxx{bpl::vector\_view} and \cxx{bpl::vector} share a number of elements, 
+such that in the end, it was possible to make \cxx{bpl::vector} inherit from \cxx{bpl::vector\_view}. 
+Ultimately, the specific features of \cxx{bpl::vector\_view} result in its performance being better than that of \cxx{bpl::vector}.
+
+\subsection{Performance}
+
+In fact, the UPMEM SDK allows accessing an array element located in MRAM as if it were in WRAM. 
+In a way, a cache similar to what we saw for \cxx{bpl::vector} and \cxx{bpl::vector\_view} is used. 
+However, this is a cache for a single element, so while it makes code writing easier, it is not optimal in terms of
+ performance\footnote{which is also clearly stated in the UPMEM documentation}.
+
+ We propose to compare 3 cases in a scenario of writing elements to an array:
+ \begin{itemize}
+ \item handcrafted\_write: a handwritten version that minimizes WRAM/MRAM exchanges
+ \item umpem\_write: a version that leverages the UPMEM cache
+ \item vector\_write: a version that uses \cxx{bpl::vector}
+ \end{itemize}
+Here are the three associated implementations:
+\begin{minted}[bgcolor=bg]{c++}
+void handcrafted_write () {
+    __dma_aligned type input[BUFFER];
+    for (uint32_t n=0; n<NMAX; n+=BUFFER) {
+        for (uint32_t i=0; i<BUFFER; i++)  {  input[i]  = type(n+i); }
+        mram_write (
+           input, 
+           (__mram_ptr void *) ( (type*)big + n), sizeof(input));
+    }
+}
+\end{minted}
+
+\begin{minted}[bgcolor=bg]{c++}
+type __mram_noinit  big [NMAX];
+void upmem_write ()  {
+    for (uint32_t n=0; n<NMAX; n++)  {  big[n] = type(n);  }
+}
+\end{minted}
+
+\begin{minted}[bgcolor=bg]{c++}
+void vector_write ()  {
+    bpl::core::vector<type> vec;
+    for (uint32_t n=0; n<NMAX; n++)  {  vec.push_back (type(n));  }
+}\end{minted}
+Here are the results for different types of elements:
+\begin{figure}[H] \centering \includegraphics[scale=0.3]{images/vectorperf1.png} \end{figure}
+\begin{figure}[H] \centering \includegraphics[scale=0.3]{images/vectorperf2.png} \end{figure}
+\begin{figure}[H] \centering \includegraphics[scale=0.3]{images/vectorperf3.png} \end{figure}
+
+When the number of items grows, we can see that \cxx{bpl::vector} is positioned between the optimal version (\cxx{handcrafted\_write})  
+and the version with the UPMEM cache. 
+This represents a rather positive result for \cxx{bpl::vector} because it also has to account for dynamic allocation; 
+in the other two cases, the number of elements is fixed, while in the \cxx{bpl::vector} case, the number of elements 
+is not initially known, i.e., elements are added one by one via \cxx{push\_back}. 
+
+ 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Customization of the BPL}
 
