@@ -26,8 +26,247 @@ In addition to this document, interested readers are invited to consult document
  \cxx{BPL\_ShortPresentation.odp}
 which detail the ideas developed during the initial design of the BPL and that ultimately led to its current implementation.
 
-\section{Task and Launcher}
+\section{Task, Launcher and architectures}
+From the developer’s point of view, \cxx{Task} and \cxx{Launcher} are the two most visible classes in the entire \BPL API, 
+which explains why particular care was taken in defining their design.
 
+For example, it was important that the number of references to the hardware architecture to be used be as small as possible, 
+with the goal of being able to switch easily from one architecture to another. The most favorable option was to localize 
+this choice in a single place and, naturally, this is linked to the entity responsible for executing a task, 
+namely the class \cxx{bpl::Launcher}. Thus, the \cxx{Launcher} class is the only place where information 
+about the hardware architecture to be used appears. For example:
+\begin{minted}[bgcolor=bg]{c++}
+Launcher<ArchUpmem> launcher;
+\end{minted}
+or
+\begin{minted}[bgcolor=bg]{c++}
+Launcher<ArchMulticore> launcher;
+\end{minted}
+Note that the architecture is parameterized via a template parameter; in other words, 
+the \cxx{Launcher} class is actually a template class 
+whose template parameter \cxx{ARCH} represents a given architecture. 
+From an implementation point of view, the \cxx{Launcher} class has an attribute \cxx{arch\_} of type \cxx{ARCH}, 
+and most of the functionality of \cxx{Launcher} is forwarded to the \cxx{ARCH} class through the \cxx{arch\_} attribute.
+
+One may note that it would have been possible to configure a launcher’s architecture as a constructor parameter, for example:
+\begin{minted}[bgcolor=bg]{c++}
+Launcher launcher (ArchUpmem{});
+\end{minted}
+However, this choice was not retained for several reasons:
+\begin{itemize}
+\item The \cxx{Launcher} class would have had to know about all possible architectures, for example through the use of a 
+\cxx{std::variant}. Adding a new architecture would therefore have required a modification of the \cxx{Launcher} class. 
+By using a template parameter, a new architecture can be added without having to modify \cxx{Launcher}.
+\item This choice would have enabled a more dynamic approach, namely the possibility of changing the type of architecture
+ of a launcher at runtime. However, dynamic binding often implies an overhead that is unnecessary in this specific case: 
+ indeed, it is very unlikely that one would need to change a launcher’s architecture on the fly.
+\item Even if it may seem restrictive, it appears more natural to associate a launcher with an architecture at the type level. 
+If there is a need to manage two architectures, it is sufficient to create two launchers, each with a different template.
+\end{itemize}
+	
+Once the architecture is associated with a launcher, we have a type for which certain arguments can be provided to
+ the constructor, knowing that the constructor will therefore be tied to the underlying architecture. 
+ Thus, if the architecture is statically bound to the launcher, the configuration of the architecture is done through
+  the launcher’s constructor, for example:
+\begin{minted}[bgcolor=bg]{c++}
+Launcher<ArchUpmem> launcher (4_dpu);
+\end{minted}
+or 
+\begin{minted}[bgcolor=bg]{c++}
+Launcher<Multicore> launcher (16_thread);
+\end{minted}
+The constructor may take different parameters depending on the type of architecture; for more details, 
+one can refer to the corresponding API.
+
+Once a launcher has been instantiated, it becomes possible to execute a task via the \cxx{run} function. Here again, 
+two possibilities were conceivable for launching the execution:
+\begin{minted}[bgcolor=bg]{c++}
+launcher.run (Checksum{}, std::vector {1,2,3,5,8});
+\end{minted}
+or
+\begin{minted}[bgcolor=bg]{c++}
+launcher.run<Checksum> (std::vector {1,2,3,5,8});
+\end{minted}
+
+However, the second option is the only feasible one because the task (as we will see shortly) is itself a template 
+class whose parameter is the architecture used by the launcher. Thus, the first option would have required writing 
+something like this:
+\begin{minted}[bgcolor=bg]{c++}
+Launcher<ArchUpmem> launcher (4_dpu);
+launcher.run (Checksum<ArchUpmem>{}, std::vector {1,2,3,5,8});
+\end{minted}
+which involves some redundancy, with the architecture appearing in two different places - something we want to avoid.
+
+With the second option, we can write this without redundancy:
+\begin{minted}[bgcolor=bg]{c++}
+Launcher<ArchUpmem> launcher (4_dpu);
+launcher.run<Checksum> (std::vector {1,2,3,5,8});
+\end{minted}
+because the launcher is aware of the architecture and can therefore pass the corresponding type as a parameter to 
+the task when it is time to instantiate it.
+
+Moreover, this second option allows for a clear separation between the task (template argument) and the input arguments to be 
+provided to the task (arguments of the \cxx{run} function), which makes the code easier to read.
+
+Providing the task as a template parameter of the \cxx{run} function has an additional advantage: it is also possible to provide, 
+after the task type, additional template parameters that can be used to further configure the task. Here is an example:
+\begin{minted}[bgcolor=bg]{c++}
+template<class ARCH, typename...TRAITS>
+struct TemplateTask {
+    using T = std::tuple_element_t<0,std::tuple<TRAITS...>>;
+    auto operator() (const T& arg)  {  return arg;  }
+};
+\end{minted}
+We can see how \cxx{TemplateTask} accepts, in addition to the architecture, other types that can be used in the
+ implementation of the task. It can be called as follows:
+\begin{minted}[bgcolor=bg]{c++}
+double value {145};
+Launcher<ArchMulticore> launcher {4_thread};
+auto res = launcher.template run<TemplateTask,decltype(value)> (value));
+\end{minted}
+However, this poses a problem when using the UPMEM architecture. Indeed, the additional type to be provided 
+to the task (here a \cxx{double}) is only known at the call site, that is, from the host. This call site is not
+ known in the DPU source code, which is by nature generic (see the section on this topic).
+
+We will therefore need to work around this by indicating at the CMake level that it is indeed a
+  \cxx{TemplateTask \textless ARCH,double\textgreater} that we are interested in; 
+ by convention, we must explicitly add this specialization, 
+ \cxx{TemplateTask \textless double\textgreater}\footnote{note
+that we don't mention ARCH here, this is just a convention used by the \cxx{configuration\_file} command of CMake},
+ to the \cxx{TASKS\_LIST} variable. 
+ If another specialization is desired, for example  \cxx{TemplateTask \textless ARCH,int\textgreater}, a second version, 
+ \cxx{TemplateTask \textless int\textgreater}, 
+ must be added to the CMake variable \cxx{TASKS\_LIST}. If a specialization is used on the host side that has not
+  been anticipated in CMake, an error will occur.
+
+So far, we have outlined the main choices that guided the design of the \cxx{Launcher} class; 
+we will soon look at some specifics for the \cxx{ArchUpmem} and \cxx{ArchMulticore} architectures. 
+Before that, let us return in more detail to the decisions that determined the design of a class implementing a task.
+
+As we have already seen roughly before, a class implementing a task executable by a launcher must follow certain conventions.
+
+First of all, it must be a template class with at least one template parameter corresponding to the architecture.
+\begin{minted}[bgcolor=bg]{c++}
+template<class ARCH> struct MyTask {};
+\end{minted}
+	
+Next, the function that performs the expected task is an overload of the \cxx{operator()}. Historically, an earlier version 
+of the BPL rather offered a static method \cxx{run}, e.g.
+\begin{minted}[bgcolor=bg]{c++}
+template<class ARCH> struct MyTask {
+   static auto run (int n) { return 2*n; }
+};
+\end{minted}
+This solution was ultimately abandoned in order to better conform to the concept of function objects 
+(see https://en.cppreference.com/w/cpp/functional.html), which has the advantage of being closer to 
+the spirit of standard C++ and potentially reusable via \cxx{std} algorithms
+ (something not possible with the \cxx{static run} API). We therefore ultimately opted for:
+\begin{minted}[bgcolor=bg]{c++}
+template<class ARCH> struct MyTask {
+   auto operator() (int n) const { return 2*n; }
+};
+\end{minted}
+
+The definition of a task must be located in a header file. By convention, if the class implementing the task is named
+ \cxx{X}, the header file containing its definition must be named \cxx{X.hpp}. This convention is necessary for the
+  CMake toolchain.
+
+We will now detail the mechanism that allows the BPL to “naturally” write code that can be executed on a UPMEM architecture.
+ One of the main drawbacks of the UPMEM model is that the developer must manually handle both the serialization of the task’s 
+ input arguments and their broadcast to the DPUs. In fact, if both the host source code and the DPU source code share knowledge 
+ of the signature of the task to be executed on the DPU, a major step toward simplifying the programming model is achieved. 
+ Indeed, knowing the task’s prototype allows the use of a dedicated serialization framework (see the chapter on serialization):
+\begin{itemize}
+\item On the host side, the task definition must be known in order to know the prototype of the \cxx{operator()};
+ when a call such as \cxx{launcher.run\textless MyTask\textgreater(4)} is made, knowing this prototype allows the argument $4$ to be interpreted 
+ as an integer that can be serialized into a buffer to be broadcast to a DPU. Note that the host only uses the prototype of 
+ \cxx{operator()} and not its implementation, which is normal because the operator must be executed on the DPU, not on the host.
+\item On the DPU side, the task definition must also be known to understand the prototype of \cxx{operator()} in order to 
+deserialize the input arguments. But the implementation of \cxx{operator()} must also be known, because this is the function 
+that will actually be executed.
+\end{itemize}
+
+Thus, the task’s source code must be known both to the host and to the DPU, but for different reasons. 
+This implies that both the host and DPU source code must \cxx{\#include} the header file containing the task’s definition.
+Incidentally, the need for static analysis of the \cxx{operator()} prototype further highlights the particular usefulness
+ of C++ and its metaprogramming capabilities.
+
+ \subsection{ArchUpmem}
+We will now look at some additional aspects related to the \cxx{ArchUpmem} class. 
+This is the class provided as a template parameter to the \cxx{Launcher} class when the UPMEM architecture is targeted, 
+and it performs the majority of actions by delegation from the launcher.
+
+For instance, let us analyze what is involved on the host side for a call such as:
+ \begin{minted}[bgcolor=bg]{c++}
+ auto result = Launcher<ArchUpmem>{1_dpu}.run<MyTask>(4);
+ \end{minted}
+
+ Since we are targeting a UPMEM architecture, the launcher must perform the following actions through the class \cxx{ArchUpmem}:
+ \begin{itemize}
+ \item Analyze the prototype of \cxx{MyTask::operator()} in order to serialize the arguments (here, the integer 4).
+ \item Once the serialization buffer is configured, it is broadcast to the DPUs via the UPMEM SDK’s “scatter/gather” mechanism.
+  If one of the arguments is wrapped using the \cxx{split} function, additional actions must be taken.
+ \item The DPU binary corresponding to the task is loaded into the various DPUs.
+ This, of course, assumes that the associated DPU binary has been previously compiled by the CMake toolchain.
+ \item The DPU binary is launched for each tasklet on each DPU.
+ \item When execution is complete, the host retrieves the serialization buffer corresponding to the task’s return via the
+  UPMEM SDK.
+ \item This buffer is deserialized to produce a vector of N entries, each entry being the result emitted by each tasklet.
+  Note that the element type of this \cxx{result} vector is the same as the return type of \cxx{MyTask::operator()}, 
+  here an \cxx{int}.
+ \end{itemize}
+ 
+In the end, it turns out that the \cxx{Launcher::run} function handles most of the low-level calls to the UPMEM SDK, 
+making it possible for the developer to use a “natural” programming style, closer to a simple function call.
+We can see particularly in this simple example how it is possible to express in a single line what would require 
+many lines when using the UPMEM SDK directly.
+
+Regarding the retrieval of tasklet results on the host side, it should be noted that there are currently two implementations.
+Historically, the first implementation was generic, relying on the \cxx{Serializer::from} function. 
+However, when a tasklet returned a vector, the mechanism of serializing the result on the DPU side and then deserializing 
+it on the host side could be relatively costly in terms of both memory and execution time.
+
+There is now an optimized implementation specifically for the case where the task's return type is a vector; 
+this provides a significant performance gain and reduces \BPL overhead in situations where a direct approach via the 
+UPMEM SDK might have been more efficient. For reference, see the different template specializations of the 
+\cxx{result\_wrapper} class in the \cxx{ArchUpmem.hpp} file.
+
+There are many other interesting aspects regarding the ArchUpmem class, but these fall more into the realm of
+ implementation details than design concepts. Interested readers can consult the source code of this class
+  for further information, particularly through the comments.
+
+\subsection{ArchMulticore}
+
+The \cxx{ArchMulticore} class allows instantiating the \cxx{Launcher} class to use a thread-based parallelization model 
+on a multicore architecture.
+
+It should be understood that a task executed via such a launcher will actually run on the host side. 
+As a result, the implementation of \cxx{ArchMulticore::run} is much simpler than that of \cxx{ArchUpmem::run}
+ and essentially resembles traditional thread-based programming.
+
+There is therefore no concept of information broadcasting, nor of serialization and deserialization, 
+since the objects are already present in the host memory. 
+Note the use of a thread pool here, which helps minimize the creation and destruction of threads, 
+operations that can be costly from the operating system's perspective. 
+For reference, the \cxx{BS::thread\_pool} library is used here.
+
+One particular aspect concerns the management of the number of threads used. Indeed, 
+note the presence of the following constructor (simplified prototype for clarity):
+\begin{minted}[bgcolor=bg]{c++}
+ArchMulticore (TASKUNIT taskunit, TASKUNIT chunksize);
+\end{minted}
+The first argument represents the number of process units (i.e., threads in this context) available to the launcher, 
+while the second represents the maximum number of process units that can be used at any given time. For example:
+\begin{minted}[bgcolor=bg]{c++}
+Launcher<ArchMulticore> (1024_thread, 16_thread);
+\end{minted}
+In this example, the launcher will virtually have 1024 threads but will only be able to execute 16 physically at a time. 
+This is useful because the taskunit parameter (1024 in the example) is the value used to split an argument when it is wrapped 
+by the \cxx{bpl::split function}. This is convenient in cases where one wants the same level of splitting as a rank in UPMEM,
+ knowing that a rank has 1024 process units (i.e., tasklets in this context).
+
+\section{Reducing the results}
+ 
 
 \section{Tagging classes for behaviour customization}
 \subsection{Why tags?}
@@ -158,7 +397,11 @@ configure_file(
   @ONLY
 )
 \end{minted}
-which will generate the final \cxx{.cpp} file for the source code of the DPU binary.
+which will generate the final \cxx{.cpp} file for the source code of the DPU binary. 
+The \cxx{configure\_file} command replaces the \cxx{@TASKNAME@} variable with the name of an actual task 
+(e.g., \cxx{Checksum}), which results in the inclusion of the \cxx{Checksum.hpp} file. 
+As a consequence, this specialization of the generic DPU source file is aware of the definition of the \cxx{Checksum}
+ task and is able to execute it.
 
 This is the general scheme for building the DPU binary. There are a number of implementation 
 details that will not be discussed here, but which can be listed for reference:
@@ -183,9 +426,13 @@ potential overheads related to the BPL.
 
 \section{The genesis of the \cxx{bpl::vector} class}
 
+\subsection{Working with 4 KBytes of stack}
+
 \subsection{The companion \cxx{bpl::MemoryTree} class}
 
 \section{The "split" process in the BPL}
 
 \section{The CMake toolchain}
+
+\section{Metaprogramming in the BPL}
 
