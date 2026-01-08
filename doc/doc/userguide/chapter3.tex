@@ -265,15 +265,338 @@ This is useful because the taskunit parameter (1024 in the example) is the value
 by the \cxx{bpl::split function}. This is convenient in cases where one wants the same level of splitting as a rank in UPMEM,
  knowing that a rank has 1024 process units (i.e., tasklets in this context).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{The "split" process in the BPL}
+
+We briefly saw earlier the parallelization model proposed by the \BPL. 
+The task has no knowledge of any parallelization scheme; it is the responsibility of the caller (i.e., the host) 
+to split the input data so that each processing unit gets a specific portion of that data. 
+In other words, a partition of the input data is created, and each element of this partition is processed by a processing unit. 
+This gives the developer the freedom to decide what to parallelize; one can thus partition one or several task arguments.
+
+The \BPL provides a simple way to partition an argument when launching a task; it is enough to wrap this argument with the
+\cxx{bpl::split} function, for example:
+\begin{minted}[bgcolor=bg]{c++}
+auto results = Launcher<ArchUpmem>{8_dpu}.run<Checksum>(split(somevector));
+\end{minted}
+
+Technically, the return type of the \cxx{split} function is not the same as that of its input argument 
+(a vector of integers in the example); it is of type \cxx{SplitProxy}, which is a class template. Here is an excerpt:
+\begin{minted}[bgcolor=bg,linenos]{c++}
+template<typename L, bpl::SplitKind KIND, typename TYPE>
+struct SplitProxy  {
+    using arch_t = typename L::arch_t;
+    SplitProxy (const type& t) : _t(t)  {}
+    operator const type& () const { return _t; }
+    const type& _t;
+};
+\end{minted}
+Essentially, this class holds a reference to the object provided at construction, but it also contains a number of 
+type-related pieces of information, notably information regarding the desired architecture as well as the level of 
+parallelism - a point that we will detail very soon.
+
+At first glance, it may seem surprising that one can store this type information in addition to the reference to 
+the encapsulated object. However, we can see that the call to \cxx{split} occurs when passing arguments to the 
+\cxx{Launcher::run} function, which means that in this context, the architecture is known, 
+since it is the template parameter of the \cxx{Launcher} class.
+
+Important point: the \cxx{SplitProxy} class defines a conversion operator that allows it to return the encapsulated object, 
+which will be necessary when one actually wants to use the object for task execution. 
+What should be retained is that the \cxx{split} function acts as a tag for the encapsulated object, 
+associating it with type information needed for partitioning the object.
+
+Now, let us return to the different levels of parallelism depending on the architecture.
+\begin{itemize}
+	\item in the case of a multicore architecture, the scheme is simple because there is only a single level of parallelism, 
+	namely $N$ threads executing simultaneously.
+	\item in the case of the UPMEM architecture, there are three levels of parallelism: the rank, consisting of 64 DPUs, 
+	with each DPU executing 16 tasklets. Additionally, there are certain synchronization constraints: 
+	a rank must wait for all 64 of its DPUs to finish execution, and a DPU must wait for all 16 of its tasklets to complete.
+\end{itemize}
+
+Thus, the implementation of the \cxx{split} function must be able to handle different levels of parallelism if necessary. 
+This information is stored in the \cxx{bpl::SplitKind} parameter of the \cxx{SplitProxy} class. By default, each architecture 
+defines a default level of parallelism; for multicore, this will be:
+\begin{minted}[bgcolor=bg]{c++}
+using lowest_level_t = Thread
+\end{minted}
+and for UPMEM
+\begin{minted}[bgcolor=bg]{c++}
+using lowest_level_t = Tasklet;
+\end{minted}
+
+To make things more concrete, consider the following example:
+\begin{minted}[bgcolor=bg]{c++}
+// some integer range
+pair<int,int> range (0, 4096);
+// our launcher
+Launcher<ArchUpmem> launcher {4_rank};
+// launch the execution of some task
+launcher.run<DoSomething> (range);
+\end{minted}
+Here, the \cxx{split} function does not encapsulate the range argument, so the tasklets of each DPU in each rank will see 
+the same object like this (here, we assume that we know how to partition an interval of integers):
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/split1.png} \end{figure}
+
+Now, we can partition by rank by using \cxx{split} with the corresponding constant: 
+each tasklet of the same rank will receive the same data:
+\begin{minted}[bgcolor=bg]{c++}
+launcher.run<DoSomething> (split<ArchUpmem::Rank>(range);
+\end{minted}
+The data will be partitioned as follows:
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/split2.png} \end{figure}
+
+We can partition by DPU by using \cxx{split} with the corresponding constant: 
+each tasklet of the same DPU will receive the same data:
+\begin{minted}[bgcolor=bg]{c++}
+launcher.run<DoSomething> (split<ArchUpmem::DPU>(range);
+\end{minted}
+The data will be partitioned as follows:
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/split3.png} \end{figure}
+
+We can partition by tasklet by using \cxx{split} with the corresponding constant (or without specifying it since this is the default value): 
+each tasklet will receive specific data:
+\begin{minted}[bgcolor=bg]{c++}
+launcher.run<DoSomething> (split<ArchUpmem::Tasklet>(range);
+\end{minted}
+The data will be partitioned as follows:
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/split4.png} \end{figure}
+
+It is possible to combine different levels of partitioning for different arguments.
+\begin{minted}[bgcolor=bg]{c++}
+pair<int,int> range (0, 4096);
+Launcher<ArchUpmem>{4_rank}.run<DoSomethingElse> (
+  range,                                 // arg 1
+  split<ArchUpmem::Rank>    (range),     // arg 2
+  split<ArchUpmem::DPU>     (range),     // arg 3
+  split<ArchUpmem::Tasklet> (range)      // arg 4
+);
+\end{minted}
+which will result in the following partitionings for the 4 ranks:
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/split5.png} \end{figure}
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/split6.png} \end{figure}
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/split7.png} \end{figure}
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/split8.png} \end{figure}
+
+Now, let's detail how a partition can be created from an object. As we saw, a call to the 
+\cxx{split} function will return a \cxx{SplitProxy} object containing a reference to the encapsulated object as well
+ as type information.
+
+We define now a class \cxx{SplitOperator} intended to be specialized, particularly with a 'split' method that defines how 
+to split a type  \cxx{T}. Such specializations are provided for types such as a pair of numerics, e.g.:
+\begin{minted}[bgcolor=bg]{c++}
+template <typename A,typename B>
+struct SplitOperator<std::pair<A,B>>  {
+    static auto split (
+        const std::pair<A,B>& t, 
+        std::size_t idx, 
+        std::size_t total
+	) {
+        size_t diff = t.second - t.first;
+        size_t i0   = diff * (idx+0) / total;
+        size_t i1   = diff * (idx+1) / total;
+        return std::pair { t.first+i0, t.first+i1 };
+    }
+};
+\end{minted}
+The idea is as follows: we provide as input the object to partition, along with the index of the partition to be generated
+ and the total number of elements in the partition. In this specific case, we divide the input interval into several 
+ sub-intervals. It is worth noting that the result type of this \cxx{split} function is the same as the specialized type.
+
+Now for \cxx{std::vector}:
+\begin{minted}[bgcolor=bg]{c++}
+template <typename T>
+struct SplitOperator<std::vector<T>>  {
+    static auto split (
+        const std::vector<T>& t, 
+        std::size_t idx, 
+        std::size_t total
+     ) {
+        auto range    = std::make_pair (0, t.size());
+        auto subrange = SplitOperator<decltype(range)>::split (
+            range, idx, total);
+        return std::vector<T> (
+            t.begin()+subrange.first, 
+            t.begin()+subrange.second);
+    }
+};
+\end{minted}
+It is worth noting that each element of the partition is itself a vector, which is a copy of a subpart of the input vector. 
+This copy can, in some cases, be unnecessary and costly in terms of memory, so it is possible to write a second function called
+\cxx{split\_view}, which helps avoid data copies by using \cxx{std::span}.
+\begin{minted}[bgcolor=bg]{c++}
+template <typename T>
+struct SplitOperator<std::vector<T>>  {
+    static auto split (
+        const std::vector<T>& t, 
+        std::size_t idx, 
+        std::size_t total
+     ) {
+        auto range    = std::make_pair (0, t.size());
+        auto subrange = SplitOperator<decltype(range)>::split (
+            range, idx, total);
+        return std::vector<T> (
+            t.begin()+subrange.first, 
+            t.begin()+subrange.second);
+    }
+    static auto split_view (
+        const std::vector<T>& t, 
+        std::size_t idx, 
+        std::size_t total
+    ) {
+         return SplitOperator<std::span<T>>::split (
+            static_cast<std::vector<T>&>(t), idx, total);
+    }
+};
+\end{minted}
+the specialization for \cxx{std::span} being:
+\begin{minted}[bgcolor=bg]{c++}
+template <typename T>
+struct SplitOperator<std::span<T>> {
+    static auto split (
+        std::span<T> t, 
+        std::size_t idx, 
+        std::size_t total
+    ) {
+        auto range    = std::make_pair (size_t(0), t.size());
+        auto subrange = SplitOperator<decltype(range)>::split (
+            range, idx, total);
+        auto res = t.subspan (
+            subrange.first, subrange.second - subrange.first);
+        return res;
+    }
+    static auto split_view (
+        std::span<T> t, 
+        std::size_t idx, 
+        std::size_t total
+    ) {  return split (t, idx, total);  }
+};
+\end{minted}
+
+To be exhaustive, we will note the specialization for the SplitProxy type, which simply forwards to the type of the encapsulated object.
+\begin{minted}[bgcolor=bg]{c++}
+template<typename LEVEL, bpl::SplitKind KIND, typename TYPE>
+struct SplitOperator<details::SplitProxy<LEVEL,KIND,TYPE>> {
+    static decltype(auto) split (
+        const details::SplitProxy<LEVEL,KIND,TYPE>& t, 
+        std::size_t idx, 
+        std::size_t total
+    ) {
+        return SplitOperator<TYPE>::split (t, idx, total);
+    }
+};
+\end{minted}
+  
+This mechanism can be extended to a user-defined type; in that case, a template specialization of the \cxx{SplitOperator} 
+class should be written for this user type. 
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Reducing the results}
- 
+Parallelizing an algorithm often involves obtaining several partial results that must be aggregated at the end of the computation. 
+For example, one can compute the sum of the elements of a vector as follows:
+\begin{minted}[bgcolor=bg]{c++}
+auto results = Launcher<ArchUpmem>{8_dpu}.run<Checksum>(split(somevector));
+\end{minted}
+We note that:
+\begin{itemize}
+\item a launcher with 8 DPUs is used, meaning that there will be 8×16 = 128 processing units (tasklets) available
+\item the vector passed as an argument is wrapped by the bpl::split function. This results in the vector being split 
+into 8 distinct parts, and then each DPU further splits its vector into 16 parts, one specific part for each tasklet
+\item the result stored in the \cxx{results} variable will therefore be a vector of 128 integers, each integer representing
+ a partial checksum of the original vector.
+\end{itemize}
 
-\section{Tagging classes for behaviour customization}
-\subsection{Why tags?}
-\subsection{Tag \cxx{global}}
-\subsection{Tag \cxx{once}}
-\subsection{Tag \cxx{glonce}}
+Technically, the type of the variable result is not necessarily \cxx{std::vector\textless int64\_t \textgreater};
+certain optimizations may take place and therefore return something other than a  \cxx{std::vector}. 
+However, it is guaranteed that the return type of Launcher::run is something iterable, so in all cases it will be possible 
+to reduce the result to a final integer, equal to the sum of all partial checksums.
+\begin{minted}[bgcolor=bg]{c++}
+int64_t sum = 0;
+for (auto x : results)  { sum += x; }
+\end{minted}
 
+Reducing the result to a single final object is a fairly common operation, so the \BPL provides a mechanism to automate this process; 
+the developer can implement, at the task level, a \cxx{reduce} method that performs the reduction:
+\begin{minted}[bgcolor=bg]{c++}
+template<class ARCH>
+struct Checksum : bpl::Task<ARCH> {
+    USING(ARCH);
+    auto operator() (vector<uint32_t> const& v)   {
+        uint64_t checksum = 0;
+        for (auto x : v)  {  checksum += x;  }
+        return checksum;
+    }
+    static uint64_t reduce (uint64_t a, uint64_t b)  { return a+b; }
+};
+\end{minted}
+The following points should be noted:
+\begin{itemize}
+	\item the \cxx{reduce} method must be declared \cxx{static}
+	\item its signature must be consistent with the return type of \cxx{operator()}
+\end{itemize}
+
+Important point: the presence of a reduction method at the task level will change the return type of \cxx{Launcher::run}. 
+Instead of an iterable object over all partial results, it will return a single object (a \cxx{uint64\_t} in the example), 
+so one can write directly:
+\begin{minted}[bgcolor=bg]{c++}
+uint64_t res = Launcher<ArchUpmem>{8_dpu}.run<Checksum>(split(somevector));
+\end{minted}
+
+Another remark: the final reduction is performed on the host side, which means that all partial results must first be broadcast 
+from the DPUs to the host (i.e., 1024 partial results in the \cxx{Checksum} example). 
+An optimization could be achieved by performing a partial reduction on each DPU, which would then reduce the 16 partial results 
+(coming from the 16 tasklets) into a single one. 
+This would have the advantage of increasing the degree of parallelism (i.e., making better use of the DPUs) 
+and reducing the amount of information broadcast between the DPUs and the host.
+
+From a technical point of view, the reduction is performed at the level of the \cxx{Launcher} class, not at the level of an architecture
+ class such as \cxx{ArchMulticore} or \cxx{ArchUpmem}. A type trait \cxx{has\_reduce} is used to detect the presence or absence of a static
+  reduction function at the task level.
+\begin{minted}[bgcolor=bg]{c++}
+template <typename T>
+class has_reduce {
+    typedef char one;
+    struct two { char x[2]; };
+    template <typename C> static one test( decltype(C::reduce) ) ;
+    template <typename C> static two test(...);
+public:
+    enum { value = sizeof(test<T>(0)) == sizeof(char) };
+};
+\end{minted}
+
+Next, a template structure \cxx{Reduce} is defined, which uses template specialization to provide a version that either performs 
+a reduction or not, depending on whether the result is received in an iterable form. 
+\begin{minted}[bgcolor=bg]{c++}
+// Generic definition
+template<bool,class TASK>  struct Reduce;
+
+// Specialization 1: reduce the partial results by using 'reduce' method
+template<class TASK>  struct Reduce<true,TASK> {
+    using Result_t = return_t <decltype(&TASK::operator())>;
+    template<typename RESULT_RANGE>
+    auto operator() (const RESULT_RANGE& results) const {
+        Result_t res = Result_t();
+        for (auto&& result: results) { res = TASK::reduce(res,result); }
+        return res;
+    }
+};
+
+// Specialization 2: return the partial results
+template<class TASK>  struct Reduce<false,TASK> {
+    using Result_t = return_t <decltype(&TASK::operator())>;
+    template<typename RESULT_RANGE>
+    auto& operator() (RESULT_RANGE& results) {
+        return results;
+    }
+};
+\end{minted}
+This example of using template specialization is very characteristic of the way the \BPL uses metaprogramming techniques. 
+Many similar examples can be found throughout the implementation of the \BPL. 
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Serialization}
 One of the crucial aspects of UPMEM programming is the need to transfer the data to be processed from the host
  to the DPUs, and conversely to retrieve the computation results from the DPUs back to the host. 
@@ -424,15 +747,317 @@ potential overheads related to the BPL.
 \item preparation of the broadcast of the result to the host
 \end{itemize}	
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Tagging classes for behaviour customization}
+
+\subsection{Why tags?}
+The philosophy of the \BPL is to write a single code and be able to execute it on different hardware architectures 
+via the use of a launcher. However, it may happen that an architecture is specific enough that we need to 'assist' 
+the \BPL in addressing these specificities. In this section, these specificities will always be for the UPMEM architecture.
+
+\subsection{Tag \cxx{once}}
+
+A first example concerns a performance issue. Suppose we call the same task repeatedly, with a first argument that does not change
+ from one call to another, and a second argument that can vary:
+ \begin{minted}[bgcolor=bg]{c++}
+auto r1 = launcher.run<DoSomething> (databaseReference, queries1);
+auto r2 = launcher.run<DoSomething> (databaseReference, queries2);
+auto r3 = launcher.run<DoSomething> (databaseReference, queries3);
+\end{minted}
+with
+\begin{minted}[bgcolor=bg]{c++}
+template<class ARCH>
+struct DoSomething  {
+    USING(ARCH);
+    auto operator() (
+        vector<uint32_t> const& databaseRef, 
+        vector<uint32_t> const& queries)  
+    {
+        // do something here
+    }
+};
+\end{minted}
+
+
+In this example, both arguments will be broadcast from the host to the DPUs three times, even though the first argument
+ does not change from one call to another. If this argument is large, this will result in two potentially unnecessary
+  broadcasts that are costly in terms of execution time.
+It is worth noting that in the case of a multicore architecture, this poses no problem, since there is no broadcast to perform
+- the arguments are already present in the host memory.  
+
+It would therefore be useful to inform the \BPL that the argument \cxx{databaseReference} only needs to be broadcast once,
+ during the first call to \cxx{Launcher::run}. The \BPL defines, in the form of a template class, a tag named \cxx{once} 
+ that will encapsulate the type of the argument that should only be broadcast once. 
+ The developer can use this tag directly at the task level as follows:
+ \begin{minted}[bgcolor=bg]{c++}
+template<class ARCH>
+struct DoSomething  {
+    USING(ARCH);
+    auto operator() (
+        once<vector<uint32_t> const&> databaseRef, 
+        vector<uint32_t> const& queries)  
+    {
+        // do something here
+    }
+};
+\end{minted}
+The presence of this \cxx{once} tag will therefore provide the \BPL with the indication to broadcast the first argument only 
+during the first call to \cxx{Launcher::run}.
+Obviously, this tag will have no effect if the architecture used is \cxx{ArchMulticore}.
+
+While being minimally invasive, this mechanism does require an adaptation in the use of the \cxx{databaseRef} object. 
+Indeed, it can no longer be used directly as a vector since its type is no longer a vector. 
+To access the underlying vector object, the \cxx{once} class overloads the \cxx{operator*}, so one can write for example: 
+\begin{minted}[bgcolor=bg]{c++}
+auto operator() (
+    once<vector<uint32_t> const&> databaseRef, 
+    vector<uint32_t> const& queries)  
+{
+    for (auto r : *databaseRef) {  /* do something with r */  }
+}
+\end{minted}
+
+Logically, using \cxx{once} with an UPMEM architecture has a direct impact on the serialization mechanism. 
+However, we will not go into the technical implementation details here.
+
+\subsection{Tag \cxx{global}}
+
+We previously saw how the \BPL manages to use a single source code for the DPU binary. 
+A first version of this code required that the arguments provided to the task be created in the call stack of each tasklet, 
+with the consequence that a tasklet could not see the information used by other tasklets.
+However, sharing information between tasklets turned out to be a recurring need for developers, so an additional mechanism 
+had to be implemented in the \BPL.
+
+Again, the idea is to tag a task argument to indicate to the \BPL that the associated data can be shared among tasklets. 
+This tag is implemented as a template class named \cxx{global}, which can be used in the following way:
+ \begin{minted}[bgcolor=bg]{c++}
+template<class ARCH>
+struct DoSomething  {
+   USING(ARCH);
+   auto operator() (global<array<uint32_t,128> const&> arg1, int arg2) {}
+};
+\end{minted}
+
+Here, the argument \cxx{arg2} will typically be created in the call stack of each tasklet, which technically means
+ the variable will be created in the tasklet's \cxx{main} function.
+
+On the other hand, since \cxx{arg1} needs to be shared, it must be created in a memory area other than the 
+call stack\footnote{To remind you, the call stack occupies a certain portion of the WRAM}.
+In particular, this object must be declared as a global variable, outside of the \cxx{main} function.
+Therefore, we need to be able to reserve space in the WRAM that is separate from the space used for the
+ call stacks of the different tasklets.
+
+From the perspective of generic DPU source code, we therefore need to differentiate between objects created inside the \cxx{main}
+function and objects created outside it. Since, in the end, all arguments (whether tagged \cxx{global} or not) must be provided
+as arguments to the task to be executed, we create two tuples: one grouping the objects declared outside the \cxx{main} function
+and another grouping the objects declared inside the \cxx{main} function. 
+The final tuple will then use references to the elements of these two tuples 
+(taking care, of course, of any possible interleaving of \cxx{global}-tagged and non-tagged arguments).
+
+Roughly speaking, the DPU source code looks like this (many details are omitted here, 
+in particular, the way data coming from the host is deserialized into the two tuples):
+\begin{minted}[bgcolor=bg]{c++}
+task_params_global_t globalParams;
+
+int main() 
+{
+    task_params_stack_t localParams;
+
+    auto argsAsTuple = bpl::merge_tuples (globalParams, localParams);
+
+    auto fct = [&] (auto &&... args) -> result_type  {
+        return task_t{} (std::forward<decltype(args)>(args)...);
+    };
+    auto result = std::apply (fct, argsAsTuple);
+}
+\end{minted}
+
+
+The calculation of the sizes for the WRAM used by the call stacks and the WRAM used by the \cxx{global}-tagged objects 
+is a key point handled by the CMake toolchain.
+   
+ 
+\subsection{Tag \cxx{glonce}}
+
+The \cxx{glonce} tag is simply the conjunction of the \cxx{global} and \cxx{once} tags.
+Instead of using
+\begin{minted}[bgcolor=bg]{c++}
+auto operator() (global<once<vector<uint32_t> const&>> arg) {}  
+\end{minted}
+we can directly write
+\begin{minted}[bgcolor=bg]{c++}
+auto operator() (glonce<vector<uint32_t> const&> arg) {}  
+\end{minted}
+Using this tag will therefore allow you to benefit from both associated functionalities.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{The genesis of the \cxx{bpl::vector} class}
 
-\subsection{Working with 4 KBytes of stack}
+\subsection{Introduction}
+In bioinformatics, it is common to work with data sequences, which are most often represented in C++ by vectors and/or arrays 
+when the number of sequences is known a priori. The C++ standard, for example, provides the \cxx{std::vector} and \cxx{std::array} 
+classes, which are widely used whenever one wants to work with data sequences.
 
-\subsection{The companion \cxx{bpl::MemoryTree} class}
+However, when using non-standard hardware architectures like UPMEM, the availability of standard C++ libraries is limited. 
+In the case of UPMEM, this unavailability stems from several factors:
+\begin{itemize}
+\item The UPMEM SDK is, by default, available in C. Although a C++ wrapper exists, it is very limited and does not allow the use of classes
+ such as \cxx{std::vector} and \cxx{std::array}.
+\item A more fundamental reason exists for vectors. A classic implementation relies on the ability to allocate memory dynamically, 
+but this capability is (almost) nonexistent in the UPMEM SDK. If one wishes to use vectors whose number of elements 
+can vary dynamically, it is necessary to first implement a dynamic memory allocator on the DPU side.
+\end{itemize}	
 
-\section{The "split" process in the BPL}
+This second point is particularly tricky because the working memory on the DPU is the WRAM, which is very limited in size - 64 KBytes
+ that must be shared among 16 tasklets, leaving only 4 KBytes of memory available per execution stack. 
+ Consequently, it becomes necessary to use the larger-capacity MRAM to store data, with the MRAM serving at best as a temporary 
+ cache for a small portion of the complete structure, which is therefore stored in MRAM.
 
+ Using the WRAM as a cache for vector data is restrictive because the vector data of interest to the developer will not necessarily 
+ be in the cache, requiring a data transfer from MRAM to WRAM in order to access the desired
+  information\footnote{Recall that only data in WRAM is accessible to the tasklets}. 
+  As a result, situations can arise where the number of cache invalidations (i.e., cache misses) 
+  becomes significant and penalizes overall performance. This leads to a scenario somewhat similar to a classical architecture 
+  with multiple levels of cache (L1, L2, L3) and main memory, where cache misses can occur at different cache levels.
+
+To summarize, the outlook is not a priori very favorable for expecting, in the context of UPMEM, 
+a library offering a class as useful as \cxx{std::vector}. However, at the cost of certain tradeoffs, 
+it has been possible to design the \BPL to allow writing code that is as close as possible to C++ code using the standard library. 
+Here is an example of what can be written today with the \BPL, where the same vector is iterated over using iterators 
+to create a new vector by adding elements one by one:
+\begin{minted}[bgcolor=bg]{c++}
+template<class ARCH>
+struct DoSomething  {
+    USING(ARCH);
+    auto operator() (vector<uint32_t> const& v) const {
+        vector<pair<uint32_t,uint32_t>> result;
+        for (auto it1=v.begin(); it1!=v.end(); ++it1)  {
+            for (auto it2=it1+1; it2!=v.end(); ++it2)  {
+                result.push_back (make_pair(*it1,*it2));
+            }
+        }
+        return result;
+    }
+};
+\end{minted}
+
+Before we begin, here are some features we would like to have in the API of this \cxx{bpl::vector} class:
+\begin{itemize}
+	\item random access with \cxx{operator[]} 
+	\item iterators
+	\item adding items with \cxx{push\_back} 
+\end{itemize}
+
+We will now discuss the design of the \BPL-specific vector class, the API it provides, and its limitations.
+  
+\subsection{The \cxx{bpl::vector} class and its companion \cxx{bpl::MemoryTree}}
+
+We will assume that the vector contains elements of type \cxx{T}. 
+We specify the \cxx{bpl} namespace here, but will omit it later for simplicity:
+\begin{minted}[bgcolor=bg]{c++}
+namespace bpl {
+	template<class T> class vector {};
+}
+\end{minted}
+
+Since it is not possible to store the entire vector in MRAM due to the small size of this memory segment, 
+the data must therefore necessarily be in MRAM. 
+We can keep a portion of this vector in WRAM via a fixed-size array containing \cxx{CACHE\_NB\_ITEMS} elements of type \cxx{T}:
+\begin{minted}[bgcolor=bg]{c++}
+template<class T> 
+class vector {
+public:
+private:
+    T cache[CACHE_NB_ITEMS];	
+};
+\end{minted}
+
+Accessing an element at a given index is done through the \cxx{operator[]} operator:
+\begin{minted}[bgcolor=bg]{c++}
+template<class T> 
+class vector {
+public:
+    T operator[] (size_t idx)  { 
+        // if in cache, we can return the result.
+        // otherwise, one must first request the MRAM 
+        // for filling the cache with the portion of the
+        // vector holding the required index
+	}
+private:
+    array<T,CACHE_NB_ITEMS> currentBlock;	
+};
+\end{minted}
+If the required index is not in the cache, we must reload the cache with the part of the vector containing the required index. 
+This implies that the vector must have a structure that allows for this search.
+
+In the earlier versions of the BPL, a natural structure was to manage a linked list of blocks of elements, 
+each block being the same size as the cache, 
+i.e., \cxx{CACHE\_NB\_ITEMS} elements. Let's take an example to clarify the concept:
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/vector1.png} \end{figure}
+The vector \cxx{x} is created, with a cache size of 5 elements.
+
+Next, an element is added using \cxx{push\_back}; the cache in WRAM is updated to include this new element:
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/vector2.png} \end{figure}
+
+We continue by adding more elements until the cache is full:
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/vector3.png} \end{figure}
+
+When we want to add one more element, we first need to dump the cache to MRAM:
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/vector4.png} \end{figure}
+
+As we continue adding more elements, new blocks will be added to MRAM, maintaining a linked list structure between these different blocks:
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/vector5.png} \end{figure}
+
+Now, suppose we want to access an element of the vector at a given index using the \cxx{operator[]} function.
+We can thus use the linked list of blocks to retrieve the required block given its index:
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/vector6.png} \end{figure}
+
+However, this is not ideal for large vectors, as random access becomes increasingly costly as the lookup index grows.
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/vector7.png} \end{figure}
+
+We thus reach the limitation of a linked list, where searching for the desired block will take $O(N)$. 
+A better alternative was to implement in the BPL a binary tree structure that allows for $O(\log(N))$ search.
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/vector8.png} \end{figure}
+
+The structure has even been improved to handle trees with more than two nodes per level. This structure is implemented by the \cxx{MemoryTree} class.
+The \cxx{bpl::vector} class therefore has an attribute of this class to manage such a tree. 
+\begin{figure}[H] \centering \includegraphics[scale=0.4]{images/vector9.png} \end{figure}
+
+Technically, the \cxx{MemoryTree} class is a template class:
+\begin{minted}[bgcolor=bg]{c++}
+template <
+    typename ALLOCATOR, 
+    int NBITEMS_PER_BLOCK_LOG2, 
+    int MAX_MEMORY_LOG2
+>
+class MemoryTree;
+\end{minted}
+whose parameters are:
+\begin{itemize}
+\item ALLOCATOR: a class that performs dynamic allocations in MRAM
+\item NBITEMS\_PER\_BLOCK\_LOG2: number of nodes per level
+\item MAX\_MEMORY\_LOG2: memory size allocated to an instance of \cxx{MemoryTree} in WRAM. 
+This indirectly implies a maximum number of nodes per instance of \cxx{MemoryTree} 
+(and thus, indirectly, a maximum number of elements for \cxx{bpl::vector}).
+\end{itemize}	
+
+Each leaf of this tree contains a list of addresses of blocks of elements from the vector. 
+When iterating over the elements of a vector, it is the leaves of a \cxx{MemoryTree} object that contain
+ the addresses of the blocks of elements to iterate over.
+
+The implementation of the \cxx{MemoryTree} class is quite subtle, as it needs to be not only efficient 
+but also use as little memory (WRAM) as possible. This class has a comprehensive suite of unit tests, 
+independent of its use within the \cxx{bpl::vector} class.
+ 
+\subsection{The vector\_view class}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Customization of the BPL}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{The CMake toolchain}
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Metaprogramming in the BPL}
 
