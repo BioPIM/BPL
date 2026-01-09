@@ -1063,62 +1063,271 @@ In fact, \cxx{bpl::vector\_view} and \cxx{bpl::vector} share a number of element
 such that in the end, it was possible to make \cxx{bpl::vector} inherit from \cxx{bpl::vector\_view}. 
 Ultimately, the specific features of \cxx{bpl::vector\_view} result in its performance being better than that of \cxx{bpl::vector}.
 
-\subsection{Performance}
+\subsection{Cache size tuning}
+One of the challenges of the UPMEM architecture is the limited capacity (64 KB) of the working memory, the WRAM. 
+Moreover, this size is shared among the 16 tasklets, which ultimately results in an execution stack of 4 KB per tasklet. 
 
-In fact, the UPMEM SDK allows accessing an array element located in MRAM as if it were in WRAM. 
-In a way, a cache similar to what we saw for \cxx{bpl::vector} and \cxx{bpl::vector\_view} is used. 
-However, this is a cache for a single element, so while it makes code writing easier, it is not optimal in terms of
- performance\footnote{which is also clearly stated in the UPMEM documentation}.
+The internal cache of an object of the \cxx{vector} class is allocated on the execution stack, so it is clear that the size of 
+this cache must remain reasonable in order to leave space on the execution stack for other objects. 
+Obviously, the problem becomes even more critical when multiple vectors are used. 
+Cache sizing is therefore an important consideration.
 
- We propose to compare 3 cases in a scenario of writing elements to an array:
+Before going further, here are the different template parameters of \cxx{bpl::vector}:
+\begin{minted}[bgcolor=bg]{c++}
+template<
+    typename T,
+    typename ALLOCATOR,
+    typename MUTEX,
+    int MEMORY_SIZE_LOG2,
+    int CACHE_NB_LOG2,
+    bool SHARED_ITER_CACHE,
+    int MEMTREE_NBITEMS_PER_BLOCK_LOG2,
+    int MAX_MEMORY_LOG2
+> vector {};
+\end{minted}
+\begin{itemize}
+\item T: the type of the elements in the vector
+\item ALLOCATOR: the type of the dynamic memory allocator (MRAM)
+\item MEMORY\_SIZE\_LOG2: the indicative size (log2) that all instances of \cxx{bpl::vector} should occupy in the execution stack
+\item CACHE\_NB\_LOG2: the number (log2) of internal caches; indeed, more than one cache may be needed 
+(cf. the use of the \cxx{swap} function)
+\item SHARED\_ITER\_CACHE: a boolean indicating whether the internal cache can be used by an iterator of this vector
+\end{itemize}
+The last two parameters were defined earlier during the presentation of \cxx{MemoryTree}.
+
+In order to simplify the use of the \cxx{bpl::vector} class, the \BPL makes certain choices at compile time
+ regarding the size of the internal cache. These choices are made based on the following criteria:
  \begin{itemize}
- \item handcrafted\_write: a handwritten version that minimizes WRAM/MRAM exchanges
- \item umpem\_write: a version that leverages the UPMEM cache
- \item vector\_write: a version that uses \cxx{bpl::vector}
- \end{itemize}
-Here are the three associated implementations:
-\begin{minted}[bgcolor=bg]{c++}
-void handcrafted_write () {
-    __dma_aligned type input[BUFFER];
-    for (uint32_t n=0; n<NMAX; n+=BUFFER) {
-        for (uint32_t i=0; i<BUFFER; i++)  {  input[i]  = type(n+i); }
-        mram_write (
-           input, 
-           (__mram_ptr void *) ( (type*)big + n), sizeof(input));
+\item A default value is defined for MEMORY\_SIZE\_LOG2 (typically 8), which means that the \cxx{bpl::vector} class should occupy 256 bytes 
+in the execution stack of a tasklet for all instantiated objects.
+\item The size is adjusted based on the memory size of the type \cxx{T}; in other words, we calculate
+VECTOR\_MEMORY\_SIZE\_LOG2 - Log2\textless sizeof(T)\textgreater::value.
+\item We also need to account for the number of vectors present in the prototype of the \cxx{operator()} of the task. 
+Therefore, the value is divided by the number of vectors. Note: only the vectors present in the prototype can be 
+detected using metaprogramming techniques; vectors declared inside the task body cannot be detected in this way.
+\end{itemize}
+These various calculations at compile time allow the developer to avoid doing them manually. 
+While these calculations usually result in reasonable values, there may be cases where the developer might want 
+to propose values they deem more suitable. We will soon see the mechanism that allows overriding these automatic calculations.
+
+The use of the constants SHARED\_ITER\_CACHE and CACHE\_NB\_LOG2 will be described in the following sections. 
+
+\subsection{Iterators}
+One of the main advantages of a proper vector class is the ability to easily iterate over its contained elements.
+
+In the context of the UPMEM memory model, using an iterator presents a problem. 
+Indeed, unlike a \cxx{std::vector}, an object of the \cxx{bpl::vector} class does not reside entirely in 
+WRAM\footnote{this alone shows that \cxx{bpl::vector} does not comply with the C++ standard, which requires a vector to
+ be contiguous in memory}, and only the portion of the vector present in the internal cache is accessible at any given time.
+
+ Let’s imagine that at a given time, the cache contains elements with indices 8 to 16 (exclusive). 
+ If we want to iterate over the vector from the beginning, we are left with two options:
+ \begin{enumerate}
+ \item We invalidate the current cache in order to fill it with the elements from indices 0 to 8 (exclusive). 
+ This allows iterating over the first 8 elements, and then a new cache will be loaded, until the iteration is completed. 
+ This means the iterator reuses the vector's internal cache. The disadvantage is that by the end of the iteration, 
+ the vector’s internal cache is in a state that no longer matches its original state before the iteration started. 
+ The advantage is that it avoids needing a separate cache for the iterator, which results in a saving of WRAM, a scarce resource.
+ \item We can also ensure that the iterator object has its own cache, which prevents modifying the vector's internal cache, 
+ at the cost of using more WRAM.
+ \end{enumerate}
+
+ The first solution is interesting to minimize WRAM usage, but the developer must be fully aware of its limitations. 
+ For example, if at least two iterators are needed on the same vector, the first solution is not feasible, and only 
+ the second one will yield correct results. 
+ 
+ Currently, the first option is chosen by default by the \BPL for memory usage reasons, but
+ note that in some cases, the \BPL might automatically switch to  the second solution.
+ 
+ The configuration of this choice is made through the constant SHARED\_ITER\_CACHE, with 'true' meaning that an 
+ iterator will reuse the vector's internal cache, and 'false' meaning that a specific cache will be associated with the iterator.
+ We will soon see how the developer can influence this constant.
+  
+ \subsection{Swapping items}
+Some algorithms that use a vector sometimes need to swap two elements at indices i and k. A typical example is a sorting algorithm, 
+e.g., selection sort.
+\begin{minted}[bgcolor=bg,linenos]{c++}
+template<class ARCH>
+struct SortSelection {
+    decltype(auto) operator() (vector<uint32_t>& v) const {
+        for (size_t i=0; i<v.size(); i++)  {
+            size_t k=i;
+            value_type x = v[i];
+            size_t j=i+1;
+            for (auto it2=v.begin()+j; it2!=v.end(); ++it2, ++j)  {
+                if (*it2<x) {  k=j;  x=*it2;  } 
+            }
+            swap (v[i], v[k]);
+        }
+        return v;
     }
-}
+};
+\end{minted}
+We can see on line 11 the call to the \cxx{swap} function to exchange the elements of vector v at indices i and k.
+
+However, we understand that this will cause issues with the design of \cxx{bpl::vector} as we've presented it so far. 
+Indeed, in general, there is no guarantee that both indices i and k will be present in the vector's internal cache. 
+For example, let's take i = 5 and k = 21. If the cache contains elements with indices in the range $[0:8[$, 
+the element $v[i]$ will be in the cache, but not the element $v[k]$. We would therefore need to load the elements with 
+indices in the range $[16:24[$ into the cache, but this would cause the element at index $8$ to no longer be 
+available in the cache. The conclusion is simple: the ability to swap two elements requires the vector to have 
+two internal caches in the case where each element to be swapped is in a different cache.
+
+Still for optimization reasons, the \cxx{bpl::vector} class is configured by default with a single cache. 
+However, if an attempt is made to use the \cxx{swap} function, a compilation error will be generated
+ with an error message indicating that only one cache is available.  
+
+To configure the \BPL so that \cxx{bpl::vector} can use \cxx{swap} (with two internal caches), 
+you should write the following:
+\begin{minted}[bgcolor=bg,linenos]{c++}
+template<class ARCH>
+struct SortSelection : bpl::Task<ARCH>  {
+	
+    struct Config  { static constexpr bool SWAP_USED = true; };
+    USING(ARCH,Config);
+
+    decltype(auto) operator() (vector<uint32_t>& v) const { 
+        /* same as before */
+    }
+};
 \end{minted}
 
-\begin{minted}[bgcolor=bg]{c++}
-type __mram_noinit  big [NMAX];
-void upmem_write ()  {
-    for (uint32_t n=0; n<NMAX; n++)  {  big[n] = type(n);  }
-}
-\end{minted}
+The difference occurs at lines 4 and 5: we define a \cxx{Config} structure that sets the constant \cxx{SWAP\_USED} to
+ 'true' in order to force the use of a second internal cache, then we associate this configuration with the 
+ architecture via \cxx{USING(ARCH,Config)}. This forms the configuration mechanism of the \BPL, which we will revisit later.
 
-\begin{minted}[bgcolor=bg]{c++}
-void vector_write ()  {
-    bpl::core::vector<type> vec;
-    for (uint32_t n=0; n<NMAX; n++)  {  vec.push_back (type(n));  }
-}\end{minted}
-Here are the results for different types of elements:
-\begin{figure}[H] \centering \includegraphics[scale=0.3]{images/vectorperf1.png} \end{figure}
-\begin{figure}[H] \centering \includegraphics[scale=0.3]{images/vectorperf2.png} \end{figure}
-\begin{figure}[H] \centering \includegraphics[scale=0.3]{images/vectorperf3.png} \end{figure}
+ \subsection{Performance}
 
-When the number of items grows, we can see that \cxx{bpl::vector} is positioned between the optimal version (\cxx{handcrafted\_write})  
-and the version with the UPMEM cache. 
-This represents a rather positive result for \cxx{bpl::vector} because it also has to account for dynamic allocation; 
-in the other two cases, the number of elements is fixed, while in the \cxx{bpl::vector} case, the number of elements 
-is not initially known, i.e., elements are added one by one via \cxx{push\_back}. 
+ In fact, the UPMEM SDK allows accessing an array element located in MRAM as if it were in WRAM. 
+ In a way, a cache similar to what we saw for \cxx{bpl::vector} and \cxx{bpl::vector\_view} is used. 
+ However, this is a cache for a single element, so while it makes code writing easier, it is not optimal in terms of
+  performance\footnote{which is also clearly stated in the UPMEM documentation}.
 
+  We propose to compare 3 cases in a scenario of writing elements to an array:
+  \begin{itemize}
+  \item handcrafted\_write: a handwritten version that minimizes WRAM/MRAM exchanges
+  \item umpem\_write: a version that leverages the UPMEM cache
+  \item vector\_write: a version that uses \cxx{bpl::vector}
+  \end{itemize}
+ Here are the three associated implementations:
+ \begin{minted}[bgcolor=bg]{c++}
+ void handcrafted_write () {
+     __dma_aligned type input[BUFFER];
+     for (uint32_t n=0; n<NMAX; n+=BUFFER) {
+         for (uint32_t i=0; i<BUFFER; i++)  {  input[i]  = type(n+i); }
+         mram_write (
+            input, 
+            (__mram_ptr void *) ( (type*)big + n), sizeof(input));
+     }
+ }
+ \end{minted}
+
+ \begin{minted}[bgcolor=bg]{c++}
+ type __mram_noinit  big [NMAX];
+ void upmem_write ()  {
+     for (uint32_t n=0; n<NMAX; n++)  {  big[n] = type(n);  }
+ }
+ \end{minted}
+
+ \begin{minted}[bgcolor=bg]{c++}
+ void vector_write ()  {
+     bpl::core::vector<type> vec;
+     for (uint32_t n=0; n<NMAX; n++)  {  vec.push_back (type(n));  }
+ }\end{minted}
+ Here are the results for different types of elements:
+ \begin{figure}[H] \centering \includegraphics[scale=0.3]{images/vectorperf1.png} \end{figure}
+ \begin{figure}[H] \centering \includegraphics[scale=0.3]{images/vectorperf2.png} \end{figure}
+ \begin{figure}[H] \centering \includegraphics[scale=0.3]{images/vectorperf3.png} \end{figure}
+
+ When the number of items grows, we can see that \cxx{bpl::vector} is positioned between the optimal version (\cxx{handcrafted\_write})  
+ and the version with the UPMEM cache. 
+ This represents a rather positive result for \cxx{bpl::vector} because it also has to account for dynamic allocation; 
+ in the other two cases, the number of elements is fixed, while in the \cxx{bpl::vector} case, the number of elements 
+ is not initially known, i.e., elements are added one by one via \cxx{push\_back}. 
+
+ 
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Customization of the BPL}
+
+The \BPL aims to make the developer's life easier by making decisions at compile time. 
+However, it should be kept in mind that the \BPL is designed to be a generic library applicable 
+to a wide range of use cases. As a result, the choices made may not be optimal in certain scenarios. 
+Therefore, it is important for the \BPL to offer a configuration mechanism so that the developer can adjust, 
+if needed, certain decisions automatically made by the library.  
+
+A number of constants, which are normally calculated at compile time, can be defined by the developer. 
+It should be noted that these constants are applicable only when the target architecture is UPMEM.
+
+The mechanism for configuring the \BPL has already been discussed in a previous section: 
+we define a structure containing certain constants, then associate this structure with the architecture at the task level. 
+This specific configuration is thus tied to the task and not to the launcher.
+Let’s revisit the previous example, with additional configuration constant definitions:
+\begin{minted}[bgcolor=bg,linenos]{c++}
+template<class ARCH>
+struct SortSelection : bpl::Task<ARCH>  {
+	
+    struct Config  {
+        static constexpr bool SWAP_USED              = true;
+        static constexpr bool SHARED_ITER_CACHE      = false;
+        static constexpr bool VECTOR_SERIALIZE_OPTIM = true;
+    };
+	
+    USING(ARCH,Config);
+
+    decltype(auto) operator() (vector<uint32_t>& v) const { 
+        /* same as before */
+    }
+};
+\end{minted}
+
+It should be noted that the \cxx{Config} structure could be defined outside the structure defining the 
+task (\cxx{SortSelection} in the example). However, since the configuration is task-specific, 
+it makes more sense to define it within the task definition. One could even imagine a configuration 
+where a constant depends on the \cxx{ARCH} parameter.
+
+The list of constants that the developer can use is described in the Application Programming 
+Interface section of this document.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{The CMake toolchain}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Metaprogramming in the BPL}
+
+As we have seen so far, the \BPL performs numerous actions at compile time, allowing it to, among other things, 
+handle data serialization, calculate certain constants to optimize WRAM usage, 
+manage tags to add semantics when needed, etc...
+
+All these actions require the application of metaprogramming techniques in C++. 
+The design history of the \BPL shows certain evolutions in these techniques; 
+for example, the shift to using the C++20 standard took place midway through the project, 
+with some simplifications, such as the use of C++ concepts.
+
+A set of type traits has also been implemented for the needs of the \BPL (see the metaprog.hpp file), 
+but it is entirely possible that some of the implementations were already present in the C++ standard library.
+It should also be noted that at one point, the \cxx{hana} metaprogramming library was considered, 
+but this option was ultimately not pursued.
+
+Some general remarks:
+\begin{itemize}
+\item The serialization part of the \BPL requires analyzing the prototype of the task to be executed, so there is a
+ whole set of type traits enabling this analysis.
+\item Another point regarding serialization: since the developer can create their own POD types, it is important to 
+be able to iterate over the different attributes of a structure. However, this remains difficult in C++ because there is 
+no built-in introspection support (at least until C++26). Some techniques to mitigate this limitation have been used in 
+the \BPL (e.g., \cxx{class\_fields\_call}), but some limitations may still persist.
+\item The use of \cxx{std::tuple} is ubiquitous, and many type traits have been added to simplify the development of the \BPL. 
+As an example, handling the \cxx{global} tag requires certain contortions based on \cxx{std::tuple}.
+\item The management of constants used to configure the \BPL also relies on certain type traits. 
+This is even a case where using the macro processor proved to be essential (see \cxx{DEFINE\_GETTER}).
+\item It is worth noting that the most commonly used C++ metaprogramming technique in the \BPL is certainly 
+class template specialization. Such a technique also opens the door to future improvements through the introduction 
+of new specializations.
+\end{itemize}
+
+
+
+ 
 
