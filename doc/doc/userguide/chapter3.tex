@@ -1293,6 +1293,25 @@ Interface section of this document.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{The CMake toolchain}
 
+Any library comes with a way to use it, not only from the perspective of its API but also regarding the toolchain that supports it, 
+in order to generate resources (often binaries) based on the library. 
+Moreover, a library should be accompanied by a suite of tests (unit tests, benchmarks, ...) to verify its quality; 
+once again, the chosen toolchain must be able to easily integrate the generation of such tests.
+
+The toolchain used by the \BPL is CMake mainly because it is a widely adopted and well-maintained tool.
+
+More specifically, one of the challenges with the UPMEM architecture is having to generate two binaries, 
+one for the host side and the other for the DPU side, a task that CMake can easily handle.
+It is also thanks to CMake and its \cxx{configure_file} command that it was possible to define 
+a generic DPU source code, one of the cornerstones of the \BPL.
+
+Another aspect of the \BPL, seemingly trivial at first glance, required some work at the CMake level; 
+it concerns the management of the \cxx{global} tag, which results in the need to perform an initial phase of DPU binary 
+compilation in order to benchmark the execution stack size of the tasklets.
+
+Finally, CMake enabled the creation from scratch of minimalist \BPL projects via the \cxx{NEWPROJECT\_NAME} variable.
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Metaprogramming in the BPL}
 
