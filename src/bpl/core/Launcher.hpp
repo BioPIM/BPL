@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -21,47 +21,6 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
-////////////////////////////////////////////////////////////////////////////////
-
-//namespace tmp  // for the moment...
-//{
-    template<typename T>
-    struct is_serializeable_tmp : std::true_type {};
-
-    template<class T, class = void>  struct has_arch_type                                       : std::false_type {};
-    template<class T>                struct has_arch_type <T, std::void_t<typename T::arch_t>>  : std::true_type  {};
-
-    template<class ARCH, class T>   struct matching_splitter  : std::false_type {};
-
-    template<class ARCH, class T>
-    requires (not is_splitter_v<T>)
-    struct matching_splitter<ARCH,T>  : std::true_type {};
-
-    template<class ARCH, class T>
-    requires (is_splitter_v<T>)
-    struct matching_splitter <ARCH, T> : std::integral_constant<bool, std::is_same_v<ARCH, typename T::arch_t> > {};
-
-//}
-
-template <class ARCH, class TASK, typename ...ARGS>
-concept runnable = requires (TASK task, ARGS&&... args)
-{
-    // TASK must have an operator() method
-    task (std::forward<ARGS>(args)...);
-
-    // The arguments must be serializable, ie. they can be put into some buffer as
-    // a vehicle between two end points. For instance with DPU, such a buffer will
-    // be broadcasted between the host and the DPU
-    // NOTE: this constraint is commented -> need to re-design the serialization part
-    // and 'is_serializable' will be then properly defined.
-    requires ( std::conjunction_v<is_serializeable_tmp<ARGS>...> );
-
-    // In case of a 'split' argument, we should check that the template parameter of 'split'
-    // is coherent with the given architecture. For instance, if we have split<ArchUpmem::Tasklet>
-    // we must check that the given ARCH is actually ArchUpmem
-    //requires (std::conjunction_v <matching_splitter<ARCH,ARGS>... >);
-};
-
 ////////////////////////////////////////////////////////////////////////////////
 
 /** \brief Class that allows to run some task on a given architecture
@@ -85,15 +44,27 @@ class Launcher
 {
 public:
 
+    /** Architecture type. This is the type provided as template argument. */
     using arch_t = ARCH;
 
+    /** Create a configuration from variadic arguments.
+     * The actual job is delegated to the underlying architecture.
+     * \return a std::any object representing the configuration
+     */
     template<typename... ARGS>
     static std::any make_configuration (ARGS&&... args)  {
         return arch_t::make_configuration (std::forward<ARGS>(args)...);
     }
 
+    /** Create a Launcher instance from a provide configuration
+     * \param cfg: the configuration to be used for creating the launcher (provided as a std::any object)
+     * \return a std::unique_ptr object holding the created launcher.
+     */
     static auto create (std::any cfg)  {  return std::make_unique <Launcher<ARCH>> (cfg);  }
 
+    /** Constructor from a configuration object provided as a std::any object.
+     * \param cfg: the configuration
+      */
     Launcher(std::any cfg)  : arch_(cfg) {}
 
     /** Constructor. Perfect forwarding used here in order to initialize the underlying architecture.
@@ -117,8 +88,15 @@ public:
      */
     size_t getProcUnitNumber() const { return arch_.getProcUnitNumber(); }
 
+    /** Provides more details than getProcUnitNumber. For instance with UPMEM, it will return a std::tuple
+     * with the ranks,DPU and tasklets number
+     * \return a std::tuple holding detailed information on the process units of the launcher.
+     */
     auto getProcUnitDetails()  const { return arch_.getProcUnitDetails(); }
 
+    /** The task unit object used at creation. Delegate to the underlying architecture.
+     * \return an instance (as a smart pointer) of the TaskUnit class (dynamic polymorphism here).
+     */
     auto getTaskUnit() const { return arch_.getTaskUnit(); }
 
     /** Run a task on the underlying architecture.
@@ -127,21 +105,24 @@ public:
      * parameters (i.e. information for parallelization of the task). In other words, Launcher knows how to generate several
      * execution contexts and send them to the architecture layer.
      *
-     * A task here is defined as a class or struct that provides (1) the name of the task and (2) the method that actually
-     * does the required job.
+     * A task here is defined as a class or struct that provides method that actually
+     * does the required job as an overload of operator()
+     *
+     * The result depends on the task struct: if it contains a specific 'reduce' static function, the result
+     * will be reduced in a single object. Otherwise, an iterable object is returned, allowing to iterate
+     * each result produced by each process unit.
      *
      * \param[in] TASK: class/struct providing the task execution model
+     * \param[in] TRAITS: potential extra type information
      * \param[in] args: input parameters for the task to be executed
-     * \return result from the task
+     * \return result from the task, either an iterable over all the results or a reduced unique object.
      */
     template<template<typename ...> class TASK, typename...TRAITS, typename ...ARGS>
-    // WARNING!!! Temporarily remove the concept here because of split management when mixing archs
-    // (e.g. unit tests on host like 'SplitDifferentSizes')
-    //requires runnable<ARCH,TASK<ARCH,TRAITS...>,ARGS...>
     auto  run (ARGS&&... args)
     {
         DEBUG_LAUNCHER ("[Launcher::run] BEGIN\n");
 
+        // Type of the actual task that will be used for running the required work.
         using task_t = TASK<ARCH,TRAITS...>;
 
         DEBUG_LAUNCHER ("[Launcher::run] executing\n");
@@ -162,11 +143,19 @@ public:
         return res;
     }
 
+    /** Statistics about the launcher aggregated during execution of tasks through the 'run' method.
+     * Delegated to the underlying architecture. Note that theses statistics are not reset between
+     * 'run' calls.
+     * \return the bpl::Statistic object
+     */
     const auto& getStatistics() const
     {
         return arch_.getStatistics();
     }
 
+    /** For testing, it might be interesting to reset the statistics between two calls to 'run'.
+     * Delegated to the underlying architecture.
+     */
     auto resetStatistics() {
         arch_.resetStatistics();
     }
@@ -176,6 +165,19 @@ private:
     /** Object representing the architecture. Most of the Launcher class will delegate the work to this object. */
     ARCH arch_;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Historic stuf, not used in real life code anymore (still in some unit tests though)
+template<class ARCH, class T>   struct matching_splitter  : std::false_type {};
+
+template<class ARCH, class T>
+requires (not is_splitter_v<T>)
+struct matching_splitter<ARCH,T>  : std::true_type {};
+
+template<class ARCH, class T>
+requires (is_splitter_v<T>)
+struct matching_splitter <ARCH, T> : std::integral_constant<bool, std::is_same_v<ARCH, typename T::arch_t> > {};
 
 ////////////////////////////////////////////////////////////////////////////////
 };  // end of namespace
