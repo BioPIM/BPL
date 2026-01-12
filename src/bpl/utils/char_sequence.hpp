@@ -1,14 +1,18 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics
-// date  : 2025
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
 // SEE https://gist.github.com/erwandrezen/b79301ae43514a1f2473e77ed194a4d0
 
+// NOT USED IN REAL USE CASES IN THE BPL
+
 #include <array>
 #include <optional>
 #include <limits>
+
+namespace bpl {
 
 #define FOR_EACH_8(doit,start,args...) \
     doit((start+0), args)  doit((start+1), args)  \
@@ -49,6 +53,8 @@ constexpr char myfilter(char c)  { return c!='-' ? c : char{}; }
 template<char...Cs> constexpr auto make_array (int_sequence<char,char{},Cs...> ) {
     return std::array<char,sizeof...(Cs)> { Cs...};
 }
+
+};
 
 //using foo = MakeLiteral("af1c-dc-09");
 //constexpr auto bar = make_array(foo{});

@@ -7,7 +7,7 @@
 #pragma once
 
 #include <bpl/core/Task.hpp>
-#include <bpl/utils/RangeInt.hpp>
+#include <bpl/utils/Range.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -17,7 +17,7 @@ struct SplitRangeInt : bpl::Task<ARCH>
 {
     USING(ARCH);
 
-    auto operator() (bpl::RangeInt range)
+    auto operator() (bpl::Range range)
     {
         lock_guard<mutex> lock (this->get_mutex(0));
 

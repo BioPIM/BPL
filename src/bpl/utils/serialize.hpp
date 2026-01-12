@@ -844,35 +844,6 @@ struct bpl::serializable<bpl::Range>
     }
 };
 
-
-template<>
-struct bpl::serializable<bpl::RakeRange>
-{
-    // we tell that our structure can be serialized
-    static constexpr int value = true;
-
-    template<class ARCH, class BUFITER, int ROUNDUP, typename T, typename FCT>
-    static auto iterate (bool transient, int depth, const T& t, FCT fct, void* context=nullptr)
-    {
-        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (transient, depth+1, *t.begin(), fct, context);
-        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (transient, depth+1, *t.end  (), fct, context);
-        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (transient, depth+1,  t.begin().modulo(), fct, context);
-        //printf ("RakeRange::iterate:  %ld %ld %ld\n", *t.begin(), *t.end  (),  t.begin().modulo());
-
-    }
-
-    template<class ARCH, class BUFITER, int ROUNDUP, typename T>
-    static auto restore (BUFITER& it, T& result)
-    {
-        RakeRange::type a,b,c;
-        Serialize<ARCH,BUFITER,ROUNDUP>::restore (it, a);
-        Serialize<ARCH,BUFITER,ROUNDUP>::restore (it, b);
-        Serialize<ARCH,BUFITER,ROUNDUP>::restore (it, c);
-        //printf ("RakeRange::restore:  %ld %ld %ld\n", a, b, c);
-        result = RakeRange (a,b,c);
-    }
-};
-
 ////////////////////////////////////////////////////////////////////////////////
 template<typename T>
 struct bpl::serializable<bpl::once<T>> : std::true_type

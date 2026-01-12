@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2025
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -14,8 +14,12 @@ namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
-// Get N sorted vectors as input.
-// => sort-merge them and call a functor on each item.
+/** Get N sorted iterables as input (not necessarely std::vector objects) and
+ * sort-merge them and call a functor on each item. This kind of function can be called
+ * to finish a big sort that has been split into N parts.
+ * \param sortedVectors: iterable objects to be merged/sorted
+ * \param fct: functor called on each sorted item.
+ */
 template<typename FCT>
 auto merge (auto const& sortedVectors, FCT fct)
 {

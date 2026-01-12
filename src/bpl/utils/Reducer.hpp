@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -14,6 +14,12 @@
 namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 
+/** \brief Function object that can reduce two items into a single one.
+ *
+ * We could have directly use the functor FCT but we add some static_assert here.
+ *
+ * \param FCT: the functor that reduces two items.
+ */
 template<typename FCT>
 struct Reducer
 {

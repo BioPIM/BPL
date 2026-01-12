@@ -7,7 +7,7 @@
 #include <common.hpp>
 
 #include <bpl/utils/split.hpp>
-#include <bpl/utils/RangeInt.hpp>
+#include <bpl/utils/Range.hpp>
 
 #include <tasks/RangeSplit.hpp>
 #include <tasks/Checksum3.hpp>
@@ -189,7 +189,7 @@ void SplitRangeInt_aux (size_t i0, size_t i1, RESOURCE resource)
     using arch_t  = typename RESOURCE::arch_t;
     using level_t = typename arch_t::lowest_level_t;
 
-    auto range = RangeInt (i0, i1);
+    auto range = Range (i0, i1);
 
     Launcher<arch_t> launcher {resource};
 

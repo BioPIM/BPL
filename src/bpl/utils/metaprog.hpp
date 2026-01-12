@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -26,8 +26,9 @@ namespace bpl  {
 template<class...>  struct types  {  using type = types; };
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// TUPLE
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/** Tuple-like light class.
+ * For some needs of the BPL, a full-fledged std::vector is not required, so
+ * we provide here a small tuple-like functionality. */
 template <int N, typename... T>
 struct tuple_element;
 
@@ -41,8 +42,8 @@ struct tuple_element<N, T0, T...> {
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// FUNCTION ARGUMENTS
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/** Type traits for analyzing arguments of a function signature.
+ * \param Sig: the signature to be analyzed. */
 template<class Sig> struct args;
 
 template<class R, class...Args>
@@ -68,23 +69,18 @@ struct args<R(O::*)(Args...) const> : types<Args...>
 
 template<class Sig> using args_t=typename args<Sig>::type;
 
+/** Type traits that returns the nth parameter of a function signature.
+ * \param Sig: the signature to be analyzed.
+ * \param N: index of the parameter type to be retrieved. */
 template<class Sig,int N> using parameter_t = typename args<Sig>::template param<N>::type;
+
+/** Type traits that returns the return type of a function signature.
+ * \param Sig: the signature to be analyzed.
+ */
 template<class Sig>       using return_t    = typename args<Sig>::Return;
 
 //////////////////////////////////////////////////////////////////////////////////////////
-template<typename Ret, typename... Param> struct GetParamType
-{
-   using prototype_t = Ret(*)(Param...);
-   using args_t      = std::tuple<Param...>;
-   static const int args_size = sizeof...(Param);
-
-   public:
-       GetParamType (prototype_t);
-};
-
-//////////////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/47906426/type-of-member-functions-arguments
-
 template<typename Result, typename ...Args>  struct FunctionSignatureParserBase
 {
     using return_type = Result;
@@ -116,6 +112,10 @@ struct FunctionSignatureParser<Result(ClassType::*)(Args...) const>
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/34672441/stdis-base-of-for-template-classesv
+/** Type traits telling whether a class is the base class of another class.
+ * \param base: the base class
+ * \param derived: the derived class.
+ */
 template < template <typename...> class base,typename derived>
 struct is_base_of_template_impl
 {
@@ -134,6 +134,7 @@ template < template <typename...> class base,typename derived>
 inline constexpr bool is_base_of_template_v = is_base_of_template_t<base,derived>::value;
 
 //////////////////////////////////////////////////////////////////////////////////////////
+/** Type trait that remove the first type of a std::tuple. */
 template<typename T>
 struct remove_first_type  {  using type = T;  };
 
@@ -148,6 +149,8 @@ struct remove_first_type<std::tuple<T, Ts...>>
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/62855836/convert-tuple-types-to-decay-types
+/** Type trait that removes cv qualifiers of each type of a std::tuple.
+ */
 template <typename ... Ts>
 constexpr auto decay_types (std::tuple<Ts...> const &)
    -> std::tuple<std::remove_cv_t<std::remove_reference_t<Ts>>...>;
@@ -179,14 +182,6 @@ template<typename T, template <typename> typename... Component>
 using transform_tuple_t = typename transform_tuple<T,Component...>::type;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-template<typename T>
-struct surrogate  { using type = T; };
-
-template<typename T>
-using surrogate_t = typename surrogate<T>::type;
-
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/26902633/how-to-iterate-over-a-stdtuple-in-c-11
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template<class F, class...Ts, std::size_t...Is>
@@ -196,6 +191,10 @@ void for_each_in_tuple(const std::tuple<Ts...> & tuple, [[maybe_unused]] F func,
     (void)expander { 0, ((void)func(std::get<Is>(tuple)), 0)... };
 }
 
+/** Iterate each argument of a tuple through a functor
+ * \param tuple: the tuple we want to iterate the content
+ * \param func: the functor called on each item of the tuple.
+ */
 template<class F, class...Ts>
 void for_each_in_tuple(const std::tuple<Ts...> & tuple, F func)
 {
@@ -332,6 +331,8 @@ constexpr auto class_fields_call (T&& object, FUNCTION&& f) noexcept
 
 /** Iterate the fields of a struct/class. Each field is given as argument to a provided functor.
  * This function relies on 'class_fields_call'.
+ * \param object: the object we want to iterate the fields
+ * `param fct: the functor called on each field of the object.
  */
 template<class T, typename FUNCTION>
 auto class_fields_iterate (T&& object, FUNCTION&& fct) noexcept
@@ -340,6 +341,8 @@ auto class_fields_iterate (T&& object, FUNCTION&& fct) noexcept
 }
 
 /** Return a tuple made of all the fields of a given object.
+ * \param object: the object
+ * \return a tuple made of the fields of the object.
  */
 template<class T>
 constexpr auto to_tuple (T&& object) noexcept
@@ -347,7 +350,9 @@ constexpr auto to_tuple (T&& object) noexcept
     return class_fields_call (std::forward<T>(object),  [] (auto&&...args) {  return std::make_tuple(std::forward<decltype(args)>(args)...); });
 }
 
-/** Return the number of fields.
+/** Return the number of fields of an object.
+ * \param object: the object
+ * \return the number of fields.
  */
 template<class T>
 constexpr auto get_nb_fields (T&& object) noexcept
@@ -390,6 +395,10 @@ namespace details
     }
 }
 
+/** Make an object using the item of a tuple as brace initializers.
+ * \param t: the tuple
+ * \return the created object
+ */
 template< typename result_type, typename ...types >
 result_type
 make_struct(std::tuple< types... > t) // &, &&, const && etc.
@@ -399,6 +408,9 @@ make_struct(std::tuple< types... > t) // &, &&, const && etc.
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/** Type traits providing the parameters of a task.
+ * \param TASK: the type of the task
+ */
 template<class TASK, bool DECAY=true>
 using task_params_t = std::conditional_t<DECAY,
     bpl::decay_tuple <
@@ -419,59 +431,10 @@ auto  make_params (ARGS... args) {  return task_params_t<TASK> (std::forward<ARG
 template<int N>  constexpr int roundUp(int numToRound)  {  return (numToRound + N - 1) & -N; }
 
 ////////////////////////////////////////////////////////////////////////////////
-template<typename T>  struct ClassName  { static constexpr char name[] = "?";    };
 
-template<>  struct ClassName<int>    { static constexpr char name[] = "int";     };
-template<>  struct ClassName<double> { static constexpr char name[] = "double";  };
-
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-template<typename T, int PADDING>
-struct TypeWithPadding
-{
-    using type = union Dummy
-    {
-        Dummy (T&& o) : object(std::move(o)) {}
-
-        T    object;
-        char padding[PADDING];
-    };
-};
-
-template<typename T, int PADDING=4>
-using TypeWithPadding_t = typename TypeWithPadding<T,PADDING>::type;
-
-template<typename ... input_t>
-using tuple_cat_t= decltype(std::tuple_cat(std::declval<input_t>()...));
-
-template<int PADDING, typename ...ARGS>
-struct TuplePadding
-{
-};
-
-template<int PADDING, typename T0>
-struct TuplePadding<PADDING, std::tuple<T0>>
-{
-    using type = std::tuple<TypeWithPadding_t<T0,PADDING>>;
-};
-
-template<int PADDING, typename HEAD, typename ...ARGS>
-struct TuplePadding<PADDING, std::tuple<HEAD, ARGS...> >
-{
-    using type = tuple_cat_t <
-        std::tuple<TypeWithPadding_t<HEAD,PADDING>>,
-        typename TuplePadding<PADDING,std::tuple<ARGS...>>::type
-    >;
-};
-
-template<int PADDING, typename ...ARGS>
-using TuplePadding_t = typename TuplePadding<PADDING,ARGS...>::type;
-
-
-////////////////////////////////////////////////////////////////////////////////
-
+/** Type trait computing log2 of an integer at compile time.
+ * \param x: the integer we want to compute its log2.
+ */
 template <int x>  struct Log2    { static const int value = 1 + Log2<x/2>::value ; };
 template <>       struct Log2<1> { static const int value = 0 ; };
 
@@ -480,7 +443,8 @@ template <int x>  struct Log2Ext    { static const int value = Log2<x>::value ; 
 template <>       struct Log2Ext<0> { static const int value = 0 ; };
 
 ////////////////////////////////////////////////////////////////////////////////
-// Get the index of the type in a tuple that fulfills some predicate.
+/** Get the index of the type in a tuple that fulfills some predicate.
+ */
 template<typename T, template<typename> class PREDICATE, bool CHECKALLFIRST>
 struct GetIndexOfFirstPredicate
 {
@@ -550,6 +514,11 @@ constexpr auto tuple_slice_aux(Cont&& t)
         std::make_index_sequence<I2 - I1>{});
 }
 
+/** Get a sub tuple from one tuple items in some indexes range.
+ * \param I1: lower bound for the indexes to be kept
+ * \param I2: upper bound for the indexes to be kept
+ * \param t: the container, likely  a std::tuple (but could be something else)
+ */
 template <std::size_t I1, std::size_t I2, class Cont>
 constexpr auto tuple_slice(Cont&& t)
 {
@@ -558,6 +527,10 @@ constexpr auto tuple_slice(Cont&& t)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
+/** Type trait that computes the number of time a predicate is true on a parameters pack.
+ * \param PREDICATE: the predicate to be applied on each parameter
+ * \param ARS...: the parameters
+ */
 template<template<typename> typename PREDICATE, typename ...ARGS>
 struct CheckPredicate  {  const static int value = 0;  };
 
@@ -566,26 +539,6 @@ struct CheckPredicate<PREDICATE,T, ARGS...>
 {
     const static int value = (PREDICATE<T>::value ? 1 : 0) + CheckPredicate<PREDICATE, ARGS...>::value;
 };
-
-////////////////////////////////////////////////////////////////////////////////
-//
-////////////////////////////////////////////////////////////////////////////////
-// https://stackoverflow.com/questions/25845536/trait-to-check-if-some-specialization-of-template-class-is-base-class-of-specifi
-// http://coliru.stacked-crooked.com/a/9feadc62e7594eb2
-
-template< template<typename ...formal > class base >
-struct is_derived_from_impl
-{
-    template<typename ...actual >
-    std::true_type
-    operator () (base<actual... > *) const;
-
-    std::false_type
-    operator () (void *) const;
-};
-
-template< typename derived, template<typename ... > class base >
-using is_derived_from = typename std::result_of< is_derived_from_impl< base >(typename std::remove_cv< derived >::type *) >::type;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -604,6 +557,12 @@ struct slice
 ////////////////////////////////////////////////////////////////////////////////
 //
 ////////////////////////////////////////////////////////////////////////////////
+/** Simple version of accumulate (allows to avoid to explicit begin/end iterators
+ * at call site)
+ * \param r: the range to be accumulated
+ * \param init: initial value of the accumulation.
+ * \return the accumulated value.
+ */
 template <class Range, class T> T accumulate (Range&& r, T init)
 {
     auto first = r.begin();
@@ -620,6 +579,9 @@ template <class Range, class T> T accumulate (Range&& r, T init)
 //
 ////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/13830158/check-if-a-variable-type-is-iterable
+/** Type trait telling whether a type is iterable, in the sense it owns (at least)
+ * an 'end' function.
+ */
 template<typename C>
 struct is_iterable
 {
@@ -639,6 +601,10 @@ template <typename T>  constexpr int is_iterable_v = is_iterable<T>::value;
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+/** Type trait telling whether a type can be handled by the BPL serialization
+ * scheme. By default, no type is serializable, classes that want to be serializable
+ * have to provide a template specialization of that trait.
+ */
 template<typename T>
 struct serializable  : std::false_type {};
 
@@ -695,6 +661,11 @@ struct TieOrMaketuple
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/** Type trait that creates a boolean mask, where the nth bit tells whether the
+ * nth parameter of the provided parameters pack fulfills the predicate
+ * \param PREDICATE: the predicate
+ * \param ...ARGS: the parameters
+ */
 template<template <typename> class PREDICATE, typename ...ARGS>
 struct pack_create_mask  {};
 
@@ -716,7 +687,10 @@ struct pack_create_mask<PREDICATE>
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
+/** Trait that computes the number of parameters that fulfills a given predicate.
+ * \param PREDICATE: the predicate
+ * \param ...ARGS: the parameters
+ */
 template<template <typename> class PREDICATE, typename ...ARGS>
 static constexpr int count_predicate_match_v =
     std::popcount(pack_create_mask<PREDICATE, std::decay_t<ARGS>...>::value);
@@ -793,6 +767,8 @@ using pack_predicate_partition_t =
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/12666761/sizeof-variadic-template-sum-of-sizeof-of-all-elements
+/** Trait that computes the sum of sizeof of the types of a tuple.
+ */
 template<typename...ARGS>
 inline constexpr unsigned int sum_sizeof (const std::tuple<ARGS...>& t)  {  return (0 + ... + sizeof(ARGS));  }
 
@@ -816,6 +792,10 @@ mask_to_array(std::uint64_t mask)
     return res;
 }
 
+/** Given two tuples a and b, build a new tuple made of
+ * either ith item from a or b, according to the fact the
+ * ith bit of a mask is set or not.
+ */
 template <std::uint64_t MASK, typename...A, typename...B>
 constexpr auto merge_tuples (std::tuple<A...>& a, std::tuple<B...>& b)
 {
@@ -841,6 +821,8 @@ struct pointer
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/78116330/compilation-time-initialization-of-an-array-of-struct-with-the-information-of-an
+/** Initialize at compile time an array with source objects injected as parameter of the constructor of type T.
+ */
 template<typename T, int N>
 struct array_wrapper
 {
@@ -885,6 +867,11 @@ auto transform_each(const std::tuple<Args...>& t, F f)
     return transform_each_impl(t, f, std::make_index_sequence<sizeof...(Args)>{});
 }
 
+/** Create a tuple whose items are created by calling a functor on each parameter
+ * of a given parameter pack.
+ * \param f: the functor to be applied on each parameter
+ * \param args: the parameters pack
+ */
 template <class F, typename...Args>
 auto transform_each (F f, Args&&...args)
 {
@@ -919,25 +906,15 @@ template <typename T1,
           typename TIter1 = decltype(std::declval<T1>().begin()),
           typename TIter2 = decltype(std::declval<T2>().begin())
 >
+
+/** Create an iterable object in a zip way for two iterables Xi,Yi, i.e. iterate
+ * (x1,y1), (x2,y2), ...
+ * \param iterable1: the first iterable
+ * \param iterable2: the second iterable
+ * \return the zip iterable.
+ */
 constexpr auto zip (T1&&  iterable1, T2&&  iterable2)
 {
-//    struct iterator
-//    {
-//        TIter1 iter1_;
-//        TIter2 iter2_;
-//
-//        bool operator != (const iterator & other) const
-//        {
-//            return (iter1_ != other.iter1_) and (iter2_ != other.iter2_);
-//        }
-//
-//        void operator++ ()  {  ++iter1_;  ++ iter2_;  }
-//
-//        auto operator * () const
-//        {
-//            return TieOrMaketuple <decltype(*iter1_), decltype(*iter2_)>::get (*iter1_,*iter2_);
-//        }
-//    };
     struct iterable_wrapper
     {
         T1 iterable1_;
@@ -961,6 +938,9 @@ static constexpr bool compare_tuples_v = compare_tuples<COMPARATOR,A,B>::value;
 template <template<typename,typename> class COMPARATOR>
 struct compare_tuples<COMPARATOR,std::tuple<>, std::tuple<>> : std::true_type {};
 
+/** Type trait that compare two tuples, by applying a comparator trait that compares
+ * two types.
+ */
 template <template<typename,typename> class COMPARATOR, typename...A, typename... B>
 struct compare_tuples<COMPARATOR,std::tuple<A...>, std::tuple<B...>>
 {
@@ -976,9 +956,13 @@ struct compare_tuples<COMPARATOR,std::tuple<A...>, std::tuple<B...>>
 
 ////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/78922921/type-trait-providing-the-static-member-of-a-struct-class-if-available?noredirect=1#comment139150964_78922921
+/** Macro that defines a field (to be used inside a struct definition).
+ * It is then possible call NAME constant value in a struct X if the struct X has NAME defined, otherwise a default
+ * value is returned.
+  */
 #define DEFINE_GETTER(NAME)                                                     \
 template<auto DEFAULT,typename T>                                               \
-struct get_##NAME {                                                           \
+struct get_##NAME {                                                             \
     static inline constexpr auto get() {                                        \
         if constexpr (requires { T::NAME; }) {  return T::NAME;  }              \
         else {return DEFAULT;  }                                                \
@@ -1005,6 +989,12 @@ template <class Key, class Value>
 struct KeyValue { Key   key;  Value value;  };
 
 // https://stackoverflow.com/questions/61281843/creating-compile-time-key-value-map-in-c
+/** \brief Compile time map.
+ *
+ * Actually not used in real-life, only in unit tests.
+ * \param Key: the key type for the map
+ * \param Value: the value type for the map
+ * \param N: the max number of items in the map. */
 template <class Key, class Value, int N>
 class CTMap
 {
@@ -1029,6 +1019,11 @@ public:
     std::array<KV,N>  pairs;
 };
 
+/** Merge two compile time maps.
+ * \param a: first map
+ * \param b: second map
+ * \return the merged map.
+ */
 template <class Key, class Value, int N,int M>
 constexpr static auto merge (const CTMap<Key,Value,N>& a, const CTMap<Key,Value,M>& b)
 {
@@ -1047,15 +1042,19 @@ using Properties = CTMap<std::string_view, int, 16>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// For such a type, we can analyze recursively its attributes.
+/** Concept that tells whether type T has a 'parseable' constant set
+ * to false. */
+template<typename T> concept is_not_parseable = T::parseable == false;
+
+/** Type trait telling whether a type is parseable, ie. if we can
+ * analyze recursively its attributes. The generic case is always
+ * a false_type.
+ */
 template<typename T>
 struct is_parseable : std::false_type {};
 
-//template<typename T>  inline constexpr bool has_parseable_field_v = requires { T::parseable; };
-//template<typename T>  constexpr bool is_not_parseable_v    = requires { T::parseable == false; };
-
-template<typename T> concept is_not_parseable = T::parseable == false;
-
+/** A type that (1) is a class and (2) has no constant 'parseable' set to false
+ * is considered as parseable. */
 template<typename T>
 requires (std::is_class_v<T> and  not is_not_parseable<T> )
 struct is_parseable<T> : std::true_type {};
@@ -1065,11 +1064,10 @@ static constexpr bool is_parseable_v = is_parseable<T>::value;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
-// We need a trait that counts the occurrence of a predicate matched for a given type.
-// For instance, we may want to get the number of vectors in a tuple, a struct or a
-// recursive definition of both tuple/struct
-
+/** Trait that counts the occurrence of a predicate matched for a given type.
+ *  For instance, we may want to get the number of vectors in a tuple, a struct or a
+ *  recursive definition of both tuple/struct
+ */
 template<template<typename> class PREDICATE, typename...ARGS>
 struct CounterTrait  : std::integral_constant<int, (0 + ... + CounterTrait<PREDICATE,ARGS>::value)> {};
 
@@ -1104,7 +1102,9 @@ using static_not = typename std::conditional<
 >::type;
 
 ////////////////////////////////////////////////////////////////////////////////
-// Type traits that retrieve the template parameter
+/**  Type trait that retrieves the first template parameter of a type.
+ * \param T: the type we want to get the first template parameter.
+ */
 template<typename T> struct FirstTemplateParameter {};
 
 template<template<typename> typename X, typename T>

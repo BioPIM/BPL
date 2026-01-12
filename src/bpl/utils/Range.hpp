@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -19,126 +19,43 @@ namespace bpl  {
 //////////////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/7185437/is-there-a-range-class-in-c11-for-use-with-range-based-for-loops
 
+/** \brief class that allows to iterate an range of integers.
+ */
 class Range
 {
- public:
+public:
+
+    static constexpr bool parseable = false;
 
     using type = long int;
 
-   class iterator
-   {
-      friend class Range;
-
-    public:
-      type operator *() const { return i_; }
-      const iterator &operator ++() { ++i_; return *this; }
-      iterator operator ++(int) { iterator copy(*this); ++i_; return copy; }
-
-      bool operator ==(const iterator &other) const { return i_ == other.i_; }
-      bool operator !=(const iterator &other) const { return i_ != other.i_; }
-
-    protected:
-      iterator(type start) : i_ (start) { }
-
-    private:
-      type i_;
-   };
-
-   iterator begin() const { return begin_; }
-   iterator end  () const { return end_;   }
-
-   Range(type begin=type(), type end=type()) : begin_(begin), end_(end) {}
+    using size_type = uint32_t;
 
 private:
-   iterator begin_;
-   iterator end_;
-};
 
-////////////////////////////////////////////////////////////////////////////////
+    struct iterator  {
+        iterator (size_type idx) : idx_(idx)  {}
+        auto operator*() const { return idx_; }
+        iterator& operator++ () { ++idx_; return *this; }
+        bool operator!=(const iterator& other) const { return idx_!=other.idx_; }
+        size_type idx_;
+    };
 
-//////////////////////////////////////////////////////////////////////////////////////////
-class RakeRange
-{
- public:
+public:
 
-    using type = long int;
+    Range () = default;
 
-   class iterator
-   {
-      friend class RakeRange;
+    Range (size_type first, size_type last) : bounds_(first,last)  {}
 
-    public:
-      type operator *() const { return i_; }
-      const iterator &operator ++() { i_ += modulo_; return *this; }
-      iterator operator ++(int) { iterator copy(*this); i_ += modulo_; return copy; }
+    auto begin () const { return iterator (bounds_.first); }
+    auto end   () const { return iterator (bounds_.second);  }
 
-      bool operator !=(const iterator &other) const { return i_ < other.i_; }
-      bool operator ==(const iterator &other) const { return not this->operator !=(other); }
+    auto size() const { return bounds_.second - bounds_.first; }
 
-      type modulo() { return modulo_; }
+    auto first() const { return bounds_.first;  }
+    auto last () const { return bounds_.second; }
 
-    protected:
-      iterator (type start, type modulo) : i_ (start), modulo_(modulo) { }
-
-    private:
-      type i_;
-      type modulo_;
-   };
-
-   iterator begin() const { return begin_; }
-   iterator end()   const { return end_;   }
-
-   RakeRange (type begin=type(), type end=type(), type modulo=1) : begin_(begin, modulo), end_(end, modulo)
-   {
-       //assert (modulo > 0);
-   }
-
-private:
-   iterator begin_;
-   iterator end_;
-};
-
-
-//////////////////////////////////////////////////////////////////////////////////////////
-// only for range being a power of 2
-//////////////////////////////////////////////////////////////////////////////////////////
-class RandomRange
-{
- public:
-
-    using type = uint32_t;
-
-   class iterator
-   {
-      friend class RandomRange;
-
-    public:
-      type operator *() const { return i_; }
-      const iterator &operator ++() { i_ = uint64_t(a_*i_+b_) % n_; return *this; }
-
-      bool operator !=(const iterator &other) const { return i_ != other.i_; }
-      bool operator ==(const iterator &other) const { return not this->operator !=(other); }
-
-    protected:
-      iterator (type start, type a, type b, type n) : i_ (start), a_(a), b_(b), n_(n) { }
-
-    private:
-      type i_;
-      type a_;
-      type b_;
-      type n_;
-   };
-
-   iterator begin() const { return begin_; }
-   iterator end()   const { return end_;   }
-
-   RandomRange (type begin=type(), type end=type(), type a=1, type b=0) : begin_(begin, a,b,end-begin), end_(end, a,b,end-begin)
-   {
-   }
-
-private:
-   iterator begin_;
-   iterator end_;
+    std::pair<size_type,size_type> bounds_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -146,31 +63,19 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////////////////////
-template <>
+/** \brief Template specialization of SplitOperator for the Range type.
+ * \see bpl::SplitOperator. */
+template<>
 struct SplitOperator<bpl::Range>
 {
-    static auto split (const bpl::Range& r, std::size_t idx, std::size_t total)
+    static auto split (const bpl::Range& x, std::size_t idx, std::size_t total)
     {
-        if (total==0)  { return r; }
-        auto diff = *r.end() - *r.begin();
-//printf ("==> split Range:  idx=%d  total=%ld  diff=%ld in=[%3ld:%3ld] -> out=[%3ld:%3ld]   check=%ld\n",
-//    uint64_t(idx), uint64_t(total), uint64_t(diff), uint64_t(*r.begin()), uint64_t(*r.end()),
-//    uint64_t(*r.begin() + diff * idx / total),
-//    uint64_t(*r.begin() + diff * (idx + 1) / total),
-//    uint64_t(123456789)
-//);
+        size_t i0 = x.size() * (idx+0) / total;
+        size_t i1 = x.size() * (idx+1) / total;
 
-        return bpl::Range (*r.begin() + diff * idx / total, *r.begin() + diff * (idx + 1) / total);
+        return bpl::Range (x.first() + i0, x.first() + i1);
     }
-};
 
-//////////////////////////////////////////////////////////////////////////////////////////
-template <>
-struct SplitOperator<bpl::RakeRange>
-{
-    static auto split (const bpl::RakeRange& r, std::size_t idx, std::size_t total)
-    {
-        if (total==0)  { return r; }
-        return bpl::RakeRange (*r.begin()+idx, *r.end(), total);
-    }
+    static auto split_view (const bpl::Range& x, std::size_t idx, std::size_t total)
+    {  return split (x, idx, total);  }
 };

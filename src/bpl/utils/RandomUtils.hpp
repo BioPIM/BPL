@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2025
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -15,6 +15,10 @@
 namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 
+/** Get a random permutation of integers in [1..nbitems]
+ * \param nbitems: the size of the permutation
+ * \return the permutation as a std::vector of integers.
+ */
 template<typename T>
 auto get_random_permutation (size_t nbitems)
 {

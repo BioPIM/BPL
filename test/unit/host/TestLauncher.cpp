@@ -444,10 +444,7 @@ static constexpr bool concepts_aux (ARGS&&... args)
 
 TEST_CASE ("Concepts", "[Launcher]" )
 {
-    auto r { RangeInt(1,10) };
-
-    // The following should not compile because of 'runnable' concept failure
-    // Launcher<ArchMulticore>().run<SplitRangeInt> (split<ArchUpmem::Tasklet>(r));
+    auto r { Range(1,10) };
 
     REQUIRE (false == concepts_aux<ArchMulticore> (split<ArchUpmem::Tasklet>(r)));
     REQUIRE (true  == concepts_aux<ArchUpmem>     (split<ArchUpmem::Tasklet>(r)));

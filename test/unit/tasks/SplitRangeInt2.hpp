@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <bpl/utils/RangeInt.hpp>
+#include <bpl/utils/Range.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -16,7 +16,7 @@ struct SplitRangeInt
 {
     USING(ARCH);
 
-    auto operator() (RangeInt range)
+    auto operator() (Range range)
     {
         return accumulate (range, uint64_t(0));
     }

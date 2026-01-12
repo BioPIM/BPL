@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -20,7 +20,7 @@
 namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Manage memory addresses as a tree.
+/** \brief Manage memory addresses as a tree.
  *
  * The idea is to insert items (like memory addresses) that can be retrieved later
  * either via operator[] or via begin/end iterators. These items are located in the
@@ -44,14 +44,17 @@ namespace bpl  {
  * The choice is made to use two of the NBITEMS_PER_BLOCK items of a leaf block,
  * one for storing the address of the previous leaf and one for storing the address
  * of the next leaf.
+ *
+ * \param ALLOCATOR: allocator for "dynamic allocation", for instance in MRAM
+ * \param NBITEMS_PER_BLOCK_LOG2: number of items (log2) of blocks per node
+ * \param MAX_MEMORY_LOG2: size in bytes (log2) that an instance of MemoryTree should take in the execution stack.
  */
 template <typename ALLOCATOR, int NBITEMS_PER_BLOCK_LOG2, int MAX_MEMORY_LOG2, typename address_t = typename ALLOCATOR::address_t>
 class MemoryTree
 {
 private:
 
-    constexpr static uint64_t pow (uint8_t base, uint8_t exp)
-    {
+    constexpr static uint64_t pow (uint8_t base, uint8_t exp)  {
         uint64_t res = 1;  for (uint8_t n=1; n<=exp; ++n)  { res *= base; }
         return res;
     }
@@ -65,7 +68,7 @@ public:
     using size_type  = uint32_t;
     using depth_t    = int8_t;
 
-    // Max memory (ie. stack memory) available for an instance of MemoryTree. This is only an
+    /** Max memory (ie. stack memory) available for an instance of MemoryTree. */
     static constexpr uint32_t MAX_MEMORY = 1ULL << MAX_MEMORY_LOG2;
 
     static constexpr uint8_t NBITEMS_PER_BLOCK      = 1ULL << NBITEMS_PER_BLOCK_LOG2;
@@ -80,33 +83,39 @@ public:
     static constexpr size_t IDX_BLOCK_PREVIOUS = NBITEMS_PER_BLOCK+0;
     static constexpr size_t IDX_BLOCK_NEXT     = NBITEMS_PER_BLOCK+1;
 
-    // We estimate the max depth of the tree according to the max memory we can use.
-    // Note that we take into account only the nodes of a path leading from the root to one leaf.
     static constexpr depth_t LEVEL_MAX_THRESHOLD = 6;
     static constexpr depth_t LEVEL_MAX_FULL = 2 + MAX_MEMORY / (NBITEMS_PER_BLOCK*sizeof(address_t));
+
+    /** Estimate of the max depth of the tree according to the max memory we can use.
+     * Note that we take into account only the nodes of a path leading from the root to one leaf.
+     */
     static constexpr depth_t LEVEL_MAX      = LEVEL_MAX_FULL<=LEVEL_MAX_THRESHOLD ? LEVEL_MAX_FULL : LEVEL_MAX_THRESHOLD;
 
-    // We compute the maximum number of leaves.
+    /** Maximum number of leaves. */
     static constexpr u_int64_t NBLEAVES_MAX = pow (NBITEMS_PER_BLOCK, LEVEL_MAX);
 
-    // We define that 0 will represent the leaves level
+    /** 0 represents the leaves level */
     static constexpr depth_t LEAF_LEVEL = 0;
 
     // A few checks.
     static_assert (LEVEL_MAX >= 1);
 
+    /** Default constructor. */
     constexpr MemoryTree()
     {
         // we reset the counts for each possible depth.
         for (size_t i=0; i<sizeof(countsPerDepth_)/sizeof(countsPerDepth_[0]); i++)  { countsPerDepth_[i] = 0; }
     }
 
+    /** No copy constructor. */
     MemoryTree (const MemoryTree&  other) = delete;
     MemoryTree (      MemoryTree&& other) = default;
 
+    /** No assignment operator. */
     MemoryTree& operator= (const MemoryTree&  other) = delete;
     MemoryTree& operator= (      MemoryTree&& other) = default;
 
+    /** Destructor. Note that the memory might not be release according to the feature of the allocator. */
     constexpr ~MemoryTree()
     {
         //DEBUG_MEMTREE ("[MemoryTree::~MemoryTree] this: 0x%lx  #stack=%ld  depth=%d \n", this, stack_.size(), depth());
@@ -131,6 +140,8 @@ public:
 
     /** Insert a new address as a leaf of the tree. When the current block is full, the tree is re-organized.
      * After an insertion, the tree can be in a "dirty" state and a flush is potentially processed by other methods.
+     * \param a: address to be added to the tree.
+     * \return the inserted address.
      */
     auto insert (address_t a)
     {
@@ -164,6 +175,9 @@ public:
     }
 
     /** Insert 'nbitems' nodes every 'size' bytes, starting at address 'start'
+     * \param start: starting address
+     * \param nbitems: number of items to be inserted
+     * \param size: size of each item to be inserted.
      */
     auto insert (address_t start, size_t nbitems, size_t size)
     {
@@ -177,6 +191,8 @@ public:
     /** Access to a specific item given its index.
      * We do a traversal of the tree from the root to the target leaf, so we need to ask in memory the children of a node
      * but we can avoid some memory accesses in a few cases.
+     * \param idx: index of the item to be retrieved
+     * \return the retrieved item
      */
     address_t operator[] (size_t idx)
     {
@@ -269,7 +285,8 @@ public:
     /** "ALMOST" Depth First Search of the tree.
      *  WARNING!!! this is not a "true" DFS, but the important fact is that leaves will
      *  be iterated in the same order than the one used for their insertion into the tree.
-     *  The provided functor is called for each node. */
+     *  The provided functor is called for each node.
+     *  \param fct: functor called for each item. */
     template<typename FCT>  void DFS (FCT fct)
     {
         // Nothing to do for an empty tree.
@@ -280,8 +297,12 @@ public:
     }
 
     ////////////////////////////////////////////////////////////////////////////////
-    // iterate each value of the stack with its associated depth
-    template<typename FCT>  auto iterate_stack (FCT fct)
+    /**  Iterate each value of the stack with its associated depth
+     * \param fct: functor called with (1) the depth in the stack and (2) the
+     * current item
+     */
+    template<typename FCT>
+    auto iterate_stack (FCT fct)
     {
         bool result = true;
 
@@ -315,14 +336,14 @@ public:
      * \return Nodes number. */
     size_type size()  const { return nbLeaves_; }
 
-    /** */
+    /** \return maximum number of leaves possible for this memory tree. */
     uint64_t max_size () const { return NBLEAVES_MAX; }
 
     /** Depth of the tree.
      * \return the depth. */
     depth_t depth() const { return maxDepth_ ; }
 
-    /** For debug purpose.
+    /** Debug utility.
      */
     void debug(const char* txt="tree") const
     {
@@ -348,6 +369,7 @@ public:
         DEBUG_MEMTREE ("\n");
     }
 
+    /** Debug utility. */
     auto dumpstack (const char* msg="dumpstack")
     {
         DEBUG_MEMTREE ("[%s]  maxDepth_: %ld  #stack: %ld\n", msg, uint64_t(maxDepth_),  uint64_t(stack_.size()));
@@ -365,16 +387,20 @@ public:
         }
     }
 
+    /** Update the counts for the different depths, starting by the leaves (ie. depth==0)
+     * \param check: the functor telling whether the current depth has to be merged or not.
+     */
     template<typename CHECK>
     void flush (CHECK check)
     {
-        // we update the counts for the different depths, starting by the leaves (ie. depth==0)
         for (depth_t depth=LEAF_LEVEL; depth<=maxDepth_; depth++)
         {
             if (check(depth)) {  merge (depth);  }
         }
     }
 
+    /** Normalization of the tree.
+     */
     void normalize ()
     {
         if (isDirty_)
@@ -384,14 +410,15 @@ public:
         }
     }
 
-    /** Facade method for optimization. */
+    /** Facade method for optimization. See the overload with the IsLeaf boolean */
     auto merge (depth_t depth)
     {
         if (depth==LEAF_LEVEL)  { merge(depth, true ); }
         else                    { merge(depth, false); }
     }
 
-    /** Allocate some memory and copy a block into it. The tree structure is also updated. */
+    /** Allocate some memory and copy a block into it.
+     * The tree structure is also updated. */
     auto merge (depth_t depth, bool IsLeaf)
     {
         constexpr int32_t  NbItemsToWrite = std::max(LEAVES_NBITEMS_PER_BLOCK, NBITEMS_PER_BLOCK);
@@ -482,6 +509,10 @@ public:
     }
 
     ////////////////////////////////////////////////////////////////////////////////
+    /** Iteration of the leaves of the tree.
+     * \param FORWARD: true:=forward iteration, backward otherwise
+     * \param fct: functor called for each node to be iterated.
+     * \*/
     template<bool FORWARD, typename FCT>
     auto iterate_leaves (FCT fct)
     {
@@ -491,12 +522,17 @@ public:
         else                    { iterate (rbegin(), rend()); }
     }
 
+    /** Iteration over the leaves of the tree.
+     * \param fct: functor called over each leaf of the tree.
+     */
     template<typename FCT>  auto leaves (FCT fct)
     {
         return iterate_leaves<true> (fct);
     }
 
     ////////////////////////////////////////////////////////////////////////////////
+    /** Iterator class over the leaves of a tree (forward or backward)
+     */
     template<bool FORWARD>
     struct leaves_iterator_generic
     {
@@ -604,8 +640,6 @@ public:
 
                 DEBUG_MEMTREE ("[MemoryTree::configure_forward]  DUMP STACK: \n");
 
-
-
                 i      = 0;
                 end    = nbleaves % NBITEMS_PER_BLOCK;
                 next   = 0;
@@ -690,6 +724,8 @@ public:
     auto rend  ()  { return size(); }
 
     ////////////////////////////////////////////////////////////////////////////////
+    /** Stack structure which memorizes addresses at different tree depth.
+     */
     struct stack
     {
         void insert (address_t a)
@@ -731,7 +767,8 @@ public:
             + LEAVES_NBITEMS_PER_BLOCK           // for leaves
             + NBITEMS_PER_BLOCK + 1              // extra room after tail
         > items_ = {};
-    };
+
+    }; // end of struct stack
 
     size_t getStackLeavesNb() const { return countsPerDepth_[LEAF_LEVEL]; }
 
@@ -740,6 +777,8 @@ public:
         return getStackLeavesNb()==0 ? nullptr : stack_.get(-countsPerDepth_[LEAF_LEVEL]);
     }
 
+    /** Depth first search of the tree. Relies on the stack structure.
+     */
     template<bool REVERSED, typename FCT>  void DFS_iter (FCT fct, depth_t depth, address_t node)
     {
         auto swap = [] (address_t& a, address_t& b)  {  address_t c(a); a=b; b=c; };

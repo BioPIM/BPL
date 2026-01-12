@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -31,10 +31,14 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Generic definition
+/** \brief struct that overloads operator() by potentially transforming
+ * the incoming result through a reduce process.
+ *
+ * Generic definition
+ */
 template<bool,class TASK>  struct Reduce {};
 
-// Specialization 1: reduce the partial results by using 'reduce' method
+/** Specialization 1: reduce the partial results by using 'reduce' method */
 template<class TASK>  struct Reduce<true,TASK>
 {
     using Result_t = return_t <decltype(&TASK::operator())>;
@@ -48,7 +52,7 @@ template<class TASK>  struct Reduce<true,TASK>
     }
 };
 
-// Specialization 2: return the partial results
+/** Specialization 2: return the partial results */
 template<class TASK>  struct Reduce<false,TASK>
 {
     using Result_t = return_t <decltype(&TASK::operator())>;

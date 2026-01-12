@@ -6,7 +6,7 @@
 
 #include <common.hpp>
 
-#include <bpl/utils/RangeInt.hpp>
+#include <bpl/utils/Range.hpp>
 #include <bpl/utils/tag.hpp>
 
 using namespace bpl;
@@ -57,18 +57,18 @@ TEST_CASE ("IntegerType", "[Misc]" )
 //////////////////////////////////////////////////////////////////////////////
 void RangeInt_aux (size_t i0, size_t i1, size_t nbSplits)
 {
-    auto range = RangeInt (i0,i1);
+    auto range = Range (i0,i1);
 
     size_t checkVal = i0;
     size_t checkNb  = 0;
 
     for (size_t i=0; i<nbSplits; i++)
     {
-        auto subrange = SplitOperator<RangeInt>::split (range, i, nbSplits);
+        auto subrange = SplitOperator<Range>::split (range, i, nbSplits);
 
         for (auto k : subrange)
         {
-            REQUIRE (k == checkVal);
+            REQUIRE ((size_t)k == checkVal);
             checkNb++;
             checkVal++;
         }
