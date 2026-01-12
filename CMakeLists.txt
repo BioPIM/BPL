@@ -14,8 +14,8 @@ project (org_pim_bpl VERSION 0.1 DESCRIPTION "PIM Library")
 ################################################################################
 # The version number.
 ################################################################################
-SET (BPL_VERSION_MAJOR 0)
-SET (BPL_VERSION_MINOR 1)
+SET (BPL_VERSION_MAJOR 1)
+SET (BPL_VERSION_MINOR 0)
 SET (BPL_VERSION_PATCH 0)
 
 ################################################################################
@@ -25,9 +25,9 @@ SET (BPL_VERSION_PATCH 0)
 ################################################################################
 #  UNIT TESTS GENERATION 
 ################################################################################
-IF (EXISTS "${PROJECT_SOURCE_DIR}/test")
-	ADD_SUBDIRECTORY (test)
-ENDIF()
+#IF (EXISTS "${PROJECT_SOURCE_DIR}/test")
+#	ADD_SUBDIRECTORY (test)
+#ENDIF()
 
 ################################################################################
 #  DOCUMENTATION 
