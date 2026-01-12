@@ -25,9 +25,9 @@ SET (BPL_VERSION_PATCH 0)
 ################################################################################
 #  UNIT TESTS GENERATION 
 ################################################################################
-#IF (EXISTS "${PROJECT_SOURCE_DIR}/test")
-#	ADD_SUBDIRECTORY (test)
-#ENDIF()
+IF (EXISTS "${PROJECT_SOURCE_DIR}/test")
+	ADD_SUBDIRECTORY (test)
+ENDIF()
 
 ################################################################################
 #  DOCUMENTATION 
