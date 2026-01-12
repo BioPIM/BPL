@@ -15,7 +15,9 @@
 namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 
-/** The purpose for this structure was initially to make it possible to have
+/** \brief Pseudo-exceptions for DPU binaries
+ *
+ * The purpose for this structure was initially to make it possible to have
  * something like exceptions from the DPU binaries. It is not possible to
  * strictly have exceptions from DPU since the source code has to be compiled
  * with a c++ compiler with option -fno-exceptions. However, it seemed possible

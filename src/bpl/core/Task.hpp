@@ -31,7 +31,8 @@ struct get_crtp_template<TASK<ARCH,NB>>
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-/**  Base class for the CRTP.
+/**  \brief Base class for the CRTP for tasks.
+ *
  * This class factorizes some features for all kinds of tasks.
  * \param DERIVED: type holding the task type.
  */
@@ -107,7 +108,7 @@ template<typename DERIVED> struct TaskBase
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-/** Class that provides runtime information to the end user.
+/** \brief Class that provides runtime information to the end user.
  *
  * When creating a new task, the developer has the possibility to inherit from
  * bpl::Task in order to get some useful information such as the process unit

@@ -15,7 +15,7 @@
 namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Sequence holding a fixed size of characters.
+/** \brief Sequence holding a fixed size of characters.
  *
  * It provides an API for iterating the characters.
  *

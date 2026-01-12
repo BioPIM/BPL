@@ -14,7 +14,7 @@
 namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Class that emulates a genomics bank, ie. something holding sequences of
+/** \brief Class that emulates a genomics bank, ie. something holding sequences of
  * characters.
  *
  * Such a bank is created during a call to the constructor by using a generator

@@ -19,7 +19,7 @@ namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Pool of Launcher objects for a given architecture.
+/** \brief Pool of Launcher objects for a given architecture.
  *
  * Such a pool is useful when one has tasks to be run asynchronously: one just submit
  * a task to the pool and the task will be executed as soon as a launcher of the pool
