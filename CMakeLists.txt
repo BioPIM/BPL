@@ -32,9 +32,9 @@ ENDIF()
 ################################################################################
 #  DOCUMENTATION 
 ################################################################################
-#IF (EXISTS "${PROJECT_SOURCE_DIR}/doc")
-#    ADD_SUBDIRECTORY(doc EXCLUDE_FROM_ALL)
-#ENDIF()
+IF (EXISTS "${PROJECT_SOURCE_DIR}/doc")
+    ADD_SUBDIRECTORY(doc EXCLUDE_FROM_ALL)
+ENDIF()
 
 ################################################################################
 #  EXPORT 
