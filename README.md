@@ -153,7 +153,7 @@ and the way to use it:
 int main() {
     std::vector<uint32_t> v;  
     for (size_t i=1; i<=1<<16; i++)  {  v.push_back(i);  }
-    Launcher<ArchUpmem> launcher {1_dpu};
+    bpl::Launcher<bpl::ArchUpmem> launcher {1_dpu};
     printf ("checksum: %ld\n", launcher.run<VectorChecksum>(split(v)));
 }
 ```
@@ -173,7 +173,7 @@ In addition, it is possible with the BPL to run our algorithm on a different arc
 int main() {
     std::vector<uint32_t> v;  
     for (size_t i=1; i<=1<<16; i++)  {  v.push_back(i);  }
-    Launcher<ArchMulticore> launcher {16_thread};
+    bpl::Launcher<bpl::ArchMulticore> launcher {16_thread};
     printf ("checksum: %ld\n", launcher.run<VectorChecksum>(split(v)));
 }
 ```
