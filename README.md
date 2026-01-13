@@ -147,14 +147,14 @@ and the way to use it:
 
 ```c++
 #include <vector>
-#include <cstdio>
+#include <iostream>
 #include <bpl/bpl.hpp>
 #include <tasks/VectorChecksum.hpp>
 int main() {
     std::vector<uint32_t> v;  
     for (size_t i=1; i<=1<<16; i++)  {  v.push_back(i);  }
     bpl::Launcher<bpl::ArchUpmem> launcher {1_dpu};
-    printf ("checksum: %ld\n", launcher.run<VectorChecksum>(split(v)));
+    std::cout << "checksum: " << launcher.run<VectorChecksum>(split(v)) << "\n";
 }
 ```
 
@@ -167,14 +167,14 @@ In addition, it is possible with the BPL to run our algorithm on a different arc
 
 ```c++
 #include <vector>
-#include <cstdio>
+#include <iostream>
 #include <bpl/bpl.hpp>
 #include <tasks/VectorChecksum.hpp>
 int main() {
     std::vector<uint32_t> v;  
     for (size_t i=1; i<=1<<16; i++)  {  v.push_back(i);  }
     bpl::Launcher<bpl::ArchMulticore> launcher {16_thread};
-    printf ("checksum: %ld\n", launcher.run<VectorChecksum>(split(v)));
+    std::cout << "checksum: " << launcher.run<VectorChecksum>(split(v)) << "\n";
 }
 ```
 The only difference from the previous code is the definition of the `Launcher`, for which the architecture type has been changed.
