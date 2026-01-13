@@ -1,57 +1,165 @@
 
-# BPL: a C++ library that eases code development for Process In Memory architecture.
+# BPL: A C++ library that simplifies code development for Process-in-Memory architectures.
 
 ## Introduction
 
-This project aims at designing a C++ library that eases Process In Memory development. The proposed API should provide abstractions that make PIM development similar to more conventional development (to an extent), for instance multithreading development. Unit and benchmark tests will be written during the library development.
+This project aims to design a C++ library that simplifies development for Process-in-Memory (PIM) architectures. The proposed API will provide abstractions that make PIM programming more similar—up to a certain extent—to conventional development paradigms, such as multithreaded programming. Unit tests and benchmark tests will be developed alongside the library.
 
-As a gold standard, a multicore implementation will also be provided, which will make it possible to compare results for both PIM and multicore architectures.
+As a reference baseline, a multicore implementation will also be provided, enabling performance and result comparisons between PIM and multicore architectures.
 
-A specific implementation of this library will be provided for the PIM architecture designed by UPMEM. In order to be sure of the behavior of the library, unit tests using the library and their conterpart using low-level UPMEM API will be written; the same thing could be done as well for benchmark tests.
+A specific implementation of this library will target the PIM architecture designed by UPMEM. To ensure the correctness of the library’s behavior, unit tests implemented using the library will be compared against equivalent implementations using the low-level UPMEM API. The same approach may also be applied to benchmark tests.
 
 ## Build instructions
 
-This project uses CMake so the conventional build instructions are as usual:
+This project uses CMake, so the build instructions follow standard conventions:
 1. `mkdir build`
 2. `cd build`
 3. `cmake ..`
 
-Then you can launch `make help` to know all available targets.
+You can then run `make help` to list all available targets.
 
 ## Hello World !
 
-From the `build` directory, you can run `make buildHelloWorld` in order to generate an archive named `helloworld.tar.gz` that will provide a standalone "Hello World" project using the library.
+From the `build` directory, you can run `make buildHelloWorld` to generate an archive named `helloworld.tar.gz` , which provides a standalone “Hello World” project using the library.
 
-Once the project is unarchived, you can follow the instructions in the README file.
+Once the archive is extracted, you can follow the instructions in the README file.
 
 ## Library overview
 
-The project has the following directories structure:
-- doc: documentation of the library (doxygen for the source code, slides explaining the library)
-- export: holds the "Hello World" project
-- scripts: a few scripts for day-by-day project management
-- snippets: code snippets used for testing some technical points not directly connected to the global project.
-- src: holds the source code for the library
-- test: tests for the library (unit/functional/benchmark tests)
-- thirdparty: some thirdparties useful for the library
+The project has the following directory structure:
+- **doc**: Library documentation (Doxygen-generated source documentation, slides explaining the library)
+- **export**: Contains the “Hello World” project
+- **scripts**: Scripts for day-to-day project management
+- **src**: Source code of the library
+- **test**: Library tests (unit, functional, and benchmark tests)
 
 ## Philosophy of the library 
 
-Actually, the initial purpose of this library is to ease the development for the PIM architecture provided by [UPMEM](https://www.upmem.com/). UPMEM provides a [SDK](https://sdk.upmem.com/2023.1.0/index.html) implemented for different languages (C/C++, Java, Python).
+The initial purpose of this library is to simplify development for the Process-in-Memory (PIM) architecture provided by [UPMEM](https://www.upmem.com/). 
+UPMEM offers an [SDK](https://sdk.upmem.com/2023.1.0/index.html) for several programming languages, including C/C++, Java, and Python.
 
-From the developer's point of view, using the power of the PIM architecture through this SDK may be unfamiliar. In particular:
-- low-level code for communication between the CPU and the PIM components has to be systematically written, which makes the code less readable and more error-prone
-- two programs have to be written: one for the PIM part (the one that actually runs the targeted task) and one for the "Host" part that feeds the PIM components with the data to be processed by the targeted task
+From a developer’s perspective, leveraging the capabilities of the PIM architecture through this SDK can be unfamiliar and challenging. In particular:
+- Low-level code for communication between the CPU and the PIM components must be written explicitly, which reduces code readability and increases the likelihood of errors.
+- Two separate programs are required: one for the PIM side (which executes the target computation) and one for the host side, which supplies the PIM components with the data to be processed.
 
-Since the underlying idea of using PIM architecture is to speedup some tasks, it would be interesting to provide a PIM programming model close to a multithreading approach that is well understood by the community. So, the BPL library should be able to:
-1. hide as much as possible some tedious technical points described above
-2. mimic a multithreading programming model
+Since the main motivation for using PIM architectures is to accelerate certain workloads, it is desirable to offer a PIM programming model that is closer to the well-understood multithreading paradigm. Accordingly, the BPL library aims to:
+1. Hide, as much as possible, the tedious technical aspects described above.
+2. Mimic a multithreading programming model.
 
-These two points reflects the way the library will be implemented: first, an attempt to hide the communication exchanges between the hosts and the PIM components will be designed and implemented. Then, tools for easing parallelization on PIM will be developped. Note that even if these two points are related, they can be addressed separately. 
+These goals shape the library’s implementation strategy. First, mechanisms will be designed and implemented to abstract and hide the communication between the host and the PIM components. Then, higher-level tools to simplify parallelization on PIM architectures will be developed. Although these two aspects are related, they can be addressed independently.
 
-**Important point:**  as for multicore architecture, PIM architecture provides a way to speedup algorithms. However, parallelizing a specific algorithm is not an easy task in general and there exists no automatic procedure to parallelize an algorithm. This means that  the BPL library will not automagically parallelize an algorithm. It can provide some tools to ease this parallelization for a PIM architecture but in the end, the developper will still have to think how design her/his algorithm to make it work on an architecture allowing parallelization such as PIM or multicore.
+**Important point:**  As with multicore architectures, PIM architectures provide a means to accelerate algorithms. However, parallelizing a specific algorithm is generally a difficult task, and there is no automatic procedure to parallelize an arbitrary algorithm. Consequently, the BPL library will not automatically parallelize algorithms.
+Instead, it provides tools to facilitate parallelization on PIM architectures. Ultimately, the developer must still design the algorithm with parallel execution in mind, adapting it to architectures that support parallelism, such as PIM or multicore systems.
 
+## Example
 
+Here is a simple example of calculating the checksum of a buffer, as this is an example provided in the UPMEM documentation. 
 
+For the the UPMEM SDK version, here is the [the DPU part](https://sdk.upmem.com/2023.2.0/032_DPURuntimeService_HostCommunication.html#memory-interface) (with all comments removed):
+
+```c
+#include <mram.h>
+#include <stdbool.h>
+#include <stdint.h>
+#define CACHE_SIZE 256
+#define BUFFER_SIZE (1 << 16)
+__mram_noinit uint8_t buffer[BUFFER_SIZE];
+__host uint32_t checksum;
+int main() {
+  __dma_aligned uint8_t local_cache[CACHE_SIZE];
+  checksum = 0;
+  for (unsigned int bytes_read = 0; bytes_read < BUFFER_SIZE;) {
+    mram_read(&buffer[bytes_read], local_cache, CACHE_SIZE);
+    for (unsigned int byte_index = 0; (byte_index < CACHE_SIZE) 
+         && (bytes_read < BUFFER_SIZE); byte_index++, bytes_read++) {
+      checksum += (uint32_t)local_cache[byte_index];
+    }
+  }
+  return checksum;
+}
+```
+and [the host part](https://sdk.upmem.com/2023.2.0/032_DPURuntimeService_HostCommunication.html#rank-transfer-interface)
+
+```c
+#include <dpu.h>
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#ifndef DPU_BINARY
+#define DPU_BINARY "trivial_checksum_example"
+#endif
+#define BUFFER_SIZE (1 << 16)
+void populate_mram(struct dpu_set_t set, uint32_t nr_dpus) {
+  struct dpu_set_t dpu;
+  uint32_t each_dpu;
+  uint8_t *buffer = malloc(BUFFER_SIZE * nr_dpus);
+  DPU_FOREACH(set, dpu, each_dpu) {
+    for (int byte_index = 0; byte_index < BUFFER_SIZE; byte_index++) {
+      buffer[each_dpu * BUFFER_SIZE + byte_index] = (uint8_t)byte_index;
+    }
+    buffer[each_dpu * BUFFER_SIZE] += each_dpu; 
+    DPU_ASSERT(dpu_prepare_xfer(dpu, &buffer[each_dpu * BUFFER_SIZE]));
+  }
+  DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "buffer", 0, BUFFER_SIZE, 
+  	DPU_XFER_DEFAULT));
+  free(buffer);
+}
+void print_checksums(struct dpu_set_t set, uint32_t nr_dpus) {
+  struct dpu_set_t dpu;
+  uint32_t each_dpu;
+  uint32_t checksums[nr_dpus];
+  DPU_FOREACH(set, dpu, each_dpu) {
+    DPU_ASSERT(dpu_prepare_xfer(dpu, &checksums[each_dpu]));
+  }
+  DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_FROM_DPU, "checksum", 0, 
+  	sizeof(uint32_t), DPU_XFER_DEFAULT));
+  DPU_FOREACH(set, dpu, each_dpu) {
+    printf("[%u] checksum = 0x%08x\n", each_dpu, checksums[each_dpu]);
+  }
+}
+int main() {
+  struct dpu_set_t set, dpu;
+  DPU_ASSERT(dpu_alloc(DPU_ALLOCATE_ALL, NULL, &set));
+  DPU_ASSERT(dpu_load(set, DPU_BINARY, NULL));
+  DPU_ASSERT(dpu_get_nr_dpus(set, &nr_dpus));
+  populate_mram(set, nr_dpus);
+  DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
+  print_checksums(set, nr_dpus);
+  DPU_ASSERT(dpu_free(set));
+  return 0;
+}
+```
+
+Now, using the BPL API, the source code for the algorithm is:
+
+```c++
+#include <bpl/core/Task.hpp>
+template<class ARCH>
+struct VectorChecksum  {
+    USING(ARCH);
+    auto operator() (vector<uint32_t> const& v)  {
+        return accumulate(v.begin(), v.end(), uint64_t{0});
+    }
+    static uint64_t reduce (uint64_t a, uint64_t b)  { return a+b; }
+};
+```
+and the way to use it:
+
+```c++
+#include <vector>
+#include <cstdio>
+#include <bpl/bpl.hpp>
+int main() {
+    std::vector<uint32_t> v;  
+    for (size_t i=1; i<=1<<16; i++)  {  v.push_back(i);  }
+    Launcher<ArchUpmem> launcher {1_dpu};
+    printf ("checksum: %ld\n", launcher.run<VectorChecksum>(split(v)));
+}
+```
+
+So we can see a significant reduction in code size with the BPL. Moreover, code written using the BPL 
+is also much more readable than with the UPMEM SDK. Indeed, reading the BPL code makes it immediately
+clear that the task is to compute the checksum of a vector, which is far less obvious in the UPMEM SDK version, 
+where all the low-level SDK calls reduce overall readability.
 
 
