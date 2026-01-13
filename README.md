@@ -55,6 +55,8 @@ Instead, it provides tools to facilitate parallelization on PIM architectures. U
 
 Here is a simple example of calculating the checksum of a buffer, as this is an example provided in the UPMEM documentation. 
 
+### Using the UPMEM SDK
+
 For the the UPMEM SDK version, here is the [the DPU part](https://sdk.upmem.com/2023.2.0/032_DPURuntimeService_HostCommunication.html#memory-interface) (with all comments removed):
 
 ```c
@@ -129,6 +131,8 @@ int main() {
   return 0;
 }
 ```
+
+### Using the BPL
 
 Now, using the BPL API, the source code for the algorithm is:
 
