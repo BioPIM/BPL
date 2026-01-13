@@ -25,8 +25,10 @@ SET (BPL_VERSION_PATCH 0)
 ################################################################################
 #  UNIT TESTS GENERATION 
 ################################################################################
-IF (EXISTS "${PROJECT_SOURCE_DIR}/test")
-	ADD_SUBDIRECTORY (test)
+IF (NOT DEFINED SKIP_TESTS)
+	IF (EXISTS "${PROJECT_SOURCE_DIR}/test")
+		ADD_SUBDIRECTORY (test)
+	ENDIF()
 ENDIF()
 
 ################################################################################
