@@ -149,6 +149,7 @@ and the way to use it:
 #include <vector>
 #include <cstdio>
 #include <bpl/bpl.hpp>
+#include <tasks/VectorChecksum.hpp>
 int main() {
     std::vector<uint32_t> v;  
     for (size_t i=1; i<=1<<16; i++)  {  v.push_back(i);  }
@@ -168,6 +169,7 @@ In addition, it is possible with the BPL to run our algorithm on a different arc
 #include <vector>
 #include <cstdio>
 #include <bpl/bpl.hpp>
+#include <tasks/VectorChecksum.hpp>
 int main() {
     std::vector<uint32_t> v;  
     for (size_t i=1; i<=1<<16; i++)  {  v.push_back(i);  }

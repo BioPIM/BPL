@@ -272,7 +272,7 @@ TEST_CASE ("is_splitable", "[Split]" )
     static_assert (is_splitable_v<std::span<int>>      == true);
     static_assert (is_splitable_v<std::pair<int,int>>  == true);
 
-    using t1 = ::details::SplitProxy <::details::DummyLevel, SplitKind::CONT, std::pair<int,int>>;
+    using t1 = bpl::impl::SplitProxy <bpl::impl::DummyLevel, SplitKind::CONT, std::pair<int,int>>;
     static_assert (is_splitable_v<t1> == true);
 
     static_assert (is_splitable_v<foo<char,int,long>>  == true);
@@ -446,7 +446,7 @@ TEST_CASE ("VectorSplitOverload", "[Split]" )
 
 //////////////////////////////////////////////////////////////////////////////
 template <>
-struct SplitOperator<MyLong> {
+struct bpl::SplitOperator<MyLong> {
     static decltype(auto) split     (MyLong const& t, std::size_t idx, std::size_t total) {  return t; }
     static decltype(auto) split_view(MyLong const& t, std::size_t idx, std::size_t total) {  return split(t, idx, total); }
 };

@@ -233,9 +233,9 @@ static const std::size_t ARGS_SIZE   = (64-2) * 1024*1024;
 
 // This is the main buffer holding the serialized information from the host.
 __mram_noinit  uint8_t __args__   [ARGS_SIZE];                              // HOST -> DPU
-__host MetadataInput   __metadata_input__;                                  // HOST -> DPU
-__dma_aligned MetadataOutput  __metadata_output__;                          // DPU  -> HOST (tmp version in WRAM)
-__mram_noinit MetadataOutput __metadata_output__mram__{};                   // DPU -> HOST
+__host bpl::MetadataInput   __metadata_input__;                                  // HOST -> DPU
+__dma_aligned bpl::MetadataOutput  __metadata_output__;                          // DPU  -> HOST (tmp version in WRAM)
+__mram_noinit bpl::MetadataOutput __metadata_output__mram__{};                   // DPU -> HOST
 
 ////////////////////////////////////////////////////////////////////////////////
 // MRAM allocator
@@ -280,7 +280,7 @@ void banner (const char* msg)
 #ifdef WITH_PERFCOUNTER 
     struct Perf
     {
-        using type = typename TimeStats::value_type;
+        using type = typename bpl::TimeStats::value_type;
         static type init  () { return perfcounter_config(COUNT_CYCLES, true); }
         static type get   () { return perfcounter_get(); }
         static type since (type prev) 
@@ -574,7 +574,7 @@ int main()
             // We may have to split the current argument, one split per tasklet
             if (level>=3)  
             {
-                split_assign <std::decay_t<decltype(p)>, task_t> (p, tuid, NR_TASKLETS);
+                bpl::split_assign <std::decay_t<decltype(p)>, task_t> (p, tuid, NR_TASKLETS);
             }
             
             idx++;
@@ -774,7 +774,7 @@ int main()
 
     if (tuid==0)  
     {
-        mram_write(&__metadata_output__, &__metadata_output__mram__, sizeof(MetadataOutput));
+        mram_write(&__metadata_output__, &__metadata_output__mram__, sizeof(bpl::MetadataOutput));
     }
     
     barrier_wait(&my_barrier);

@@ -23,11 +23,7 @@ namespace bpl {
         RAND = 2    // random split                ex: [0:5]  => [0,3,5] [1,2,4]
     };
 
-////////////////////////////////////////////////////////////////////////////////
-}
-////////////////////////////////////////////////////////////////////////////////
-
-namespace details
+namespace impl
 {
     // We define the notion of parallelization level that gathers:
     //    * a const integer
@@ -76,7 +72,7 @@ namespace details
     /** Type trait that returns the parallelization level from a type.
      * This default implementation returns 0.
      */
-    template<typename T, typename DEFAULT=details::DummyLevel>
+    template<typename T, typename DEFAULT=impl::DummyLevel>
     struct GetSplitStatus
     {
         static const int value = 0;
@@ -90,7 +86,7 @@ namespace details
     template<typename L, bpl::SplitKind K, typename T,typename DEFAULT>
     struct GetSplitStatus<SplitProxy<L,K,T>,DEFAULT>
     {
-        static const int value = SplitProxy<L,K,T>::LEVEL == details::DummyLevel::LEVEL ?
+        static const int value = SplitProxy<L,K,T>::LEVEL == impl::DummyLevel::LEVEL ?
             DEFAULT::LEVEL :
             SplitProxy<L,K,T>::LEVEL;
     };
@@ -170,7 +166,7 @@ template<typename LEVEL, typename TYPE>
 //requires (is_splitable_v<TYPE>)
 auto split (TYPE& t)
 {
-    return details::SplitProxy<LEVEL,bpl::SplitKind::CONT,TYPE> (t);
+    return impl::SplitProxy<LEVEL,bpl::SplitKind::CONT,TYPE> (t);
 }
 
 /** Method that encapsulates an incoming object of type T.
@@ -182,7 +178,7 @@ template<typename LEVEL, typename TYPE>
 //requires (is_splitable_v<TYPE>)
 auto  split (const TYPE& t)
 {
-    return details::SplitProxy<LEVEL,bpl::SplitKind::CONT,TYPE> (t);
+    return impl::SplitProxy<LEVEL,bpl::SplitKind::CONT,TYPE> (t);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -194,7 +190,7 @@ template<typename TYPE>
 //requires (is_splitable_v<TYPE>)
 auto  split (TYPE& t)
 {
-    return split<details::DummyLevel,TYPE> (t);
+    return split<impl::DummyLevel,TYPE> (t);
 }
 
 /** Method that encapsulates an incoming object of type T.
@@ -205,7 +201,7 @@ template<typename TYPE>
 //requires (is_splitable_v<TYPE>)
 auto  split (const TYPE& t)
 {
-    return split<details::DummyLevel,TYPE> (t);
+    return split<impl::DummyLevel,TYPE> (t);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -217,7 +213,7 @@ template<typename T>  struct is_splitter : std::false_type {};
 
 /** Type trait specialization in case the incoming type is a SplitProxy  */
 template<typename L, bpl::SplitKind K, typename T>
-struct is_splitter<details::SplitProxy<L,K,T>> : std::true_type {};
+struct is_splitter<impl::SplitProxy<L,K,T>> : std::true_type {};
 
 /** Type trait value's getter.  */
 template<typename T>  inline constexpr bool is_splitter_v = is_splitter<T>::value;
@@ -230,7 +226,7 @@ template<typename T>  struct remove_splitter {  using type = T;  };
 
 /** Type trait specialization in case the incoming type is a SplitProxy  */
 template<typename L, bpl::SplitKind K, typename T>
-struct remove_splitter<details::SplitProxy<L,K,T>> {  using type = T;  };
+struct remove_splitter<impl::SplitProxy<L,K,T>> {  using type = T;  };
 
 /** Type trait value's getter.  */
 template<typename T>  using remove_splitter_t = typename remove_splitter<T>::type;
@@ -259,13 +255,13 @@ void retrieveSplitStatus (uint8_t status[32])
     for (int i=0; i<32; i++)  { status[i]=0; }
 
     // https://stackoverflow.com/questions/59052742/how-to-get-index-from-fold-expression
-    int i=0;   ( (status[i] = details::GetSplitStatus<ARGS,DEFAULT>::value, i++), ...);
+    int i=0;   ( (status[i] = impl::GetSplitStatus<ARGS,DEFAULT>::value, i++), ...);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /** Type trait specialization in case the incoming type is a SplitProxy */
 template<typename LEVEL, bpl::SplitKind KIND, typename TYPE>
-struct SplitOperator<details::SplitProxy<LEVEL,KIND,TYPE>>
+struct SplitOperator<impl::SplitProxy<LEVEL,KIND,TYPE>>
 {
     /** Compute the ith partition of a given object
      * \param t : the object we want to compute the partition from
@@ -273,9 +269,13 @@ struct SplitOperator<details::SplitProxy<LEVEL,KIND,TYPE>>
      * \param total : total number of partitions
      * \return the ith partition
      */
-    static decltype(auto) split (const details::SplitProxy<LEVEL,KIND,TYPE>& t, std::size_t idx, std::size_t total)
+    static decltype(auto) split (const impl::SplitProxy<LEVEL,KIND,TYPE>& t, std::size_t idx, std::size_t total)
     {
         // We simply forward to the encapsulated object.
         return SplitOperator<TYPE>::split (t, idx, total);
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+}
+////////////////////////////////////////////////////////////////////////////////

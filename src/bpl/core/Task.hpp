@@ -137,9 +137,9 @@ template<typename ARCH, int MUTEX=1> struct Task : TaskBase<Task<ARCH,MUTEX>>
 template<typename T>
 static constexpr bool is_task_v = is_base_of_template_v<TaskBase,T>;
 
-/** Type traits telling whether a TASK type has a method 'split' for a given type T  */
-template<typename TASK,typename T>
-static constexpr bool is_custom_splitable_v = requires(const T& t, size_t idx, size_t total ) { TASK::split(t, idx, total); };
+///** Type traits telling whether a TASK type has a method 'split' for a given type T  */
+//template<typename TASK,typename T>
+//static constexpr bool is_custom_splitable_v = requires(const T& t, size_t idx, size_t total ) { TASK::split(t, idx, total); };
 
 ////////////////////////////////////////////////////////////////////////////////
 };  // end of namespace

@@ -15,7 +15,7 @@ struct MyStruct
 };
 
 template<class ARCH>
-struct SplitOperator < MyStruct<ARCH> >
+struct bpl::SplitOperator < MyStruct<ARCH> >
 {
     static auto split (const MyStruct<ARCH>& t, size_t idx, size_t total)
     {

@@ -76,7 +76,7 @@ public:
     template<typename T> struct hasSplitArgument  : std::false_type {};
 
     template<typename T>
-    requires(::details::GetSplitStatus<T,lowest_level_t>::value > 0)
+    requires(impl::GetSplitStatus<T,lowest_level_t>::value > 0)
     struct hasSplitArgument<T> : std::true_type  {};
 
     struct ArchMulticoreConfiguration  {
@@ -224,7 +224,7 @@ public:
         {
             using dtype = std::decay_t<decltype(x)>;
 
-            if constexpr (::details::GetSplitStatus<dtype,lowest_level_t>::value > 0)
+            if constexpr (impl::GetSplitStatus<dtype,lowest_level_t>::value > 0)
             {
                 return SplitOperator<dtype>::split (x, idx, nbitems);
             }

@@ -50,7 +50,7 @@ struct IntegerSequence
 
 ////////////////////////////////////////////////////////////////////////////////
 template<typename SEQUENCE>
-struct SplitOperator<IntegerSequence<SEQUENCE>>
+struct bpl::SplitOperator<IntegerSequence<SEQUENCE>>
 {
     static auto split (const IntegerSequence<SEQUENCE>& t, std::size_t idx, std::size_t total)
     {

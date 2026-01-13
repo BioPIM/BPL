@@ -189,7 +189,7 @@ public:
 
             auto ts = statistics_.produceCumulTimestamp("init", "alloc");
 
-            dpuSet_ = std::make_shared < details::dpu_set_handle_t> (cfg.kind, cfg.nbcomponents, nullptr, cfg.trace);
+            dpuSet_ = std::make_shared < impl::dpu_set_handle_t> (cfg.kind, cfg.nbcomponents, nullptr, cfg.trace);
 
             useStats_ = cfg.stats;
 
@@ -442,7 +442,7 @@ public:
     template<typename T>
     static constexpr int getSplitStatus (T&& t)
     {
-        return ::details::GetSplitStatus<std::decay_t<T>,lowest_level_t>::value;
+        return impl::GetSplitStatus<std::decay_t<T>,lowest_level_t>::value;
     }
 
     /** Prepare the input arguments into several configurations.
@@ -907,7 +907,7 @@ private:
     bpl::Statistics statistics_;
 
     /** Handle on a set made of ranks or DPUs. */
-    std::shared_ptr<details::dpu_set_handle_t> dpuSet_;
+    std::shared_ptr<impl::dpu_set_handle_t> dpuSet_;
     struct dpu_set_t& set() const { return dpuSet_->handle(); }
 
     bool reset_ = false;
