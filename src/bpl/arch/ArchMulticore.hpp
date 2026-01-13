@@ -196,7 +196,7 @@ public:
                 auto config = prepare<ARGS...>(idx,getProcUnitNumber(),std::tuple<ARGS...> {std::forward<decltype(args)>(args)...});
 
                 // we use 'apply' here to unpack the current tuple in order to feed the 'run' method of the task.
-                return bpl::apply ( [&](auto &&... args)  {  return task (std::forward<decltype(args)>(args)...);  },
+                return std::apply ( [&](auto &&... args)  {  return task (std::forward<decltype(args)>(args)...);  },
                     config
                 );
             }

@@ -30,6 +30,7 @@
 #include <bpl/utils/splitter.hpp>
 #include <bpl/utils/Statistics.hpp>
 #include <config.hpp>
+#include <filesystem>
 
 #define WITH_THREADPOOL
 
@@ -1025,7 +1026,7 @@ private:
         binariesMap_.clear();
         char* d = getenv("DPU_BINARIES_DIR");
         if (d!=nullptr) {
-            for (bpl::directory_entry entry : bpl::recursive_directory_iterator(d))  {
+            for (std::filesystem::directory_entry entry : std::filesystem::recursive_directory_iterator(d))  {
                 std::string filePath = entry.path().string();
                 std::string last_element(filePath.substr(filePath.rfind("/") + 1));
                 if (last_element.ends_with(".dpu")) {

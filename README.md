@@ -162,4 +162,17 @@ is also much more readable than with the UPMEM SDK. Indeed, reading the BPL code
 clear that the task is to compute the checksum of a vector, which is far less obvious in the UPMEM SDK version, 
 where all the low-level SDK calls reduce overall readability.
 
+In addition, it is possible with the BPL to run our algorithm on a different architecture, for example on a multicore system:
 
+```c++
+#include <vector>
+#include <cstdio>
+#include <bpl/bpl.hpp>
+int main() {
+    std::vector<uint32_t> v;  
+    for (size_t i=1; i<=1<<16; i++)  {  v.push_back(i);  }
+    Launcher<ArchMulticore> launcher {16_thread};
+    printf ("checksum: %ld\n", launcher.run<VectorChecksum>(split(v)));
+}
+```
+The only difference from the previous code is the definition of the `Launcher`, for which the architecture type has been changed.

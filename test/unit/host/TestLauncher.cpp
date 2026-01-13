@@ -56,7 +56,7 @@ static auto TestParrot (size_t nbpu, std::tuple<ARGS...>&& answer)
 {
     Launcher<ARCH> launcher;
 
-    auto results = bpl::apply ([&] (auto &&... args)
+    auto results = std::apply ([&] (auto &&... args)
     {
         return launcher.template run<TASK> (std::forward<ARGS>(args)...);
     }, answer);
