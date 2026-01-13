@@ -178,3 +178,4 @@ int main() {
 }
 ```
 The only difference from the previous code is the definition of the `Launcher`, for which the architecture type has been changed.
+On the other hans, source code written using the UPMEM SDK would be of no use for execution on a multicore architecture, requiring a complete rewrite.
