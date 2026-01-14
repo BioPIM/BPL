@@ -20,7 +20,6 @@
 #include <bpl/arch/ArchUpmemMetadata.hpp>
 #include <bpl/arch/ArchMulticore.hpp>
 #include <bpl/arch/ArchMulticoreResources.hpp>
-#include <bpl/utils/std.hpp>
 #include <bpl/utils/serialize.hpp>
 #include <bpl/utils/getname.hpp>
 #include <bpl/utils/BufferIterator.hpp>
