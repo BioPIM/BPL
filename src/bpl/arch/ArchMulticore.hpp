@@ -13,7 +13,6 @@
 #include <bpl/arch/ArchMulticoreResources.hpp>
 #include <bpl/core/Task.hpp>
 #include <bpl/utils/metaprog.hpp>
-#include <bpl/utils/std.hpp>  // for 'apply'
 #include <bpl/utils/TaskUnit.hpp>
 #include <bpl/utils/Statistics.hpp>
 #include <bpl/utils/splitter.hpp>
