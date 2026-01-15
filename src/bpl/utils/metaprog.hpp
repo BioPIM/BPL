@@ -597,6 +597,20 @@ template <class Range, class T> T accumulate (Range&& r, T init)
   return init;
 }
 
+/** Simple version of accumulate (allows to avoid to explicit begin/end iterators
+ * at call site)
+ * \return the accumulated value.
+ */
+template <class ItA, class ItB, class T> T accumulate (ItA first, ItB last, T init)
+{
+    while (first!=last)
+    {
+        init = std::move(init) + *first;
+        ++first;
+    }
+  return init;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 ////////////////////////////////////////////////////////////////////////////////
