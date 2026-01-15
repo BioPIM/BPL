@@ -14,7 +14,15 @@
 namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 
-/** */
+/** \brief Dummy architecture that doesn't refer any real architecture.
+ *
+ * This class is mainly used from the host side when one needs to retrieve
+ * type information from a task without real dependency on the arch. For
+ * instance, one could write from host side:
+ * @code
+ * typename TASK<ArchDummy>::type t;
+ * @endcode
+ */
 struct ArchDummy
 {
     using config_t = void;

@@ -42,10 +42,11 @@ struct tuple_element<N, T0, T...> {
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/** Type traits for analyzing arguments of a function signature.
+/** \brief Type traits for analyzing arguments of a function signature.
  * \param Sig: the signature to be analyzed. */
 template<class Sig> struct args;
 
+/** \brief Template specialization for a function. */
 template<class R, class...Args>
 struct args<R(Args...)> : types<Args...>
 {
@@ -53,6 +54,7 @@ struct args<R(Args...)> : types<Args...>
     template<int N> using param = tuple_element<N,Args...>;
 };
 
+/** \brief Template specialization for a member function. */
 template<class R, class O, class...Args>
 struct args<R(O::*)(Args...)> : types<Args...>
 {
@@ -60,6 +62,7 @@ struct args<R(O::*)(Args...)> : types<Args...>
     template<int N> using param = tuple_element<N,Args...>;
 };
 
+/** \brief Template specialization for a const member function. */
 template<class R, class O, class...Args>
 struct args<R(O::*)(Args...) const> : types<Args...>
 {
@@ -219,9 +222,15 @@ void for_each_in_tuple(std::tuple<Ts...> & tuple, F func)
 // https://gist.github.com/utilForever/1a058050b8af3ef46b58bcfa01d5375d
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/** Trait telling whether a type T can be constructed from an inializer list.
+ * \paramt T : the type
+ */
 template< class T, class ...Args >
 inline constexpr bool is_brace_constructible_v = requires { T {std::declval<Args>()...}; };
 
+/** \brief Type that can be converted in any type T.
+ *
+ * To be used in the context of bpl::class_fields_call. */
 struct any_type {  template<class T>   constexpr operator T(); /* non explicit */  };
 
 /** Pass all fields of a given struct/class to a function.
@@ -432,18 +441,24 @@ template<int N>  constexpr int roundUp(int numToRound)  {  return (numToRound + 
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Type trait computing log2 of an integer at compile time.
+/** \brief Type trait computing log2 of an integer at compile time.
  * \param x: the integer we want to compute its log2.
  */
 template <int x>  struct Log2    { static const int value = 1 + Log2<x/2>::value ; };
+/** \brief Template specialization for case 1 */
 template <>       struct Log2<1> { static const int value = 0 ; };
 
-// Here a specific handle when the argument is 0 -> return conventionally 0 in such a case
+/** \brief Compile time Log2 with special case 0.
+ *
+ * When the argument is 0 -> return conventionally 0 in such a case
+ */
 template <int x>  struct Log2Ext    { static const int value = Log2<x>::value ; };
+
+/** \brief Template specialization for case 0 */
 template <>       struct Log2Ext<0> { static const int value = 0 ; };
 
 ////////////////////////////////////////////////////////////////////////////////
-/** Get the index of the type in a tuple that fulfills some predicate.
+/** \brief Get the index of the type in a tuple that fulfills some predicate.
  */
 template<typename T, template<typename> class PREDICATE, bool CHECKALLFIRST>
 struct GetIndexOfFirstPredicate
@@ -451,6 +466,7 @@ struct GetIndexOfFirstPredicate
     static constexpr int value = 0;
 };
 
+/** \brief Template specialization for a std::tuple. */
 template<typename T, template<typename> class PREDICATE, bool CHECKALLFIRST, typename ...ARGS>
 struct GetIndexOfFirstPredicate<std::tuple<T,ARGS...>, PREDICATE, CHECKALLFIRST>
 {
@@ -470,6 +486,7 @@ struct GetIndexOfFirstPredicate<std::tuple<T,ARGS...>, PREDICATE, CHECKALLFIRST>
         1 + GetIndexOfFirstPredicate<std::tuple<ARGS...>,PREDICATE,CHECKALLFIRST>::value;
 };
 
+/** \brief Template specialization for a std::tuple. */
 template<typename T, template<typename> class PREDICATE, bool CHECKALLFIRST>
 struct GetIndexOfFirstPredicate<std::tuple<T>, PREDICATE, CHECKALLFIRST>
 {
@@ -481,6 +498,8 @@ template <typename _Tp, template<typename> class PREDICATE, bool CHECKALLFIRST=t
     constexpr int first_predicate_idx_v = GetIndexOfFirstPredicate<_Tp,PREDICATE,CHECKALLFIRST>::value;
 
 ////////////////////////////////////////////////////////////////////////////////
+/** \brief Negates the constexpr value of a given type after applying a TRAIT type.
+ */
 template<template<typename> class TRAIT>
 struct negation
 {
@@ -527,13 +546,14 @@ constexpr auto tuple_slice(Cont&& t)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-/** Type trait that computes the number of time a predicate is true on a parameters pack.
+/** \brief Type trait that computes the number of time a predicate is true on a parameters pack.
  * \param PREDICATE: the predicate to be applied on each parameter
  * \param ARS...: the parameters
  */
 template<template<typename> typename PREDICATE, typename ...ARGS>
 struct CheckPredicate  {  const static int value = 0;  };
 
+/** Template specialization. */
 template<template<typename> typename PREDICATE, typename T, typename ...ARGS>
 struct CheckPredicate<PREDICATE,T, ARGS...>
 {
@@ -543,6 +563,8 @@ struct CheckPredicate<PREDICATE,T, ARGS...>
 ////////////////////////////////////////////////////////////////////////////////
 //
 ////////////////////////////////////////////////////////////////////////////////
+/** \brief Structure that returns a slice as iterators begin/end for a given object.
+ */
 template<typename T, class BOUNDS>
 struct slice
 {
@@ -574,21 +596,6 @@ template <class Range, class T> T accumulate (Range&& r, T init)
     }
   return init;
 }
-
-/** Simple version of accumulate (allows to avoid to explicit begin/end iterators
- * at call site)
- * \return the accumulated value.
- */
-template <class ItA, class ItB, class T> T accumulate (ItA first, ItB last, T init)
-{
-    while (first!=last)
-    {
-        init = std::move(init) + *first;
-        ++first;
-    }
-  return init;
-}
-
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -836,7 +843,7 @@ struct pointer
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/78116330/compilation-time-initialization-of-an-array-of-struct-with-the-information-of-an
-/** Initialize at compile time an array with source objects injected as parameter of the constructor of type T.
+/** \brief Initialize at compile time an array with source objects injected as parameter of the constructor of type T.
  */
 template<typename T, int N>
 struct array_wrapper
@@ -859,7 +866,7 @@ struct array_wrapper
     }
 };
 
-// We need a template specialization for 0-size array
+/** \brief Template specialization for a 0-size array. */
 template<typename T>
 struct array_wrapper<T,0>
 {
@@ -895,6 +902,10 @@ auto transform_each (F f, Args&&...args)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/** \brief zip iterator from two iterators.
+ * \param TIter1 : first iterator
+ * \param TIter2 : second iterator
+ */
 template<typename TIter1, typename TIter2>
 struct zip_iterator
 {
@@ -916,18 +927,17 @@ struct zip_iterator
 };
 
 
-template <typename T1,
-          typename T2,
-          typename TIter1 = decltype(std::declval<T1>().begin()),
-          typename TIter2 = decltype(std::declval<T2>().begin())
->
-
 /** Create an iterable object in a zip way for two iterables Xi,Yi, i.e. iterate
  * (x1,y1), (x2,y2), ...
  * \param iterable1: the first iterable
  * \param iterable2: the second iterable
  * \return the zip iterable.
  */
+template <typename T1,
+          typename T2,
+          typename TIter1 = decltype(std::declval<T1>().begin()),
+          typename TIter2 = decltype(std::declval<T2>().begin())
+>
 constexpr auto zip (T1&&  iterable1, T2&&  iterable2)
 {
     struct iterable_wrapper
@@ -944,18 +954,25 @@ constexpr auto zip (T1&&  iterable1, T2&&  iterable2)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/** \brief Type trait that compare two types, by applying a comparator trait that compares
+ * two types.
+ *
+ * The generic version is a true_type. See template specialization for a std::tuple.
+ * \param COMPARATOR : trait that takes two typse and provides a constexpr value
+ * \param A : first type
+ * \param B : second type.
+ */
 template <template<typename,typename> class COMPARATOR, typename A, typename B>
 struct compare_tuples : std::true_type {};
 
 template <template<typename,typename> class COMPARATOR, typename A, typename B>
 static constexpr bool compare_tuples_v = compare_tuples<COMPARATOR,A,B>::value;
 
+/** \brief Template specialization for empty tuples. */
 template <template<typename,typename> class COMPARATOR>
 struct compare_tuples<COMPARATOR,std::tuple<>, std::tuple<>> : std::true_type {};
 
-/** Type trait that compare two tuples, by applying a comparator trait that compares
- * two types.
- */
+/** \brief Template specialization for tuples. */
 template <template<typename,typename> class COMPARATOR, typename...A, typename... B>
 struct compare_tuples<COMPARATOR,std::tuple<A...>, std::tuple<B...>>
 {
@@ -1000,6 +1017,13 @@ static inline constexpr decltype(DEFAULT) get_##NAME##_v =  get_##NAME<DEFAULT,T
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/** \brief class holding a key and a value.
+ *
+ * Used in the CTMap class.
+ * \param key: the key
+ * \param value: the value.
+ * \see CTMap
+ */
 template <class Key, class Value>
 struct KeyValue { Key   key;  Value value;  };
 
