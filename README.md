@@ -152,7 +152,7 @@ and the way to use it:
 
 ```c++
 #include <vector>
-#include <ranges>
+#include <numeric>
 #include <iostream>
 #include <bpl/bpl.hpp>
 #include <tasks/VectorChecksum.hpp>
