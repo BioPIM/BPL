@@ -15,7 +15,7 @@
 namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 
-/** A TaskUnit object represent a set of units that can execute some task. It could be
+/** \brief A TaskUnit object represent a set of units that can execute some task. It could be
  * in real life a thread (for multicore arch) or a thread (for upmem arch).
  *
  * A TaskUnit is made of several components, each one representing a set of execution units.

@@ -23,19 +23,27 @@ namespace bpl  {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // type list
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/** \brief Lightweight Struct that defines type lists.
+ *
+ *  In some cases, it might be preferable to use this instead of std::tuple
+ */
 template<class...>  struct types  {  using type = types; };
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/** Tuple-like light class.
- * For some needs of the BPL, a full-fledged std::vector is not required, so
+/** \brief Tuple-like light class.
+ *
+ * For some needs of the BPL, a full-fledged std::tuple is not required, so
  * we provide here a small tuple-like functionality. */
 template <int N, typename... T>
 struct tuple_element;
 
+/** \brief Template specialization. */
 template <typename T0, typename... T>
 struct tuple_element<0, T0, T...> {
     typedef T0 type;
 };
+
+/** \brief Template specialization. */
 template <int N, typename T0, typename... T>
 struct tuple_element<N, T0, T...> {
     typedef typename tuple_element<N-1, T...>::type type;
@@ -84,6 +92,10 @@ template<class Sig>       using return_t    = typename args<Sig>::Return;
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/47906426/type-of-member-functions-arguments
+/** \brief Type trait for getting type information of a function.
+ *
+ * This is a base class intended to be inherited from.
+ */
 template<typename Result, typename ...Args>  struct FunctionSignatureParserBase
 {
     using return_type = Result;
@@ -99,19 +111,18 @@ template<typename Result, typename ...Args>  struct FunctionSignatureParserBase
     template <size_t i>  using arg_t = typename arg<i>::type;
 };
 
+/** \brief Type trait for getting type information of a function. */
 template<typename T>  struct FunctionSignatureParser;
 
+/** \brief Template specialization for a member function. */
 template<typename ClassType, typename Result, typename...Args>
 struct FunctionSignatureParser<Result(ClassType::*)(Args...)>
-  : FunctionSignatureParserBase<Result,Args...>
-{
-};
+  : FunctionSignatureParserBase<Result,Args...> {};
 
+/** \brief Template specialization for a const member function. */
 template<typename ClassType, typename Result, typename...Args>
 struct FunctionSignatureParser<Result(ClassType::*)(Args...) const>
-  : FunctionSignatureParserBase<Result,Args...>
-{
-};
+  : FunctionSignatureParserBase<Result,Args...> {};
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/34672441/stdis-base-of-for-template-classesv
@@ -137,13 +148,14 @@ template < template <typename...> class base,typename derived>
 inline constexpr bool is_base_of_template_v = is_base_of_template_t<base,derived>::value;
 
 //////////////////////////////////////////////////////////////////////////////////////////
-/** Type trait that remove the first type of a std::tuple. */
+/** \brief Type trait that remove the first type of a std::tuple. */
 template<typename T>
 struct remove_first_type  {  using type = T;  };
 
 template<typename T>
 using remove_first_type_t = typename remove_first_type<T>::type;
 
+/** \brief Template specialization for a std::tuple. */
 template<typename T, typename... Ts>
 struct remove_first_type<std::tuple<T, Ts...>>
 {
@@ -161,19 +173,25 @@ constexpr auto decay_types (std::tuple<Ts...> const &)
 template <typename T>
 using decay_tuple = decltype(decay_types(std::declval<T>()));
 
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/61112088/transform-tuple-type-to-another-tuple-type
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/** \brief Transform a tuple into another one through a trait.
+ *
+ * \param Tuple: the tuple to be transformed
+ * \param Component: trait to be applied on each type of the input tuple. */
 template <typename Tuple, template <typename> typename... Component>
 struct transform_tuple;
 
+/** \brief Template specialization for a std::tuple. */
 template <typename... Ts, template <typename> typename HEAD>
 struct transform_tuple<std::tuple<Ts...>, HEAD>
 {
     using type = std::tuple<typename HEAD<Ts>::type ...>;
 };
 
+/** \brief Template specialization for a std::tuple. */
 template <typename... Ts, template <typename> typename HEAD, template <typename> typename... TAIL>
 struct transform_tuple<std::tuple<Ts...>, HEAD, TAIL...>
 {
@@ -222,7 +240,7 @@ void for_each_in_tuple(std::tuple<Ts...> & tuple, F func)
 // https://gist.github.com/utilForever/1a058050b8af3ef46b58bcfa01d5375d
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/** Trait telling whether a type T can be constructed from an inializer list.
+/** \brief Trait telling whether a type T can be constructed from an inializer list.
  * \paramt T : the type
  */
 template< class T, class ...Args >
@@ -431,7 +449,6 @@ using task_params_t = std::conditional_t<DECAY,
 template<class TASK>
 using task_params_nodecay_t = task_params_t<TASK,false>;
 
-
 // see https://stackoverflow.com/questions/40536060/c-perfect-forward-copy-only-types-to-make-tuple
 template<class TASK, typename ...ARGS>
 auto  make_params (ARGS... args) {  return task_params_t<TASK> (std::forward<ARGS>(args)...); }
@@ -553,7 +570,7 @@ constexpr auto tuple_slice(Cont&& t)
 template<template<typename> typename PREDICATE, typename ...ARGS>
 struct CheckPredicate  {  const static int value = 0;  };
 
-/** Template specialization. */
+/** \brief Template specialization. */
 template<template<typename> typename PREDICATE, typename T, typename ...ARGS>
 struct CheckPredicate<PREDICATE,T, ARGS...>
 {
@@ -615,7 +632,7 @@ template <class ItA, class ItB, class T> T accumulate (ItA first, ItB last, T in
 //
 ////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/13830158/check-if-a-variable-type-is-iterable
-/** Type trait telling whether a type is iterable, in the sense it owns (at least)
+/** \brief  Type trait telling whether a type is iterable, in the sense it owns (at least)
  * an 'end' function.
  */
 template<typename C>
@@ -649,18 +666,26 @@ template<typename T> static constexpr bool is_serializable_v =
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/** \brief Type trait that computes a boolean constexpr as the conjonction
+ * of a predicate on the types of a parameters pack.
+ *
+ * \param FCT: the trait to be applied on each type
+ * \param ARGS: parameters pack
+ */
 template<template<typename> typename FCT, typename ...ARGS>
 struct Predicate
 {
     static constexpr bool value = true;
 };
 
+/** Template specialization for empty parameter pack. */
 template<template<typename> typename FCT>
 struct Predicate<FCT>
 {
     static constexpr bool value = true;
 };
 
+/** Template specialization for non empty parameter pack. */
 template<template<typename> typename FCT, typename HEAD, typename...TAIL>
 struct Predicate<FCT, HEAD, TAIL...>
 {
@@ -672,8 +697,9 @@ static constexpr bool Predicate_v = Predicate<FCT,ARGS...>::value;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Utility that returns a tuple from packed arguments.
- *   -> use either tie or make_tuple according to a template parameter.
+/** \brief Type trait that returns a tuple from packed arguments.
+ *
+ *   It uses either tie or make_tuple according to a template parameter.
  *   \param[in] args : the packed arguments
  *   \return the tuple
  */
@@ -697,7 +723,7 @@ struct TieOrMaketuple
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Type trait that creates a boolean mask, where the nth bit tells whether the
+/** \brief Type trait that creates a boolean mask, where the nth bit tells whether the
  * nth parameter of the provided parameters pack fulfills the predicate
  * \param PREDICATE: the predicate
  * \param ...ARGS: the parameters
@@ -708,6 +734,7 @@ struct pack_create_mask  {};
 template<template <typename> class PREDICATE, typename ...ARGS>
 static constexpr unsigned long long pack_create_mask_v = pack_create_mask<PREDICATE,ARGS...>::value;
 
+/** Template specialization for non empty parameter pack. */
 template<template <typename> class PREDICATE, typename T, typename ...ARGS>
 struct pack_create_mask<PREDICATE,T,ARGS...>
 {
@@ -716,6 +743,7 @@ struct pack_create_mask<PREDICATE,T,ARGS...>
     (pack_create_mask<PREDICATE,ARGS...>::value) << 1;
 };
 
+/** Template specialization for empty parameter pack. */
 template<template <typename> class PREDICATE>
 struct pack_create_mask<PREDICATE>
 {
@@ -733,9 +761,15 @@ static constexpr int count_predicate_match_v =
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/** \brief Type trait that creates a mask where each bit is the result of a
+ * predicate on each type of a parameter pack.
+ * \param PREDICATE: the trait to be applied on each type
+ * \param ARGS: the parameter pack.
+ */
 template<template <typename> class PREDICATE, typename ...ARGS>
 struct tuple_create_mask  {};
 
+/** \brief Template specialization for a std::tuple. */
 template<template <typename> class PREDICATE, typename T, typename ...ARGS>
 struct tuple_create_mask<PREDICATE,std::tuple<T, ARGS...>>
 {
@@ -744,6 +778,7 @@ struct tuple_create_mask<PREDICATE,std::tuple<T, ARGS...>>
       (tuple_create_mask<PREDICATE,std::tuple<ARGS...>>::value) << 1;
 };
 
+/** \brief Template specialization for an empty std::tuple. */
 template<template <typename> class PREDICATE>
 struct tuple_create_mask<PREDICATE, std::tuple<> >
 {
@@ -755,12 +790,20 @@ static constexpr unsigned long long tuple_create_mask_v = tuple_create_mask<PRED
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 
+/** \brief Type trait that creates a tuple made of types from a parameter
+ * pack. A type is kept if its index 'idx' in the parameter pack matches a bit set
+ * at the same index in the input MASK.
+ *
+ * \param MASK: the bitset
+ * \param ARGS: the parameter pack
+ */
 template<unsigned long long MASK, typename ...ARGS>
 struct pack_filter_by_mask {  };
 
 template<unsigned long long MASK, typename ...ARGS>
 using pack_filter_by_mask_t = typename pack_filter_by_mask<MASK,ARGS...>::type;
 
+/** \brief: template specialization for a std::tuple. */
 template<unsigned long long MASK, typename T, typename ...ARGS>
 struct pack_filter_by_mask<MASK,std::tuple<T,ARGS...>>
 {
@@ -777,11 +820,17 @@ struct pack_filter_by_mask<MASK,std::tuple<T,ARGS...>>
     >;
 };
 
+/** \brief: template specialization for an empty std::tuple. */
 template<unsigned long long MASK>
 struct pack_filter_by_mask<MASK,std::tuple<>>  {  using type = std::tuple<>;  };
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 
+/** \brief Type traits that creates a partition of the types of a parameter pack.
+ *
+ * The types are split into two partitions, one partition for which the indexes in the mask
+ * correspond to bits set to 0, and the other for bits set to 1.
+ */
 template<unsigned long long MASK, typename ...ARGS>
 struct pack_filter_by_mask_partition
 {
@@ -939,7 +988,6 @@ struct zip_iterator
         return TieOrMaketuple <decltype(*iter1_), decltype(*iter2_)>::get (*iter1_,*iter2_);
     }
 };
-
 
 /** Create an iterable object in a zip way for two iterables Xi,Yi, i.e. iterate
  * (x1,y1), (x2,y2), ...
@@ -1099,15 +1147,17 @@ using Properties = CTMap<std::string_view, int, 16>;
  * to false. */
 template<typename T> concept is_not_parseable = T::parseable == false;
 
-/** Type trait telling whether a type is parseable, ie. if we can
- * analyze recursively its attributes. The generic case is always
- * a false_type.
+/** \brief Type trait telling whether a type is parseable, ie. if we can
+ * analyze recursively its attributes.
+ *
+ * The generic case is always a false_type.
  */
 template<typename T>
 struct is_parseable : std::false_type {};
 
-/** A type that (1) is a class and (2) has no constant 'parseable' set to false
- * is considered as parseable. */
+/**  \brief Template specialization for a type that (1) is a class and (2) has no constant 'parseable' set to false
+ *
+ * This specialization is considered as parseable. */
 template<typename T>
 requires (std::is_class_v<T> and  not is_not_parseable<T> )
 struct is_parseable<T> : std::true_type {};
@@ -1117,19 +1167,22 @@ static constexpr bool is_parseable_v = is_parseable<T>::value;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Trait that counts the occurrence of a predicate matched for a given type.
+/** \brief Trait that counts the occurrence of a predicate matched for a given type.
+ *
  *  For instance, we may want to get the number of vectors in a tuple, a struct or a
  *  recursive definition of both tuple/struct
  */
 template<template<typename> class PREDICATE, typename...ARGS>
 struct CounterTrait  : std::integral_constant<int, (0 + ... + CounterTrait<PREDICATE,ARGS>::value)> {};
 
+/** \brief Template specialization. */
 template<template<typename> class PREDICATE, typename T>
 struct CounterTrait<PREDICATE,T>  : std::integral_constant<int, (PREDICATE<std::decay_t<T>>::value ? 1 : 0)> {};
 
 template<template<typename> class PREDICATE, typename T>
 static inline constexpr int CounterTrait_v = CounterTrait<PREDICATE,T>::value;
 
+/** \brief Template specialization for a parseable class. */
 template<template<typename> class PREDICATE, typename T>
 requires (is_parseable_v<T>)
 struct CounterTrait<PREDICATE,T>
@@ -1140,6 +1193,7 @@ struct CounterTrait<PREDICATE,T>
     });
 };
 
+/** \brief Template specialization for a std::tuple */
 template<template<typename> class PREDICATE, typename...ARGS>
 struct CounterTrait<PREDICATE,std::tuple<ARGS...>>
 {
@@ -1155,11 +1209,12 @@ using static_not = typename std::conditional<
 >::type;
 
 ////////////////////////////////////////////////////////////////////////////////
-/**  Type trait that retrieves the first template parameter of a type.
+/**  \brief Type trait that retrieves the first template parameter of a type.
  * \param T: the type we want to get the first template parameter.
  */
 template<typename T> struct FirstTemplateParameter {};
 
+/** \brief Template specialization for a template class. */
 template<template<typename> typename X, typename T>
 struct FirstTemplateParameter<X<T>> { using type=T; };
 
