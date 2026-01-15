@@ -1,12 +1,17 @@
 ################################################################################
 ## BPL, the Process In Memory library for bioinformatics 
-## date  : 2024
+## date  : 2026
 ## author: edrezen
 ################################################################################
 
+set (CMAKE_CXX_STANDARD      20)
+set (CMAKE_CXX_FLAGS         "-Wall -Wextra -Wno-unused-parameter -Wno-macro-redefined -O3 -DNDEBUG")
+
+################################################################################
 # We create the config file.
 configure_file (${CMAKE_SOURCE_DIR}/include/bpl/arch/ArchUpmemConfig.hpp.in  config.hpp   @ONLY)
 
+################################################################################
 file                       (GLOB_RECURSE  HostFiles  main.cpp)
 add_executable             (${HOST_BINARY} ${HostFiles})
 target_link_libraries      (${HOST_BINARY} PRIVATE stdc++fs dpu pthread)

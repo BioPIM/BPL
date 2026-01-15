@@ -138,11 +138,10 @@ int main() {
 Now, using the BPL API, the source code for the algorithm is:
 
 ```c++
-#include <bpl/core/Task.hpp>
 template<class ARCH>
-struct VectorChecksum  {
+struct Checksum  {
     USING(ARCH);
-    auto operator() (vector<uint32_t> const& v)  {
+    auto operator() (vector<uint32_t> const& v)   {
         return accumulate(v.begin(), v.end(), uint64_t{0});
     }
     static uint64_t reduce (uint64_t a, uint64_t b)  { return a+b; }
@@ -155,12 +154,12 @@ and the way to use it:
 #include <numeric>
 #include <iostream>
 #include <bpl/bpl.hpp>
-#include <tasks/VectorChecksum.hpp>
+#include <tasks/Checksum.hpp>
 int main() {
     std::vector<uint32_t> v(1<<16);  
     std::iota (std::begin(v), std::end(v), 1);
     bpl::Launcher<bpl::ArchUpmem> launcher {1_dpu};
-    std::cout << "checksum: " << launcher.run<VectorChecksum>(split(v)) << "\n";
+    std::cout << "checksum: " << launcher.run<Checksum>(split(v)) << "\n";
 }
 ```
 

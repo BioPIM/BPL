@@ -1,6 +1,6 @@
 ################################################################################
 ## BPL, the Process In Memory library for bioinformatics 
-## date  : 2024
+## date  : 2026
 ## author: edrezen
 ################################################################################
 
@@ -20,7 +20,7 @@ MESSAGE ("-- DPU:  CMAKE_CXX_COMPILER: ${CMAKE_CXX_COMPILER}")
 ################################################################################
 
 # We create the config file.
-configure_file (${PROJECT_SOURCE_DIR}/src/bpl/arch/ArchUpmemConfig.hpp.in  config.hpp   @ONLY)
+configure_file (${BPL_SOURCE_DIR}/arch/ArchUpmemConfig.hpp.in  config.hpp   @ONLY)
 
 # We set the list of default include directories.
 if(NOT DEFINED CXX_FOR_DEFAULT_INCLUDE_QUERY OR CXX_FOR_DEFAULT_INCLUDE_QUERY STREQUAL "")
@@ -41,75 +41,6 @@ separate_arguments (CXX_DEFAULT_INCLUDE_DIRECTORIES_LIST UNIX_COMMAND "${CXX_DEF
 
 MESSAGE ("CXX_DEFAULT_INCLUDE_DIRECTORIES     : '${CXX_DEFAULT_INCLUDE_DIRECTORIES}'")
 
-################################################################################
-# LIST OF TASKS TO BE COMPILED FOR DPU
-################################################################################
-
-set (TASKS_LIST 
-	"Bank1" "Bank2" "Bank3" "Bank4" "Bank5"
-	"Parrot1" "Parrot2"  "Parrot4" "Parrot5" "SumGeneric" "CountInstances" "GetPuid" "DoSomething"
-	"Parrot3"
-	"RangeSplit" "Array1" "Array2" "HelloWorld" "Checksum3" "Checksum4" "Checksum5" "IterableSplit"
-	"Compare2" "ReturnArray" "IntegerType" "Compare1"
-	"Sum"
-	"Vector1" "Vector2" "Vector3" "VectorCheck" 
-	"VectorAsInput2" "VectorAsInput3" "VectorAsInputCustom" 
-	"VectorChecksum" "VectorChecksumOnce"
-	"VectorAsOutputUint8" "VectorAsOutputUint16" "VectorAsOutputUint32"  
-	"VectorAsInput"  
-	"SketchJaccardTopK"
-  "SketchJaccardOptim"
-  "SketchJaccardDistance" "SketchJaccardDistanceOnce" 
-  "SketchJaccard" 
-	"VectorAsInputSplit"
-	"SplitRangeInt"
-	"Mutex1" "Mutex2"
-	"TemplateTask<double>"
-	"VectorInputOutput"
-	"VectorInputOutput2"
-	"VectorOfVectors"
-	"VectorFlush"
-	"VectorAdd"
-	"Span1"
-	"VectorSwap"
-	"VectorMove1"
-	"VectorMove2"
-	"VectorEmplaceBack"
-	"Once1"
-	"Global0" "Global1"  "Global2"  "Global3"  "Global4"  "Global5" "Global6"
-	"Struct1" "Struct2" "Struct3"
-	"VectorMany" "VectorMany1" "VectorMany2" "VectorMany3" "VectorCache" "VectorConfig"
-	"GlobalOnce1"  "GlobalOnce2"
-	"VectorViewRandomAccess1"  "VectorViewRandomAccess2"
-	"VectorAddAndIterate"
-	"VectorSizeof12"
-	"VectorMany4" "VectorMany2b"
-	"VectorRandomAccessGlobal1" "VectorRandomAccessGlobal2"
-	"GlobalOnce3" "GlobalOnce4"
-	"SplitDifferentSizes"
-	"VectorEmpty1" "VectorEmpty2"
-	"VectorSplitDpu"
-	"OncePadding1"
-	"ResultsToVector"
-	"IterateMultipleVectors"
-	"LauncherPool1" 
-	"VectorReverseIterator" "VectorReverseIterator2" 
-	"VectorReverseIterator3" "VectorReverseIterator3global" "VectorReverseIterator3once" "VectorReverseIterator3glonce" 
-	"VectorStd"
-	"VectorTwoRunsGlobalRandomAccess"
-	"VectorIterator1" "VectorIterator2" "VectorIterator3"
-	"VectorSplitSimple" "VectorSplitOverload" "TemplateSpecialization"
-	"Min" "Max"
-	"VectorReverseInPlace"
-	"SortSelection"  
-	"SortSelectionVector"  
-	"VectorCustomAllocator"
-	"SplitMyLong" 
-	"VectorCreation"
-	"VectorSharedIteratorTrue" "VectorSharedIteratorFalse"
-	"VectorSerialize"
-	"Syracuse" "SyracuseReduce" "SyracuseVector"
-)
 
 ################################################################################
 # UTILS FUNCTIONS  
@@ -166,6 +97,7 @@ set(DPU_TASK_TYPES A)
 
 set(DPU_COMMON_INCLUDES
     ${CMAKE_SOURCE_DIR}/src
+    ${BPL_SOURCE_DIR}/..
 	${CMAKE_CURRENT_SOURCE_DIR}/..
     ${DPU_INCLUDE_DIRS}
     /opt/upmem/share/upmem/include/syslib
@@ -187,7 +119,7 @@ set(DPU_LINK_FLAGS
 
 function(configure_dpu_target TASKNAME TASKTEMPLATE TASKTYPE OUTNAME STACK_DEFINE)
   configure_file(
-    ${PROJECT_SOURCE_DIR}/src/bpl/arch/dpu/ArchUpmem.dpu.${TASKTYPE}.cpp.in
+    ${BPL_SOURCE_DIR}/arch/dpu/ArchUpmem.dpu.${TASKTYPE}.cpp.in
     ${OUTNAME}.cpp
     @ONLY
   )

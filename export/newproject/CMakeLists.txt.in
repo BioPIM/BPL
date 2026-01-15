@@ -1,6 +1,6 @@
 ################################################################################
 ## BPL, the Process In Memory library for bioinformatics 
-## date  : 2024
+## date  : 2026
 ## author: edrezen
 ################################################################################
 
@@ -20,6 +20,9 @@ SET (HOST_BINARY @NEWPROJECT_BINARY@)
 
 # Define the list of DPU binaries that can be launched by the Host.
 SET (TASKS_LIST "@NEWPROJECT_NAME@")
+
+# We define the location of the BPL. 
+set (BPL_SOURCE_DIR  ${PROJECT_SOURCE_DIR}/include/bpl)
 
 # Now we can read the generic part.
 ADD_SUBDIRECTORY(src)
