@@ -152,21 +152,24 @@ and the way to use it:
 
 ```c++
 #include <vector>
+#include <ranges>
 #include <iostream>
 #include <bpl/bpl.hpp>
 #include <tasks/VectorChecksum.hpp>
 int main() {
-    std::vector<uint32_t> v;  
-    for (size_t i=1; i<=1<<16; i++)  {  v.push_back(i);  }
+    std::vector<uint32_t> v(1<<16);  
+    std::iota (std::begin(v), std::end(v), 1);
     bpl::Launcher<bpl::ArchUpmem> launcher {1_dpu};
     std::cout << "checksum: " << launcher.run<VectorChecksum>(split(v)) << "\n";
 }
 ```
 
-So we can see a significant reduction in code size with the BPL. Moreover, code written using the BPL 
-is also much more readable than with the UPMEM SDK. Indeed, reading the BPL code makes it immediately
-clear that the task is to compute the checksum of a vector, which is far less obvious in the UPMEM SDK version, 
-where all the low-level SDK calls reduce overall readability.
+A few remarks:
+
+1. we can see a significant reduction in code size with the BPL;
+2. moreover, code written using the BPL is also much more readable than with the UPMEM SDK. Indeed, reading the BPL code makes it immediately clear that the task is to compute the checksum of a vector, which is far less obvious in the UPMEM SDK version, 
+where all the low-level SDK calls reduce overall readability;
+3. finally, it should be noted that using the BPL makes it possible to adopt a traditional C++ style, in particular through the use of the standard library.
 
 In addition, it is possible with the BPL to run our algorithm on a different architecture.
 If one wishes to use a multicore architecture, it suffices to replace the previous definition of the launcher with:
