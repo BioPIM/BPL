@@ -168,13 +168,16 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Historic stuf, not used in real life code anymore (still in some unit tests though)
+/** \brief Historic stuf, not used in real life code anymore (still in some unit tests though)
+ */
 template<class ARCH, class T>   struct matching_splitter  : std::false_type {};
 
+/** \brief Template specialization. */
 template<class ARCH, class T>
 requires (not is_splitter_v<T>)
 struct matching_splitter<ARCH,T>  : std::true_type {};
 
+/** \brief Template specialization. */
 template<class ARCH, class T>
 requires (is_splitter_v<T>)
 struct matching_splitter <ARCH, T> : std::integral_constant<bool, std::is_same_v<ARCH, typename T::arch_t> > {};

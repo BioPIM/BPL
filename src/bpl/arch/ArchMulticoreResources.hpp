@@ -21,6 +21,8 @@
 namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 
+/** \brief Defines the alias types needed for the ARCH macro.
+ */
 struct ArchMulticoreResources
 {
     using config_t = void;

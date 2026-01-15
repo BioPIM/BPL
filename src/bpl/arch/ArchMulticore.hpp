@@ -268,6 +268,8 @@ inline auto operator""_thread (unsigned long long int nb)  {   return bpl::ArchM
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
+/** \brief Template specialization for ArchMulticore.
+ */
 template<>
 class BufferIterator<ArchMulticore>
 {
@@ -288,6 +290,7 @@ private:
     pointer_t buf_;
 };
 
+/** \brief Template specialization for ArchMulticore. */
 template<>
 struct Task <ArchMulticore> : TaskBase <Task<ArchMulticore>>
 {

@@ -14,11 +14,11 @@
 namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Type trait that allows to retrieve the architecture type from a task type.
+/** \brief Type trait that allows to retrieve the architecture type from a task type.
  */
 template <typename T>  struct get_crtp_template;
 
-/** Specialization of get_crtp_template.
+/** \brief Specialization of get_crtp_template.
  */
 template <template <typename,int> class TASK, typename ARCH, int NB>
 struct get_crtp_template<TASK<ARCH,NB>>

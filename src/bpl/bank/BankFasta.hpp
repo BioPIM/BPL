@@ -15,7 +15,7 @@
 namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 
-// Not used.
+/** \brief Not used. */
 template<class ARCH, int SEQSIZE=32>
 class BankFasta
 {

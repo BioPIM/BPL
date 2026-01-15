@@ -14,6 +14,7 @@
 namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 
+/** \brief Not used. */
 template<int SEQSIZE=16>
 class RandomSequenceGenerator
 {
@@ -53,7 +54,7 @@ private:
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Not used
+/** \brief Not used. */
 template<class ARCH, int SEQNB=1024*16, int SEQSIZE=16>
 class BankRandom
 {

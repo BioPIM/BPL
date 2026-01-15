@@ -55,6 +55,7 @@ constexpr auto type_name_array()
     return substring_as_array(name, std::make_index_sequence<name.size()>{});
 }
 
+/** \brief Not used. */
 template <typename T>
 struct type_name_holder {
     static inline constexpr auto value = type_name_array<T>();

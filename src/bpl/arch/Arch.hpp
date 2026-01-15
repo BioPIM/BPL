@@ -51,16 +51,21 @@ template<class ARCH, template<typename> typename C, typename T>
 using ArchTypeTrait = typename C<ARCH>::template type<T>;
 
 ////////////////////////////////////////////////////////////////////////////////
-// Default allocator type => uses the ARCH::allocator type
+/** \brief Type trait defining a default allocator.
+ *
+ * uses the ARCH::allocator type
+ */
 template<class ARCH>
 struct DefaultAllocator {
     template<typename T>
     using type = typename ARCH::template allocator<T>;
 };
 
-// We define a 'fixed' allocator => for UPMEM, allows to have a fixed number of items in vector cache.
-// Through inheritance, we set it as the default one defined for ARCH
-// (which will be std::allocator in case of multicore arch)
+/** \brief Define a 'fixed' allocator.
+ *  For UPMEM, allows to have a fixed number of items in vector cache.
+ Through inheritance, we set it as the default one defined for ARCH
+ (which will be std::allocator in case of multicore arch)
+ * */
 template<typename ARCH,int NBITEMS_LOG2>
 struct FixedAllocator : DefaultAllocator<ARCH> {};
 

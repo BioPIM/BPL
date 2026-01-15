@@ -21,6 +21,7 @@ namespace bpl {
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
+/** \brief Template specialization for a std::pair. */
 template <typename A,typename B>
 struct SplitOperator<std::pair<A,B>>
 {
@@ -41,6 +42,7 @@ struct SplitOperator<std::pair<A,B>>
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+/** \brief Template specialization for a std::vector. */
 template <typename T>
 struct SplitOperator<std::vector<T>>
 {
@@ -65,6 +67,7 @@ struct SplitOperator<std::vector<T>>
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+/** \brief Template specialization for a std::span. */
 template <typename T>
 struct SplitOperator<std::span<T>>
 {

@@ -127,7 +127,7 @@ struct Cache
    #     #######   #####      #     #######  #     #  #####     #     ###  #######   ## ##
 *******************************************************************************************/
 
-/** 'vector_view' provides a basis for the 'vector' implementation.
+/** \brief 'vector_view' provides a basis for the 'vector' implementation.
  *
  * It merely provides iteration feature and can not be modified.
  * On the other hand, 'vector' implements the 'push_back' method.
@@ -425,7 +425,7 @@ public:
    #     #######   #####      #     #######  #     #
 *******************************************************************************************/
 
-/** The 'vector' implementation inherits from 'vector_view' and provides also 'push_back' support.
+/** \brief The 'vector' implementation inherits from 'vector_view' and provides also 'push_back' support.
  *
  * WARNING: this implementation doesn't follow the requirement that the data is contiguous in memory.
  * The data is indeed split in chunks of MEMORY_SIZE elements and a tree structure is used for keeping

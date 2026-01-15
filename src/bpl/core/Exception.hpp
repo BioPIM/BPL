@@ -34,7 +34,10 @@ struct exception
     std::size_t tuid = 0;
 };
 
+/** \brief Exception for out of range detection. */
 struct out_of_range  : exception {};
+
+/** \brief Exception for out of memory detection. */
 struct out_of_memory : exception {};
 
 ////////////////////////////////////////////////////////////////////////////////

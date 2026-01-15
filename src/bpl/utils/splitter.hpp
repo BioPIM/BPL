@@ -94,8 +94,10 @@ namespace impl
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// We define a class intended to be specialized, in particular with a 'split' method telling how to split T.
-// Such specializations are provided for types such as 'vector' for instance (either for std nor bpl).
+/** \brief Class intended to be specialized, in particular with a 'split' method telling how to split T
+ *
+ * Such specializations are provided for types such as 'vector' for instance (either for std nor bpl).
+ */
 template <typename T>  struct SplitOperator  {};
 
 // A type is 'splitable' if it provides a 'split' method
@@ -127,15 +129,17 @@ auto split_assign (T& t, size_t idx, size_t total)  {  t = split<T,TASK> (t,idx,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// This class can choose the correct 'split' function to be called according to the provided
-// template type information:
-//
+/** \brief Choose the correct 'split' function to be called according to the provided template type information.
+ *
+ * Incomplete type, needs to be specialized.
+ */
 template<typename T, typename RESULT, typename TASK>
-struct SplitChoice {};
+struct SplitChoice;
 
 template<typename T, typename RESULT, typename TASK>
 inline constexpr bool has_split_view_v = requires(T t, size_t idx, size_t total) { SplitOperator<RESULT>::split_view (t,idx,total); };
 
+/** \brief Template specialization for class that fulfill has_split_view_v */
 template<typename T, typename RESULT, typename TASK>
 requires (has_split_view_v<T,RESULT,TASK>)
 struct SplitChoice<T,RESULT,TASK>
@@ -147,6 +151,7 @@ struct SplitChoice<T,RESULT,TASK>
 template<typename T, typename RESULT, typename TASK>
 inline constexpr bool has_split_request_v = requires(T t, size_t idx, size_t total) { TASK::split (t,idx,total); };
 
+/** \brief Template specialization for class that fulfill has_split_request_v */
 template<typename T, typename RESULT, typename TASK>
 requires (has_split_request_v<T,RESULT,TASK>)
 struct SplitChoice<T,RESULT,TASK>
@@ -206,12 +211,12 @@ auto  split (const TYPE& t)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Type trait providing a boolean telling whether or not the provided type is a SplitProxy instance
+/** \brief Type trait providing a boolean telling whether or not the provided type is a SplitProxy instance
  * \param T : the type of the type trait
  */
 template<typename T>  struct is_splitter : std::false_type {};
 
-/** Type trait specialization in case the incoming type is a SplitProxy  */
+/** \brief  Type trait specialization in case the incoming type is a SplitProxy  */
 template<typename L, bpl::SplitKind K, typename T>
 struct is_splitter<impl::SplitProxy<L,K,T>> : std::true_type {};
 
@@ -220,11 +225,11 @@ template<typename T>  inline constexpr bool is_splitter_v = is_splitter<T>::valu
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Type trait that retrieves the type of the proxy object in case the type is a SplitProxy
+/** \brief Type trait that retrieves the type of the proxy object in case the type is a SplitProxy
  */
 template<typename T>  struct remove_splitter {  using type = T;  };
 
-/** Type trait specialization in case the incoming type is a SplitProxy  */
+/** \brief Type trait specialization in case the incoming type is a SplitProxy  */
 template<typename L, bpl::SplitKind K, typename T>
 struct remove_splitter<impl::SplitProxy<L,K,T>> {  using type = T;  };
 
@@ -259,7 +264,7 @@ void retrieveSplitStatus (uint8_t status[32])
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/** Type trait specialization in case the incoming type is a SplitProxy */
+/** \brief Type trait specialization in case the incoming type is a SplitProxy */
 template<typename LEVEL, bpl::SplitKind KIND, typename TYPE>
 struct SplitOperator<impl::SplitProxy<LEVEL,KIND,TYPE>>
 {

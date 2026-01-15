@@ -38,7 +38,7 @@ public:
  */
 template<bool,class TASK>  struct Reduce {};
 
-/** Specialization 1: reduce the partial results by using 'reduce' method */
+/** \brief Specialization 1: reduce the partial results by using 'reduce' method */
 template<class TASK>  struct Reduce<true,TASK>
 {
     using Result_t = return_t <decltype(&TASK::operator())>;
@@ -52,7 +52,7 @@ template<class TASK>  struct Reduce<true,TASK>
     }
 };
 
-/** Specialization 2: return the partial results */
+/** \brief Specialization 2: return the partial results */
 template<class TASK>  struct Reduce<false,TASK>
 {
     using Result_t = return_t <decltype(&TASK::operator())>;

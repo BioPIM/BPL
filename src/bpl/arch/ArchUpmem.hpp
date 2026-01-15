@@ -57,13 +57,14 @@ enum DpuComponentKind_e {
 #include <bpl/arch/ArchUpmem.pri>
 
 ///////////////////////////////////////////////////////////////////////////////
-// We define a type trait that checks that the incoming arguments are compatible with the task parameters.
-template<typename ARG, typename PARAM> struct check_arguments: std::true_type {
-};
+/** \brief Type trait that checks that the incoming arguments are compatible with the task parameters.
+ */
+template<typename ARG, typename PARAM> struct check_arguments: std::true_type {};
 
 ///////////////////////////////////////////////////////////////////////////////
 class ArchUpmem;
 
+/// @cond DEV
 struct result_data  {
     ArchUpmem& arch;
     std::vector<uint32_t> const& heap_pointers;
@@ -71,6 +72,7 @@ struct result_data  {
     std::vector<uint32_t> const& allTaskletsSize;
     std::vector<uint32_t> const& allTaskletsOrder;
 };
+/// @endcond
 
 // forward declaration
 template<typename T, bool Optim>
@@ -1137,6 +1139,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 // result_wrapper template generic case
 ////////////////////////////////////////////////////////////////////////////////
+/** \brief Overloads operator() that returns an object capable of iterating the
+ * results of each process units.
+ *
+ * The actual implementation might depend on an Optim parameter that can offer
+ * some optimization (like process units returning vectors).
+ *
+ * \param T: result type of process units
+ * \param Optim: boolean for optional optimization.
+ */
 template<typename T, bool Optim>
 struct result_wrapper  {
 
@@ -1264,6 +1275,7 @@ struct result_wrapper  {
 ////////////////////////////////////////////////////////////////////////////////
 // result_wrapper template specialization for vectors
 ////////////////////////////////////////////////////////////////////////////////
+/** \brief Template specialization for vectors. */
 template<typename T>
 struct result_wrapper<std::vector<T>, true> {
 

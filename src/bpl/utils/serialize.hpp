@@ -796,7 +796,10 @@ struct Serialize
 ////////////////////////////////////////////////////////////////////////////////
 #include <bpl/utils/splitter.hpp>
 
-// We need to make SplitProxy a serializable -> just forward to the inner attribute '_t'
+/** \brief Template specialization for SplitProxy.
+ *
+ * just forward to the inner attribute '_t'
+ */
 template<typename L, bpl::SplitKind K, typename TT>
 struct bpl::serializable<bpl::impl::SplitProxy<L,K,TT>>
 {
@@ -819,6 +822,7 @@ struct bpl::serializable<bpl::impl::SplitProxy<L,K,TT>>
 ////////////////////////////////////////////////////////////////////////////////
 #include <bpl/utils/Range.hpp>
 
+/** \brief Template serialization for Range. */
 template<>
 struct bpl::serializable<bpl::Range>
 {
@@ -845,6 +849,7 @@ struct bpl::serializable<bpl::Range>
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+/** \brief Template serialization for bpl::once. */
 template<typename T>
 struct bpl::serializable<bpl::once<T>> : std::true_type
 {

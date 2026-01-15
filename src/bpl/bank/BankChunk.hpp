@@ -87,29 +87,28 @@ public:
     array<Sequence<SEQSIZE>,SEQNB> sequences_;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-};  // end of namespace
-////////////////////////////////////////////////////////////////////////////////
-
-namespace bpl
+/** \brief Template specialization for BankChunk.
+ */
+template<typename ARCHI, int SEQSIZE, int SEQNB>
+struct serializable<bpl::BankChunk<ARCHI,SEQSIZE,SEQNB>>
 {
-    template<typename ARCHI, int SEQSIZE, int SEQNB>
-    struct serializable<bpl::BankChunk<ARCHI,SEQSIZE,SEQNB>>
+    // we tell that our structure can be serialized
+    static constexpr int value = true;
+
+    template<class ARCH, class BUFITER, int ROUNDUP, typename T, typename FCT>
+    static auto iterate (bool transient, int depth, const T& t, FCT fct, void* context=nullptr)
     {
-        // we tell that our structure can be serialized
-        static constexpr int value = true;
+        Serialize<ARCH,BUFITER,ROUNDUP>::iterate (transient, depth+1, t.sequences_, fct, context);
+    }
 
-        template<class ARCH, class BUFITER, int ROUNDUP, typename T, typename FCT>
-        static auto iterate (bool transient, int depth, const T& t, FCT fct, void* context=nullptr)
-        {
-            Serialize<ARCH,BUFITER,ROUNDUP>::iterate (transient, depth+1, t.sequences_, fct, context);
-        }
-
-        template<class ARCH, class BUFITER, int ROUNDUP, typename T>
-        static auto restore (BUFITER& it, T& result)
-        {
-            Serialize<ARCH,BUFITER,ROUNDUP>::restore (it, result.sequences_);
-        }
-    };
+    template<class ARCH, class BUFITER, int ROUNDUP, typename T>
+    static auto restore (BUFITER& it, T& result)
+    {
+        Serialize<ARCH,BUFITER,ROUNDUP>::restore (it, result.sequences_);
+    }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+};
+////////////////////////////////////////////////////////////////////////////////
 

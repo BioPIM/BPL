@@ -126,7 +126,7 @@ struct FunctionSignatureParser<Result(ClassType::*)(Args...) const>
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/34672441/stdis-base-of-for-template-classesv
-/** Type traits telling whether a class is the base class of another class.
+/** \brief Type traits telling whether a class is the base class of another class.
  * \param base: the base class
  * \param derived: the derived class.
  */
@@ -654,8 +654,9 @@ template <typename T>  constexpr int is_iterable_v = is_iterable<T>::value;
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Type trait telling whether a type can be handled by the BPL serialization
- * scheme. By default, no type is serializable, classes that want to be serializable
+/** \brief Type trait telling whether a type can be handled by the BPL serialization scheme.
+ *
+ * By default, no type is serializable, classes that want to be serializable
  * have to provide a template specialization of that trait.
  */
 template<typename T>
@@ -678,14 +679,14 @@ struct Predicate
     static constexpr bool value = true;
 };
 
-/** Template specialization for empty parameter pack. */
+/** \brief Template specialization for empty parameter pack. */
 template<template<typename> typename FCT>
 struct Predicate<FCT>
 {
     static constexpr bool value = true;
 };
 
-/** Template specialization for non empty parameter pack. */
+/** \brief Template specialization for non empty parameter pack. */
 template<template<typename> typename FCT, typename HEAD, typename...TAIL>
 struct Predicate<FCT, HEAD, TAIL...>
 {
@@ -734,7 +735,7 @@ struct pack_create_mask  {};
 template<template <typename> class PREDICATE, typename ...ARGS>
 static constexpr unsigned long long pack_create_mask_v = pack_create_mask<PREDICATE,ARGS...>::value;
 
-/** Template specialization for non empty parameter pack. */
+/** \brief Template specialization for non empty parameter pack. */
 template<template <typename> class PREDICATE, typename T, typename ...ARGS>
 struct pack_create_mask<PREDICATE,T,ARGS...>
 {
@@ -743,7 +744,7 @@ struct pack_create_mask<PREDICATE,T,ARGS...>
     (pack_create_mask<PREDICATE,ARGS...>::value) << 1;
 };
 
-/** Template specialization for empty parameter pack. */
+/** \brief  Template specialization for empty parameter pack. */
 template<template <typename> class PREDICATE>
 struct pack_create_mask<PREDICATE>
 {
@@ -892,17 +893,6 @@ constexpr auto merge_tuples (std::tuple<A...>& a, std::tuple<B...>& b)
 
     }(std::make_index_sequence<N>());
 }
-
-///////////////////////////////////////////////////////////////////////////////////////////
-struct identity
-{
-    template<typename U>  constexpr U&& operator() (U&& u) const noexcept { return std::forward(u); }
-};
-
-struct pointer
-{
-    template<typename U>  constexpr U* operator()  (U&& u) const noexcept { return &u; }
-};
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // https://stackoverflow.com/questions/78116330/compilation-time-initialization-of-an-array-of-struct-with-the-information-of-an
