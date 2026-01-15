@@ -53,11 +53,12 @@ Instead, it provides tools to facilitate parallelization on PIM architectures. U
 
 ## Example
 
-Here is a simple example of calculating the checksum of a buffer, as this is an example provided in the UPMEM documentation. 
+We will now compare the BPL with the use of the UPMEM SDK on a simple example of vector checksum computation.
 
 ### Using the UPMEM SDK
 
-For the the UPMEM SDK version, here is the [the DPU part](https://sdk.upmem.com/2023.2.0/032_DPURuntimeService_HostCommunication.html#memory-interface) (with all comments removed):
+The example is taken from the official UPMEM SDK documentation. Here is the [the DPU part](https://sdk.upmem.com/2023.2.0/032_DPURuntimeService_HostCommunication.html#memory-interface) (with all comments removed) that 
+implements the algorithm:
 
 ```c
 #include <mram.h>
@@ -167,20 +168,11 @@ is also much more readable than with the UPMEM SDK. Indeed, reading the BPL code
 clear that the task is to compute the checksum of a vector, which is far less obvious in the UPMEM SDK version, 
 where all the low-level SDK calls reduce overall readability.
 
-In addition, it is possible with the BPL to run our algorithm on a different architecture, for example on a multicore system:
+In addition, it is possible with the BPL to run our algorithm on a different architecture.
+If one wishes to use a multicore architecture, it suffices to replace the previous definition of the launcher with:
 
 ```c++
-#include <vector>
-#include <iostream>
-#include <bpl/bpl.hpp>
-#include <tasks/VectorChecksum.hpp>
-int main() {
-    std::vector<uint32_t> v;  
-    for (size_t i=1; i<=1<<16; i++)  {  v.push_back(i);  }
-    bpl::Launcher<bpl::ArchMulticore> launcher {16_thread};
-    std::cout << "checksum: " << launcher.run<VectorChecksum>(split(v)) << "\n";
-}
+bpl::Launcher<bpl::ArchMulticore> launcher {16_thread};
 ```
-The only difference from the previous code is the definition of the `Launcher`, for which the architecture type has been changed.
 
 On the other hand, source code written using the UPMEM SDK would be of no use for execution on a multicore architecture, requiring a complete rewrite.
