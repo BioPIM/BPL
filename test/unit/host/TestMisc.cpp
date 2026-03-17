@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2025
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -34,7 +34,7 @@ using namespace bpl;
 #include <tasks/SyracuseReduce.hpp>
 #include <tasks/Syracuse.hpp>
 #include <tasks/SyracuseVector.hpp>
-
+#include <tasks/NoResult.hpp>
 
 #include <iostream>
 #include <list>
@@ -798,4 +798,13 @@ TEST_CASE ("SyracuseVector", "[misc]" )
     std::pair<uint64_t,uint64_t> range (1, N);
     Launcher<ArchUpmem> launcher {20_rank};
     auto result = launcher.run<SyracuseVector> (split(range));
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("NoResult", "[misc]" )
+{
+    Launcher<ArchUpmem> launcher;
+    for (auto const& res : launcher.run<NoResult> (42))  {
+    	REQUIRE(res.size()==0);
+    }
 }

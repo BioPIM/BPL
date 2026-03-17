@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics
-// date  : 2025
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -63,7 +63,7 @@ TEST_CASE ("SortSelection", "[sort]" )
 {
     constexpr bool full = false;
     size_t r1 = 20;
-    size_t r0 = full ? r1 : r1;
+    size_t r0 = full ? 1 : r1;
 
     for (size_t nbitemsPerPu : {1<<4, 1<<6, 1<<8, 1<<10, 1<<12 })
     {

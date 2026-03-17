@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -124,12 +124,13 @@ struct MRAM
         /** */
         void read (void* from, void* data, size_t sizeInBytes)
         {
+#ifdef WITH_BPL_STATISTICS
 if (LOCK)  {   mutex_lock (__MRAM_Allocator_mutex__);  }
 
             // Warning !!! not protected via mutex (for perf concern), so will provide approximation only.
             nbCallsRead += 1;
 if (LOCK)  {   mutex_unlock (__MRAM_Allocator_mutex__);  }
-
+#endif
             reader_ (from, data, sizeInBytes);
         }
 

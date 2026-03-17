@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -37,6 +37,8 @@ struct ArchDummy
     template<typename T, typename...Ts> using vector = std::vector<T, Ts...>;
 
     template<typename T>        using span   = std::span<T>;
+
+    template <typename T, size_t N> using inplace_vector = std::inplace_vector<T, N>;
 
     template<typename T>        using vector_view = std::vector<T>;
 
@@ -75,6 +77,8 @@ struct ArchDummy
 
     template<typename T> using once   = bpl::once<T>;
     template<typename T> using global = bpl::global<T>;
+
+    struct barrier {  static void wait() {}  };
 };
 
 ////////////////////////////////////////////////////////////////////////////////

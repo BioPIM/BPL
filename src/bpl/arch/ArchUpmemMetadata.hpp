@@ -133,9 +133,14 @@ struct MetadataInput
 
     MetadataInput ()  {  for (size_t i=0; i<ARGS_MAX_NUMBER; i++)  {  argsSplitStatus[i] = 0; }  }
 
-    MetadataInput (uint32_t nbtaskunits, uint32_t dpuid, uint32_t bufferSize, uint32_t deltaOnce, uint32_t reset, uint32_t oncePadding, uint8_t splitStatus[ARGS_MAX_NUMBER])
-    :   nbtaskunits(nbtaskunits), dpuid(dpuid), bufferSize(bufferSize), deltaOnce(deltaOnce), reset(reset), oncePadding(oncePadding)
-    {
+    MetadataInput (
+		uint32_t nbtaskunits, uint32_t dpuid, uint32_t bufferSize,
+		uint32_t deltaOnce,   uint32_t reset, uint32_t oncePadding,
+		uint32_t noreturn,
+		uint8_t splitStatus[ARGS_MAX_NUMBER]
+	)
+    :   nbtaskunits(nbtaskunits), dpuid(dpuid), bufferSize(bufferSize),
+		deltaOnce(deltaOnce),     reset(reset), oncePadding(oncePadding), noreturn(noreturn) {
         for (size_t i=0; i<ARGS_MAX_NUMBER; i++)  {  argsSplitStatus[i] = splitStatus[i]; }
     }
 
@@ -151,6 +156,8 @@ struct MetadataInput
     uint32_t reset       = 0;
     /** Padding information when the tag 'once' has been used on a parameter of the task. */
     uint32_t oncePadding = 0;
+    /** Tells that we don't have to provide any result to the host. */
+    uint32_t noreturn   = 0;
     /** Gives the split status for the arguments of the task. */
     uint8_t  argsSplitStatus[ARGS_MAX_NUMBER];
 };
@@ -169,6 +176,7 @@ struct MetadataOutput
     struct VectorInfo {
         uint32_t address = 0;
         uint32_t nbitems = 0;
+        bool     isSet   = false;
     };
 
     /** Provides the global tasklet ids, ie something like dpuid*NR_TASKLETS + me(). */

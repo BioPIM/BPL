@@ -58,7 +58,7 @@ struct Serialize
     // Returns a dummy buffer
     static auto getDummyBuffer()
     {
-        static char dummy[8] = { 1,2,3,4,5,6,7,8 };
+        static ARCH_ALIGN char dummy[8] = { 1,2,3,4,5,6,7,8 };
         return make_pair (dummy, sizeof(dummy));
     }
 
@@ -235,6 +235,43 @@ struct Serialize
         DEBUG_SERIALIZATION (DEBUG_FMT, 0, "restore", "array + is_trivial_v<T>", (uint32_t) n);
 
         it.memcpy (result.data(), round (n) );
+
+        return true;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////
+	// INPLACE_VECTOR
+	////////////////////////////////////////////////////////////////////////////////
+	template <typename T, size_t N, typename FCT>
+	static auto iterate(bool transient, int depth, const inplace_vector<T, N>& t, FCT fct,
+						void* context = nullptr) {
+		DEBUG_SERIALIZATION(DEBUG_FMT, depth, "iterate", "inplace_vector", (uint32_t)(N * sizeof(T)));
+
+		serial_size_t n = t.size();
+		iterate(true, depth, n, fct, context);
+
+		if (n > 0) {
+			fct(transient, depth, (void*)t.data(), sizeof(T) * n, round(sizeof(T) * n));
+		} else {
+			// in case the vector is empty, we still provide some data in order not to have an nullptr.
+			auto [dummy, DN] = getDummyBuffer();
+			fct(transient, depth, dummy, DN, round(DN));
+		}
+	}
+
+    template <typename T, size_t N>
+    static auto restore(iter_t& it, typename ARCH::template inplace_vector<T, N>& result) {
+        serial_size_t n = 0;
+        restore(it, n);
+
+        DEBUG_SERIALIZATION(DEBUG_FMT, 0, "restore", "inplace_vector", (uint32_t)n);
+
+        // We resize the vector.
+        result.reserve(round(n * sizeof(T)));
+        result.resize(n);
+
+        it.memcpy((char*)result.data(), round(n * sizeof(T)));
+        it.advance(round(n * sizeof(T)));
 
         return true;
     }

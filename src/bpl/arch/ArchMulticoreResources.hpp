@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -16,6 +16,7 @@
 #include <mutex>
 
 #include <bpl/utils/tag.hpp>
+#include <bpl/utils/inplace_vector_std.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace bpl  {
@@ -34,11 +35,13 @@ struct ArchMulticoreResources
 
     template<typename T, int N> using array  = std::array<T,N>;
 
+    template <typename T, size_t N> using inplace_vector = std::inplace_vector<T, N>;
+
     template<typename T, typename...Ts> using vector = std::vector<T, Ts...>;
 
     template<typename T>        using span   = std::span<T>;
 
-    template<typename T>        using vector_view = std::vector<T>;
+    template<typename T>        using vector_view = std::span<T>;
 
     template<typename T>        using allocator = std:: allocator<T>;
 
@@ -66,7 +69,18 @@ struct ArchMulticoreResources
 
     static auto round (int n)  {  return (n + 8 - 1) & -8;; }
 
-    using mutex = std::mutex;
+    struct DummyMutex {
+		void lock() {}
+		void unlock() {}
+        bool try_lock() { return true; }
+	};
+    using mutex = DummyMutex; // Mutex has no meaning in a multicore task, so using dummy calls instead of std::mutex
+
+    struct DummyBarrier {
+		static void wait() {}
+	};
+    using barrier = DummyBarrier; // Barrier has no meaning in a multicore task, so using a dummy call
+
     template<typename T> using lock_guard = std::lock_guard<T>;
 
     template <class T> static void swap ( T& a, T& b ) {  std::swap(a,b);  }
@@ -75,6 +89,8 @@ struct ArchMulticoreResources
 
     template<typename T> using once   = bpl::once<T>;
     template<typename T> using global = bpl::global<T>;
+
+    static constexpr size_t NB_THREADS_PER_UNIT = 1;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

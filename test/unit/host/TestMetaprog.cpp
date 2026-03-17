@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2025
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -26,7 +26,23 @@ TEST_CASE ("Negation", "[metaprog]" )
 }
 
 //////////////////////////////////////////////////////////////////////////////
+template<typename T>
+constexpr std::size_t LambdaNbParams_v = FunctionSignatureParser<std::decay_t<decltype(&T::operator())>>::args_size;
 
+TEST_CASE ("FunctionSignatureParser", "[metaprog]" )
+{
+    auto l0 = []() {};
+    auto l1 = [](int) {};
+    auto l2 = [](int,int) {};
+    auto l3 = [](int,int,int) {};
+
+    static_assert (LambdaNbParams_v<decltype(l0)> == 0);
+    static_assert (LambdaNbParams_v<decltype(l1)> == 1);
+    static_assert (LambdaNbParams_v<decltype(l2)> == 2);
+    static_assert (LambdaNbParams_v<decltype(l3)> == 3);
+}
+
+//////////////////////////////////////////////////////////////////////////////
 template<typename T>
 using prototype_t = bpl::FunctionSignatureParser<std::decay_t<decltype(&T::operator())>>::args_tuple;
 

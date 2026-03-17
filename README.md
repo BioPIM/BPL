@@ -24,6 +24,13 @@ From the `build` directory, you can run `make buildHelloWorld` to generate an ar
 
 Once the archive is extracted, you can follow the instructions in the README file.
 
+You can also generate an empty project with a given name, say 'MyProject' by doing:
+1. `cmake -DNEWPROJECT_NAME=MyProject ..`
+2. `make create_bpl_project_MyProject`
+
+This will create a `MyProject.tar.gz` archive that can be used as a scratch project.
+
+
 ## Library overview
 
 The project has the following directory structure:

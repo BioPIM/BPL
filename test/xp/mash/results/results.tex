@@ -1,0 +1,44 @@
+\paragraph{Presentation}
+
+We present here a benchmark comparing sketches.
+As a reminder,, 
+Comparing two genomic sequences can therefore be approximated by comparing two sketches, that is, two ordered sequences of integers of the same size $N$,
+which can be performed with a complexity of $O(N)$. 
+As a result, a comparison score is produced, making it possible to estimate the similarity between the two genomic sequences.
+
+\paragraph{Limitations encountered} 
+For simplicity, the PIM version using the UPMEM SDK only allows certain sizes of the reference and query databases to be used.
+
+\paragraph{Benchmarks} 
+For this benchmark, we consider two databases: a reference database containing $R$ sketches, and a query database containing $Q$ sketches. The benchmark consists of performing the $R \cdot Q$ comparisons for each (ref, qry) pair. 
+We will use sketches of $10,000$ integers, each integer encoded on $4$ bytes.
+
+We choose to vary the sizes $R$ and $Q$ of the reference and query databases, as well as the number of compute units (threads for multicore and ranks for PIM).
+In its largest configuration, the reference database contains 245,760 sketches of 10,000 integers of 4 bytes each, totaling over 9 GB of data.
+For each configuration (reference database size, query database size), the list of scores is computed. A checksum of these scores is then calculated, and we verify that each implementation returns the same checksum for a given configuration, regardless of the number of compute units used.
+
+\input chapters/mash/table.tex
+
+
+\paragraph{Results} We present the results in \tablename~\ref{tab:mash-results}. The four implementations tested are:
+\begin{enumerate}
+\item \textbf{MC std}: the multicore implementation using standard threads; The {BS::thread\_pool} library is used to simplify thread management
+\item \textbf{MC BPL}: the multicore implementation using the BPL
+\item \textbf{PIM SDK}: an implementation directly using the UPMEM SDK; The reading of the reference and query databases is optimized using a local cache to minimize WRAM/MRAM transfers.
+\item \textbf{PIM BPL}: the PIM implementation using the BPL
+\end{enumerate}
+
+As usual, there is actually a single BPL implementation, executed on both a multicore architecture and a PIM architecture. 
+For this implementation, the reference database is partitioned into $K$ parts, with each thread or tasklet handling its own partition. The sketches from the query database are thus compared to each of these partitions.
+
+For both PIM versions (SDK UPMEM and BPL) and for a fair comparison, it should be noted that the measured time does not include the duration of DPU allocation/deallocation.
+
+Regarding the two multicore versions, we observe that the BPL version is slightly slower than the standard version, regardless of the configuration. This difference can be explained by two reasons. First, the data partitioning may be more advantageous for the standard version than for the multicore version, resulting in fewer cache misses and therefore fewer memory reloads. Second, the generic nature of the BPL version involves certain design and implementation choices that can sometimes prove less efficient than a more direct implementation.
+
+For the two PIM versions, we observe slightly better performance for the BPL version. This result may seem counterintuitive, since the SDK version is conceptually close to what the BPL can produce in this example, notably with the same data partitioning. The compilation options for both versions are also equivalent for generating the DPU binaries. One possible explanation is that the compiler may be able to better optimize the BPL version compared to the SDK version.
+
+We also observe that scalability is relatively good for all four versions. Since the number of compute units (i.e. threads or ranks) is doubled for each configuration, the execution time should in principle be halved, which is roughly what we observe. For example, none of the versions shows performance stagnation when the number of compute units is doubled.
+
+Finally, for an equivalent number of threads and ranks, we observe that the PIM version is approximately twice as fast as the multithreaded version, whether comparing the two SDK versions or the two PIM versions.
+
+\paragraph{Source code} The BPL implementation is publicly available at \url{https://gitlab.inria.fr/pim/org.pim.bpl/-/tree/main/test/xp/mash} (GNU AGPLv3)

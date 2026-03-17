@@ -100,6 +100,10 @@ set (TASKS_LIST
     "VectorSharedIteratorTrue" "VectorSharedIteratorFalse"
     "VectorSerialize"
     "Syracuse" "SyracuseReduce" "SyracuseVector"
+    "OnceVectorView"
+    "NoResult"
+    "InplaceVector1" "InplaceVector2"
+    "VectorViewWithTag"
 )
 
 # We define the location of the BPL. This variable can change according to the project (unit tests, exported project...)

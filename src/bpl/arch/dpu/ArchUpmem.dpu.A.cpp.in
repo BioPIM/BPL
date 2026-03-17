@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -117,6 +117,8 @@ struct ResourcesManager
 		// We may have to set SHARED_ITER_CACHE to false in case we have at least one global vector in the prototype            
         static constexpr bool SHARED_ITER_CACHE = hasAtLeastOneGlobalVector ?  
         	false : resources_generic_t::constants_t::SHARED_ITER_CACHE;
+
+        static constexpr int PERSISTENT_STORAGE_SIZE = resources_generic_t::constants_t::PERSISTENT_STORAGE_SIZE;
     };
 
     // We define the actual resources and task types 
@@ -219,6 +221,11 @@ using ArrayMutex_t = bpl::array_wrapper<TaskBase_t::mutex_t,MUTEX_NB>;
 template<>  ArrayMutex_t TaskBase_t::mutexes = ArrayMutex_t::init_from <uint8_t> (atomicMutexes);
 
 ////////////////////////////////////////////////////////////////////////////////
+// BARRIER
+////////////////////////////////////////////////////////////////////////////////
+BARRIER_INIT(__task_barrier__, NR_TASKLETS);
+
+////////////////////////////////////////////////////////////////////////////////
 // DATA (IN and OUT)
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -229,7 +236,12 @@ template<>  ArrayMutex_t TaskBase_t::mutexes = ArrayMutex_t::init_from <uint8_t>
 // used by the arguments; this is possible since we broadcast (as input metadata)
 // the size of the serialized arguments, so we can tell that the actual available MRAM
 // is at this specific offset.
-static const std::size_t ARGS_SIZE   = (64-2) * 1024*1024;
+static_assert(ResourcesManager::config::PERSISTENT_STORAGE_SIZE < 62 * 1024 * 1024, "PERSISTENT_STORAGE_SIZE is trying to take more than MRAM available capacity");
+static const std::size_t ARGS_SIZE = 62 * 1024 * 1024 - ResourcesManager::config::PERSISTENT_STORAGE_SIZE;
+
+// Buffer for persistent storage
+__mram uint8_t __persistent_storage__[ResourcesManager::config::PERSISTENT_STORAGE_SIZE];
+__mram_ptr uint8_t* __persistent_storage_start__ = __persistent_storage__;
 
 // This is the main buffer holding the serialized information from the host.
 __mram_noinit  uint8_t __args__   [ARGS_SIZE];                              // HOST -> DPU
@@ -283,16 +295,6 @@ void banner (const char* msg)
         using type = typename bpl::TimeStats::value_type;
         static type init  () { return perfcounter_config(COUNT_CYCLES, true); }
         static type get   () { return perfcounter_get(); }
-        static type since (type prev) 
-        {
-            type t = get();
-            // We may not accurate, so we need some threshold.
-            return t > prev ? t-prev : 0;
-        }
-        static type diff (type a, type b) { 
-            // We may not accurate, so we need some threshold.
-            return b > a ? b-a : 0;
-        }
     };
 #else
     struct Perf
@@ -300,7 +302,6 @@ void banner (const char* msg)
         using type = uint64_t;
         static type init () { return 0; }    
         static type get  () { return 0; }
-        static type since (type prev) { return 0; }
     };
 #endif
 
@@ -368,7 +369,7 @@ void postprocess (uint32_t tuid,
     DEBUG0 ("postprocess vector\n");
     // FIRST VERSION: to be improved...
     result.update_all();
-    __metadata_output__.vector_info[tuid] = { .address=result.getFillAddress(),  .nbitems=result.size() };
+    __metadata_output__.vector_info[tuid] = { .address=result.getFillAddress(),  .nbitems=result.size(), .isSet=false};
 }
 
 template<
@@ -407,8 +408,9 @@ void postprocess (uint32_t tuid,
 ////////////////////////////////////////////////////////////////////////////////
 int main()
 {
-    auto t0 = Perf::init ();
-
+    if(me() == 0)
+        Perf::init();
+        
     // shortcut
     int tuid = me();
     
@@ -549,8 +551,7 @@ int main()
     barrier_wait(&my_barrier);
 
     // Performance stats
-    auto t1 = Perf::get ();
-    __metadata_output__.nb_cycles [tuid].unserialize = Perf::diff(t0,t1);
+    __metadata_output__.nb_cycles [tuid].unserialize = Perf::get();
 
     // We compute the actual puid
     uint32_t puid = __metadata_input__.dpuid*NR_TASKLETS + tuid;
@@ -582,8 +583,7 @@ int main()
     }
     
     // Performance stats
-    auto t2 = Perf::get ();
-    __metadata_output__.nb_cycles [tuid].split = Perf::diff(t1,t2);
+    __metadata_output__.nb_cycles [tuid].split = Perf::get();
 
 #endif // WITH_SPLIT_ARGUMENTS
 #endif // #ifndef WITH_FAKE_ARGUMENTS
@@ -601,7 +601,7 @@ int main()
         task_t task;
 
         // We may have to configure the task with some values.
-        configure (task, puid, __metadata_input__.dpuid, perfcounter_config (COUNT_CYCLES, true));
+        configure (task, puid, __metadata_input__.dpuid, perfcounter_get(), me());
 
         return task (std::forward<decltype(args)>(args)...);
     };
@@ -621,6 +621,9 @@ int main()
     result_type result = result_type ();
 #endif
 
+    // If the call to Launcher::run was made with the noresult_t tag, then we can already leave.
+    if (__metadata_input__.noreturn)  { return 0; }
+    
  	__metadata_output__.output_sizeof = sizeof(result);
 
     // We may need some post process on the result.
@@ -629,15 +632,18 @@ int main()
     postprocess (tuid, result); 
     
     // Performance stats
-    auto t3 = Perf::get ();
-    __metadata_output__.nb_cycles [tuid].exec = Perf::diff(t2,t3);
+    __metadata_output__.nb_cycles [tuid].exec = Perf::get();
 
     banner("EXEC END");
+
+    __metadata_output__.result_tasklet_order [tuid] = puid;
 
     ////////////////////////////////////////////////////////////////////////////////
     // DATA MANAGEMENT (DPU -> HOST)
     ////////////////////////////////////////////////////////////////////////////////
-
+bool emptyVectorOptim = __metadata_output__.vector_info[tuid].isSet and __metadata_output__.vector_info[tuid].nbitems==0;
+if (not emptyVectorOptim)  {
+	
     // We memorize the tasklet id and result size
     // NOTE: the trick here is to first compute the size of the result before copying the result into MRAM
     // -> this can be done in the context of the current tasklet without concurrent access
@@ -645,7 +651,6 @@ int main()
 
     DEBUG0("result size for serialization: [%ld,%ld]\n", uint64_t(totalSize.first), uint64_t(totalSize.second));
     
-    __metadata_output__.result_tasklet_order [tuid] = puid;
     __metadata_output__.result_tasklet_size  [tuid] = totalSize.first + totalSize.second; // transient + permanent
 
     // However, we have to prevent concurrent access when computing the offset (for each tasklet) of the MRAM pointer 
@@ -704,9 +709,10 @@ int main()
         localSize += roundedSize;
     });
 
+} // if (not vectorOptim)
+
     // Performance stats
-    auto t4 = Perf::get ();
-    __metadata_output__.nb_cycles [tuid].result = Perf::diff(t3,t4);
+    __metadata_output__.nb_cycles [tuid].result = Perf::get();
 
     if (tuid==0)  
     {  
@@ -765,8 +771,7 @@ int main()
 
     }
 
-    auto t5 = Perf::get ();
-    __metadata_output__.nb_cycles [tuid].all = Perf::diff(t0,t5);
+    __metadata_output__.nb_cycles [tuid].all = Perf::get();
     
     banner("END");
     
@@ -777,7 +782,5 @@ int main()
         mram_write(&__metadata_output__, &__metadata_output__mram__, sizeof(bpl::MetadataOutput));
     }
     
-    barrier_wait(&my_barrier);
-
     return 0;
 }

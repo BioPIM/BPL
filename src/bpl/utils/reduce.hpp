@@ -55,12 +55,10 @@ template<class TASK>  struct Reduce<true,TASK>
 /** \brief Specialization 2: return the partial results */
 template<class TASK>  struct Reduce<false,TASK>
 {
-    using Result_t = return_t <decltype(&TASK::operator())>;
-
     template<typename RESULT_RANGE>
-    auto& operator() (RESULT_RANGE& results)
+    decltype(auto) operator() (RESULT_RANGE&& results)
     {
-        return results;
+        return std::move(results);
     }
 };
 

@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -278,6 +278,12 @@ struct SplitOperator<impl::SplitProxy<LEVEL,KIND,TYPE>>
     {
         // We simply forward to the encapsulated object.
         return SplitOperator<TYPE>::split (t, idx, total);
+    }
+
+    static decltype(auto) split_view (const impl::SplitProxy<LEVEL,KIND,TYPE>& t, std::size_t idx, std::size_t total)
+    {
+        // We simply forward to the encapsulated object.
+        return SplitOperator<TYPE>::split_view (t, idx, total);
     }
 };
 

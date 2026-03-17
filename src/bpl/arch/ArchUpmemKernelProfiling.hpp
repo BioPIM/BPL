@@ -1,0 +1,38 @@
+////////////////////////////////////////////////////////////////////////////////
+// BPL, the Process In Memory library for bioinformatics 
+// date  : 2024
+// author: edrezen
+// module: ArchUpmemKernelProfiling
+// author: mmognol
+////////////////////////////////////////////////////////////////////////////////
+
+#pragma once
+
+#include <atomic>
+#include <cstdint>
+
+////////////////////////////////////////////////////////////////////////////////
+namespace bpl {
+namespace profiling {
+////////////////////////////////////////////////////////////////////////////////
+
+inline uint64_t next_kernel_launch_sequence()
+{
+    static std::atomic<uint64_t> launch_sequence{0};
+    return launch_sequence.fetch_add(1, std::memory_order_relaxed);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+} // namespace profiling
+} // namespace bpl
+////////////////////////////////////////////////////////////////////////////////
+
+extern "C" __attribute__((noinline)) void bpl_record_kernel_stats(
+    uint64_t launch_sequence,
+    uint32_t dpu_index,
+    uint32_t clocks_per_sec,
+    uint64_t time_all,
+    uint64_t time_unserialize,
+    uint64_t time_split,
+    uint64_t time_exec,
+    uint64_t time_result);

@@ -23,6 +23,17 @@
 namespace bpl  {
 ////////////////////////////////////////////////////////////////////////////////
 
+//////////////////////////////////////////////////////////////////////////////////////////
+/** \brief Type that can be used as template parameter to Launcher::run after the name
+ * of the task itself.
+ *
+ * Some architecture can use this tag for optimization. For instance, ArchUpmem might choose
+ * not to serialize anything back to the host.
+ *
+ * Ex:  launcher.run<SomeTask,noreturn_t> (1,2,3);
+ */
+struct noreturn_t {};
+
 /** \brief Class that allows to run some task on a given architecture
  *
  * The Launcher class provides methods for launching a task on a given architecture.

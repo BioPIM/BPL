@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -18,6 +18,7 @@
 #include <bpl/utils/Range.hpp>
 #include <bpl/utils/BufferIterator.hpp>
 #include <bpl/utils/vector.hpp>
+#include <bpl/utils/inplace_vector.hpp>
 #include <bpl/utils/tag.hpp>
 #include <bpl/arch/dpu/ArchUpmemMRAM.hpp>
 #include <bpl/utils/tag.hpp>
@@ -28,6 +29,7 @@
 #include <span>
 
 extern bpl::MRAM::Allocator<true>  __MRAM_Allocator_lock__;
+extern barrier_t __task_barrier__;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -185,6 +187,8 @@ struct ArchUpmemResources
 {
     using config_t = CONFIG;
 
+    static constexpr size_t NB_THREADS_PER_UNIT = NR_TASKLETS;
+
     // Factory that returns a type with a specific configuration.
     // We test whether the CONFIG template parameter provided to ArchUpmemResources is void or not.
     //   - if void,     we use the config provided to the 'factory' template.
@@ -207,6 +211,7 @@ struct ArchUpmemResources
         DEFINE_GETTER (MEMTREE_MAX_MEMORY_LOG2);
         DEFINE_GETTER (SWAP_USED);
         DEFINE_GETTER (SHARED_ITER_CACHE);
+        DEFINE_GETTER (PERSISTENT_STORAGE_SIZE);
         DEFINE_GETTER (VECTOR_SERIALIZE_OPTIM);                                                                 \
 
         static constexpr bool SWAP_USED                     = get_SWAP_USED_v                       <config_t,false>;
@@ -216,6 +221,7 @@ struct ArchUpmemResources
         static constexpr int MEMTREE_MAX_MEMORY_LOG2        = get_MEMTREE_MAX_MEMORY_LOG2_v         <config_t,8>;
         static constexpr bool SHARED_ITER_CACHE             = get_SHARED_ITER_CACHE_v               <config_t,true>;
         static constexpr bool VECTOR_SERIALIZE_OPTIM        = get_VECTOR_SERIALIZE_OPTIM_v          <config_t,false>;
+        static constexpr int PERSISTENT_STORAGE_SIZE       = get_PERSISTENT_STORAGE_SIZE_v          <config_t,8>;
     };
 
     template<typename T, typename S> using pair = std::pair<T,S>;
@@ -228,6 +234,8 @@ struct ArchUpmemResources
     // We currently point to std for some types.
 
     template<typename T, std::size_t N> using array  = impl::array<T,N>;
+
+    template<typename T, std::size_t N> using inplace_vector = impl::inplace_vector<T,N>;
 
     // This type trait is supposed to be provided as second template parameter to 'vector' in order to mimic std::vector API.
     // For the bpl::vector, this type can be used for customization of cache size for instance.
@@ -315,6 +323,10 @@ struct ArchUpmemResources
     private:
         handle_t handle_;
         handle_t handle() { return handle_; }
+    };
+
+    struct barrier {
+		static void wait() { barrier_wait(&__task_barrier__); }
     };
 
     template<typename M> struct lock_guard
@@ -868,6 +880,33 @@ struct Task <bpl::ArchUpmemResources<CONFIG>,MUTEX_NB> : TaskBase <Task<bpl::Arc
 
 };
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // INPLACE_VECTOR
+    // WIP: inplace_vector cannot be used as task input
+    // This specialization seems to not be called, not working, so leaving commented for now
+    //////////////////////////////////////////////////////////////////////////////////////////
+     template<typename T, std::size_t N>
+     struct serializable<bpl::impl::inplace_vector<T,N>>
+     {
+         static constexpr int value = true;
+
+         template<class ARCH, class BUFITER, int ROUNDUP, typename TYPE>
+         static auto restore (BUFITER& it, TYPE& result)
+         {
+             using serial_size_t = typename Serialize<ARCH,BUFITER,ROUNDUP>::serial_size_t;
+             serial_size_t n = 0;
+             it.read(&n, roundUp<ROUNDUP>(sizeof(n)));
+             if (n > 0) {
+                 result.reserve(roundUp<ROUNDUP>(sizeof(T) * n));
+                 result.resize(n);
+                 it.memcpy((char*)result.data(), roundUp<ROUNDUP>(sizeof(T) * n));
+             } else {
+                 auto [dummy, DN] = Serialize<ARCH,BUFITER,ROUNDUP>::getDummyBuffer();
+                 it.readNext(DN);
+             }
+             return true;
+         }
+     };
 } // namespaces
 
 #endif  // #ifdef DPU

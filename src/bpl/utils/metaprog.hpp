@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
+#include <span>
 // FOR THE FUTURE:  #include <boost/hana.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,6 +60,7 @@ template<class R, class...Args>
 struct args<R(Args...)> : types<Args...>
 {
     using Return = R;
+    using as_tuple = std::tuple<Args...>;
     template<int N> using param = tuple_element<N,Args...>;
 };
 
@@ -67,6 +69,7 @@ template<class R, class O, class...Args>
 struct args<R(O::*)(Args...)> : types<Args...>
 {
     using Return = R;
+    using as_tuple = std::tuple<Args...>;
     template<int N> using param = tuple_element<N,Args...>;
 };
 
@@ -75,6 +78,7 @@ template<class R, class O, class...Args>
 struct args<R(O::*)(Args...) const> : types<Args...>
 {
     using Return = R;
+    using as_tuple = std::tuple<Args...>;
     template<int N> using param = tuple_element<N,Args...>;
 };
 
@@ -577,6 +581,14 @@ struct CheckPredicate<PREDICATE,T, ARGS...>
     const static int value = (PREDICATE<T>::value ? 1 : 0) + CheckPredicate<PREDICATE, ARGS...>::value;
 };
 
+/** \brief Template specialization. */
+template<template<typename> typename PREDICATE, typename ...ARGS>
+struct CheckPredicate<PREDICATE,std::tuple<ARGS...>>
+{
+    const static int value = CheckPredicate<PREDICATE, ARGS...>::value;
+};
+
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -931,7 +943,7 @@ struct array_wrapper<T,0>
 // https://codereview.stackexchange.com/questions/193420/apply-a-function-to-each-element-of-a-tuple-map-a-tuple
 
 template <class F, typename Tuple, size_t... Is>
-auto transform_each_impl (Tuple t, F f, std::index_sequence<Is...>)
+auto transform_each_impl (Tuple const& t, F f, std::index_sequence<Is...>)
 {
     return std::make_tuple(f(std::get<Is>(t) )...);
 }
@@ -1210,6 +1222,38 @@ struct FirstTemplateParameter<X<T>> { using type=T; };
 
 template<typename T>
 using FirstTemplateParameter_t = typename FirstTemplateParameter<T>::type;
+
+////////////////////////////////////////////////////////////////////////////////
+
+/** \brief Type trait telling whether a type is a std::span */
+template<typename T> struct is_span : std::false_type {};
+
+/** \brief Template specialization for std::span. */
+template<typename T> struct is_span<std::span<T>> : std::true_type {};
+
+
+////////////////////////////////////////////////////////////////////////////////
+template<typename, typename>
+struct tuple_holds;
+
+template<typename ...Ts, typename T>
+struct tuple_holds<std::tuple<Ts...>, T>  : std::disjunction<std::is_same<Ts, T>...> {};
+
+////////////////////////////////////////////////////////////////////////////////
+template<typename T>
+struct is_noconst_lvalue_reference : std::false_type {};
+
+template<typename T>
+requires (std::is_lvalue_reference_v<T> and not std::is_const_v<std::remove_reference_t<T>>)
+struct is_noconst_lvalue_reference<T> : std::true_type {};
+
+////////////////////////////////////////////////////////////////////////////////
+template<template<typename> typename Projection, typename Tuple>
+struct tuple_projection {
+    template<typename...Ts>
+    static auto apply (std::tuple<Ts...>) -> std::tuple<Projection<Ts>...>;
+    using type = decltype(apply(std::declval<Tuple>()));
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 };  // end of namespace

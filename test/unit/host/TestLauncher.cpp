@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2025
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -31,6 +31,8 @@ using namespace bpl;
 #include <tasks/LauncherPool1.hpp>
 #include <tasks/Max.hpp>
 #include <tasks/Min.hpp>
+#include <tasks/SyracuseReduce.hpp>
+#include <tasks/NoResult.hpp>
 
 //////////////////////////////////////////////////////////////////////////////
 struct config
@@ -585,8 +587,26 @@ TEST_CASE ("LauncherPool2", "[Launcher]" )
     // For the left reference:   1 default
     REQUIRE (LauncherPoolTest<true> ::stats() == std::array<size_t,4> {1,0,0,1});
 
-    // For the temporary object: 1 default, 1 copy and 2 moves
-    REQUIRE (LauncherPoolTest<false>::stats() == std::array<size_t,4> {1,1,2,4});
+    // For the temporary object: 1 default, 0 copy and 3 moves
+    REQUIRE (LauncherPoolTest<false>::stats() == std::array<size_t,4> {1,0,3,4});
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("LauncherPool3", "[Launcher]" )
+{
+    //LauncherPool<ArchMulticore> pool (16, 1_thread);
+    LauncherPool<ArchUpmem>     pool (16, 64_dpu);
+
+    std::size_t nbruns = 1000;
+	auto range = std::make_pair(1,100000);
+    for (std::size_t i=0; i<nbruns; ++i) {
+        pool.submit<SyracuseReduce> (
+            [] (auto&& launcher, auto&& results) {},
+			split(range)
+        );
+    }
+    pool.wait();
+    //pool.dump();
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -616,4 +636,25 @@ TEST_CASE ("Min2", "[MaxMin]" )
     Launcher<ArchMulticore> launcher (32_thread);
     for (auto r : launcher.run<Min> (17, 42))  {  REQUIRE (r == 17);  }
     for (auto r : launcher.run<Min> (36, 12))  {  REQUIRE (r == 12);  }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("noreturn1", "[launcher]" )
+{
+	Launcher<ArchUpmem> launcher(1_dpu);
+
+	// We use the 'noreturn_t' type as a flag
+	launcher.run<NoResult,noreturn_t> (42);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("noreturn2", "[launcher]" )
+{
+    LauncherPool<ArchUpmem> pool (2, 64_dpu);
+
+	pool.submit<NoResult,noreturn_t> (
+		[] (auto&& launcher, auto&& results) {},
+		42
+	);
+    pool.wait();
 }

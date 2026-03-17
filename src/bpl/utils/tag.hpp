@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -39,7 +39,7 @@ struct tag
     using type = T;
 
     template<typename U>
-    tag (U&& u)  : ref_(u) {}
+    tag (U const& u)  : ref_(u) {}
 
     decltype(auto) operator-> () const { return  std::addressof(ref_); }
     decltype(auto) operator*  () const { return  ref_;  }
@@ -86,7 +86,7 @@ struct first_non_tag<TAG<T>> : first_non_tag<T> {};
         NAME& operator= (      NAME&&) = default;               \
                                                                 \
         template<typename U>                                    \
-        NAME(U&& u) : tag<NAME##_type<T>> (u) {}                \
+        NAME(U const& u) : tag<NAME##_type<T>> (u) {}           \
     };                                                          \
                                                                 \
 template<typename T>                                            \
@@ -128,6 +128,14 @@ inline constexpr bool hastag_v = hastag<TAG,T>::value;
 //////////////////////////////////////////////////////////////////////////////////////////
 TAG_DEFINITION (once,     null_converter);
 TAG_DEFINITION (global, global_converter);
+
+//////////////////////////////////////////////////////////////////////////////////////////
+template<typename T>
+using remove_all_tags = std::decay_t<std::tuple_element_t<0, bpl::transform_tuple_t <
+    std::tuple<T>,
+    bpl::removetag_once,
+    bpl::removetag_global
+>>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 };  // end of namespace

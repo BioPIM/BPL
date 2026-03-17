@@ -1,0 +1,111 @@
+--------------------------------------------------------------------------------
+[rank,dpu,tasklet]: [ 1,  64,  1024]  nbitemsPerPu:    16   multicore:  0.015   upmem:  0.028  ratio:  1.867   PIM get/read: 1      768          upmem::launch 0.001 
+[rank,dpu,tasklet]: [ 2, 128,  2048]  nbitemsPerPu:    16   multicore:  0.030   upmem:  0.024  ratio:  0.800   PIM get/read: 1      768          upmem::launch 0.001 
+[rank,dpu,tasklet]: [ 3, 192,  3072]  nbitemsPerPu:    16   multicore:  0.042   upmem:  0.022  ratio:  0.524   PIM get/read: 1      768          upmem::launch 0.001 
+[rank,dpu,tasklet]: [ 4, 256,  4096]  nbitemsPerPu:    16   multicore:  0.053   upmem:  0.022  ratio:  0.415   PIM get/read: 1      768          upmem::launch 0 
+[rank,dpu,tasklet]: [ 5, 320,  5120]  nbitemsPerPu:    16   multicore:  0.066   upmem:  0.021  ratio:  0.318   PIM get/read: 1      768          upmem::launch 0 
+[rank,dpu,tasklet]: [ 6, 384,  6144]  nbitemsPerPu:    16   multicore:  0.079   upmem:  0.022  ratio:  0.278   PIM get/read: 1      768          upmem::launch 0.001 
+[rank,dpu,tasklet]: [ 7, 448,  7168]  nbitemsPerPu:    16   multicore:  0.095   upmem:  0.022  ratio:  0.232   PIM get/read: 1      768          upmem::launch 0 
+[rank,dpu,tasklet]: [ 8, 512,  8192]  nbitemsPerPu:    16   multicore:  0.106   upmem:  0.024  ratio:  0.226   PIM get/read: 1      768          upmem::launch 0 
+[rank,dpu,tasklet]: [ 9, 576,  9216]  nbitemsPerPu:    16   multicore:  0.135   upmem:  0.026  ratio:  0.193   PIM get/read: 1      768          upmem::launch 0 
+[rank,dpu,tasklet]: [10, 640, 10240]  nbitemsPerPu:    16   multicore:  0.128   upmem:  0.024  ratio:  0.187   PIM get/read: 1      768          upmem::launch 0.001 
+[rank,dpu,tasklet]: [11, 704, 11264]  nbitemsPerPu:    16   multicore:  0.142   upmem:  0.026  ratio:  0.183   PIM get/read: 1      768          upmem::launch 0.001 
+[rank,dpu,tasklet]: [12, 768, 12288]  nbitemsPerPu:    16   multicore:  0.158   upmem:  0.027  ratio:  0.171   PIM get/read: 1      768          upmem::launch 0.001 
+[rank,dpu,tasklet]: [13, 832, 13312]  nbitemsPerPu:    16   multicore:  0.163   upmem:  0.028  ratio:  0.172   PIM get/read: 1      768          upmem::launch 0 
+[rank,dpu,tasklet]: [14, 896, 14336]  nbitemsPerPu:    16   multicore:  0.177   upmem:  0.027  ratio:  0.153   PIM get/read: 1      768          upmem::launch 0.001 
+[rank,dpu,tasklet]: [15, 960, 15360]  nbitemsPerPu:    16   multicore:  0.191   upmem:  0.029  ratio:  0.152   PIM get/read: 1      768          upmem::launch 0 
+[rank,dpu,tasklet]: [16,1024, 16384]  nbitemsPerPu:    16   multicore:  0.196   upmem:  0.030  ratio:  0.153   PIM get/read: 1      768          upmem::launch 0.001 
+[rank,dpu,tasklet]: [17,1088, 17408]  nbitemsPerPu:    16   multicore:  0.214   upmem:  0.032  ratio:  0.150   PIM get/read: 1      768          upmem::launch 0.001 
+[rank,dpu,tasklet]: [18,1152, 18432]  nbitemsPerPu:    16   multicore:  0.231   upmem:  0.032  ratio:  0.139   PIM get/read: 1      768          upmem::launch 0.001 
+[rank,dpu,tasklet]: [19,1216, 19456]  nbitemsPerPu:    16   multicore:  0.235   upmem:  0.033  ratio:  0.140   PIM get/read: 1      768          upmem::launch 0.001 
+[rank,dpu,tasklet]: [20,1280, 20480]  nbitemsPerPu:    16   multicore:  0.248   upmem:  0.033  ratio:  0.133   PIM get/read: 1      768          upmem::launch 0.001 
+
+--------------------------------------------------------------------------------
+[rank,dpu,tasklet]: [ 1,  64,  1024]  nbitemsPerPu:    64   multicore:  0.016   upmem:  0.025  ratio:  1.563   PIM get/read: 17     4965         upmem::launch 0.003 
+[rank,dpu,tasklet]: [ 2, 128,  2048]  nbitemsPerPu:    64   multicore:  0.029   upmem:  0.023  ratio:  0.793   PIM get/read: 17     4964         upmem::launch 0.003 
+[rank,dpu,tasklet]: [ 3, 192,  3072]  nbitemsPerPu:    64   multicore:  0.043   upmem:  0.023  ratio:  0.535   PIM get/read: 17     4974         upmem::launch 0.003 
+[rank,dpu,tasklet]: [ 4, 256,  4096]  nbitemsPerPu:    64   multicore:  0.061   upmem:  0.026  ratio:  0.426   PIM get/read: 17     4969         upmem::launch 0.003 
+[rank,dpu,tasklet]: [ 5, 320,  5120]  nbitemsPerPu:    64   multicore:  0.072   upmem:  0.027  ratio:  0.375   PIM get/read: 17     4977         upmem::launch 0.003 
+[rank,dpu,tasklet]: [ 6, 384,  6144]  nbitemsPerPu:    64   multicore:  0.088   upmem:  0.028  ratio:  0.318   PIM get/read: 17     4954         upmem::launch 0.003 
+[rank,dpu,tasklet]: [ 7, 448,  7168]  nbitemsPerPu:    64   multicore:  0.095   upmem:  0.029  ratio:  0.305   PIM get/read: 17     4963         upmem::launch 0.003 
+[rank,dpu,tasklet]: [ 8, 512,  8192]  nbitemsPerPu:    64   multicore:  0.109   upmem:  0.031  ratio:  0.284   PIM get/read: 17     4973         upmem::launch 0.003 
+[rank,dpu,tasklet]: [ 9, 576,  9216]  nbitemsPerPu:    64   multicore:  0.123   upmem:  0.032  ratio:  0.260   PIM get/read: 17     4969         upmem::launch 0.003 
+[rank,dpu,tasklet]: [10, 640, 10240]  nbitemsPerPu:    64   multicore:  0.135   upmem:  0.031  ratio:  0.230   PIM get/read: 17     4962         upmem::launch 0.003 
+[rank,dpu,tasklet]: [11, 704, 11264]  nbitemsPerPu:    64   multicore:  0.149   upmem:  0.033  ratio:  0.221   PIM get/read: 17     4972         upmem::launch 0.003 
+[rank,dpu,tasklet]: [12, 768, 12288]  nbitemsPerPu:    64   multicore:  0.170   upmem:  0.034  ratio:  0.200   PIM get/read: 17     4983         upmem::launch 0.003 
+[rank,dpu,tasklet]: [13, 832, 13312]  nbitemsPerPu:    64   multicore:  0.180   upmem:  0.037  ratio:  0.206   PIM get/read: 17     4993         upmem::launch 0.003 
+[rank,dpu,tasklet]: [14, 896, 14336]  nbitemsPerPu:    64   multicore:  0.195   upmem:  0.036  ratio:  0.185   PIM get/read: 17     4985         upmem::launch 0.003 
+[rank,dpu,tasklet]: [15, 960, 15360]  nbitemsPerPu:    64   multicore:  0.201   upmem:  0.037  ratio:  0.184   PIM get/read: 17     4986         upmem::launch 0.003 
+[rank,dpu,tasklet]: [16,1024, 16384]  nbitemsPerPu:    64   multicore:  0.224   upmem:  0.037  ratio:  0.165   PIM get/read: 17     4973         upmem::launch 0.003 
+[rank,dpu,tasklet]: [17,1088, 17408]  nbitemsPerPu:    64   multicore:  0.234   upmem:  0.044  ratio:  0.188   PIM get/read: 17     4981         upmem::launch 0.003 
+[rank,dpu,tasklet]: [18,1152, 18432]  nbitemsPerPu:    64   multicore:  0.249   upmem:  0.043  ratio:  0.173   PIM get/read: 17     4977         upmem::launch 0.003 
+[rank,dpu,tasklet]: [19,1216, 19456]  nbitemsPerPu:    64   multicore:  0.264   upmem:  0.042  ratio:  0.159   PIM get/read: 17     4991         upmem::launch 0.003 
+[rank,dpu,tasklet]: [20,1280, 20480]  nbitemsPerPu:    64   multicore:  0.278   upmem:  0.044  ratio:  0.158   PIM get/read: 17     4976         upmem::launch 0.003 
+
+--------------------------------------------------------------------------------
+[rank,dpu,tasklet]: [ 1,  64,  1024]  nbitemsPerPu:   256   multicore:  0.009   upmem:  0.056  ratio:  6.222   PIM get/read: 65     46289        upmem::launch 0.03 
+[rank,dpu,tasklet]: [ 2, 128,  2048]  nbitemsPerPu:   256   multicore:  0.032   upmem:  0.057  ratio:  1.781   PIM get/read: 65     46247        upmem::launch 0.03 
+[rank,dpu,tasklet]: [ 3, 192,  3072]  nbitemsPerPu:   256   multicore:  0.028   upmem:  0.060  ratio:  2.143   PIM get/read: 65     46259        upmem::launch 0.03 
+[rank,dpu,tasklet]: [ 4, 256,  4096]  nbitemsPerPu:   256   multicore:  0.034   upmem:  0.062  ratio:  1.824   PIM get/read: 65     46260        upmem::launch 0.031 
+[rank,dpu,tasklet]: [ 5, 320,  5120]  nbitemsPerPu:   256   multicore:  0.035   upmem:  0.065  ratio:  1.857   PIM get/read: 65     46253        upmem::launch 0.03 
+[rank,dpu,tasklet]: [ 6, 384,  6144]  nbitemsPerPu:   256   multicore:  0.039   upmem:  0.068  ratio:  1.744   PIM get/read: 65     46257        upmem::launch 0.03 
+[rank,dpu,tasklet]: [ 7, 448,  7168]  nbitemsPerPu:   256   multicore:  0.058   upmem:  0.071  ratio:  1.224   PIM get/read: 65     46223        upmem::launch 0.031 
+[rank,dpu,tasklet]: [ 8, 512,  8192]  nbitemsPerPu:   256   multicore:  0.046   upmem:  0.081  ratio:  1.761   PIM get/read: 65     46250        upmem::launch 0.03 
+[rank,dpu,tasklet]: [ 9, 576,  9216]  nbitemsPerPu:   256   multicore:  0.055   upmem:  0.077  ratio:  1.400   PIM get/read: 65     46254        upmem::launch 0.03 
+[rank,dpu,tasklet]: [10, 640, 10240]  nbitemsPerPu:   256   multicore:  0.066   upmem:  0.092  ratio:  1.394   PIM get/read: 65     46247        upmem::launch 0.03 
+[rank,dpu,tasklet]: [11, 704, 11264]  nbitemsPerPu:   256   multicore:  0.056   upmem:  0.094  ratio:  1.679   PIM get/read: 65     46302        upmem::launch 0.031 
+[rank,dpu,tasklet]: [12, 768, 12288]  nbitemsPerPu:   256   multicore:  0.061   upmem:  0.099  ratio:  1.623   PIM get/read: 65     46233        upmem::launch 0.03 
+[rank,dpu,tasklet]: [13, 832, 13312]  nbitemsPerPu:   256   multicore:  0.107   upmem:  0.114  ratio:  1.065   PIM get/read: 65     46232        upmem::launch 0.03 
+[rank,dpu,tasklet]: [14, 896, 14336]  nbitemsPerPu:   256   multicore:  0.068   upmem:  0.099  ratio:  1.456   PIM get/read: 65     46245        upmem::launch 0.03 
+[rank,dpu,tasklet]: [15, 960, 15360]  nbitemsPerPu:   256   multicore:  0.102   upmem:  0.104  ratio:  1.020   PIM get/read: 65     46266        upmem::launch 0.031 
+[rank,dpu,tasklet]: [16,1024, 16384]  nbitemsPerPu:   256   multicore:  0.073   upmem:  0.100  ratio:  1.370   PIM get/read: 65     46304        upmem::launch 0.031 
+[rank,dpu,tasklet]: [17,1088, 17408]  nbitemsPerPu:   256   multicore:  0.077   upmem:  0.109  ratio:  1.416   PIM get/read: 65     46299        upmem::launch 0.03 
+[rank,dpu,tasklet]: [18,1152, 18432]  nbitemsPerPu:   256   multicore:  0.082   upmem:  0.109  ratio:  1.329   PIM get/read: 65     46272        upmem::launch 0.031 
+[rank,dpu,tasklet]: [19,1216, 19456]  nbitemsPerPu:   256   multicore:  0.088   upmem:  0.114  ratio:  1.295   PIM get/read: 65     46311        upmem::launch 0.031 
+[rank,dpu,tasklet]: [20,1280, 20480]  nbitemsPerPu:   256   multicore:  0.092   upmem:  0.114  ratio:  1.239   PIM get/read: 65     46255        upmem::launch 0.03 
+
+--------------------------------------------------------------------------------
+[rank,dpu,tasklet]: [ 1,  64,  1024]  nbitemsPerPu:  1024   multicore:  0.049   upmem:  0.470  ratio:  9.592   PIM get/read: 305    598135       upmem::launch 0.428 
+[rank,dpu,tasklet]: [ 2, 128,  2048]  nbitemsPerPu:  1024   multicore:  0.086   upmem:  0.474  ratio:  5.512   PIM get/read: 305    598160       upmem::launch 0.429 
+[rank,dpu,tasklet]: [ 3, 192,  3072]  nbitemsPerPu:  1024   multicore:  0.111   upmem:  0.476  ratio:  4.288   PIM get/read: 305    598143       upmem::launch 0.429 
+[rank,dpu,tasklet]: [ 4, 256,  4096]  nbitemsPerPu:  1024   multicore:  0.153   upmem:  0.508  ratio:  3.320   PIM get/read: 305    598135       upmem::launch 0.428 
+[rank,dpu,tasklet]: [ 5, 320,  5120]  nbitemsPerPu:  1024   multicore:  0.172   upmem:  0.513  ratio:  2.983   PIM get/read: 305    598142       upmem::launch 0.428 
+[rank,dpu,tasklet]: [ 6, 384,  6144]  nbitemsPerPu:  1024   multicore:  0.202   upmem:  0.526  ratio:  2.604   PIM get/read: 305    598140       upmem::launch 0.428 
+[rank,dpu,tasklet]: [ 7, 448,  7168]  nbitemsPerPu:  1024   multicore:  0.229   upmem:  0.535  ratio:  2.336   PIM get/read: 305    598138       upmem::launch 0.428 
+[rank,dpu,tasklet]: [ 8, 512,  8192]  nbitemsPerPu:  1024   multicore:  0.266   upmem:  0.541  ratio:  2.034   PIM get/read: 305    598147       upmem::launch 0.429 
+[rank,dpu,tasklet]: [ 9, 576,  9216]  nbitemsPerPu:  1024   multicore:  0.290   upmem:  0.541  ratio:  1.866   PIM get/read: 305    598151       upmem::launch 0.429 
+[rank,dpu,tasklet]: [10, 640, 10240]  nbitemsPerPu:  1024   multicore:  0.350   upmem:  0.569  ratio:  1.626   PIM get/read: 305    598175       upmem::launch 0.428 
+[rank,dpu,tasklet]: [11, 704, 11264]  nbitemsPerPu:  1024   multicore:  0.362   upmem:  0.576  ratio:  1.591   PIM get/read: 305    598137       upmem::launch 0.428 
+[rank,dpu,tasklet]: [12, 768, 12288]  nbitemsPerPu:  1024   multicore:  0.375   upmem:  0.577  ratio:  1.539   PIM get/read: 305    598114       upmem::launch 0.428 
+[rank,dpu,tasklet]: [13, 832, 13312]  nbitemsPerPu:  1024   multicore:  0.431   upmem:  0.589  ratio:  1.367   PIM get/read: 305    598125       upmem::launch 0.429 
+[rank,dpu,tasklet]: [14, 896, 14336]  nbitemsPerPu:  1024   multicore:  0.444   upmem:  0.601  ratio:  1.354   PIM get/read: 305    598195       upmem::launch 0.429 
+[rank,dpu,tasklet]: [15, 960, 15360]  nbitemsPerPu:  1024   multicore:  0.474   upmem:  0.602  ratio:  1.270   PIM get/read: 305    598204       upmem::launch 0.429 
+[rank,dpu,tasklet]: [16,1024, 16384]  nbitemsPerPu:  1024   multicore:  0.515   upmem:  0.608  ratio:  1.181   PIM get/read: 305    598210       upmem::launch 0.428 
+[rank,dpu,tasklet]: [17,1088, 17408]  nbitemsPerPu:  1024   multicore:  0.532   upmem:  0.642  ratio:  1.207   PIM get/read: 305    598143       upmem::launch 0.428 
+[rank,dpu,tasklet]: [18,1152, 18432]  nbitemsPerPu:  1024   multicore:  0.606   upmem:  0.636  ratio:  1.050   PIM get/read: 305    598152       upmem::launch 0.429 
+[rank,dpu,tasklet]: [19,1216, 19456]  nbitemsPerPu:  1024   multicore:  0.611   upmem:  0.632  ratio:  1.034   PIM get/read: 305    598118       upmem::launch 0.428 
+[rank,dpu,tasklet]: [20,1280, 20480]  nbitemsPerPu:  1024   multicore:  0.626   upmem:  0.630  ratio:  1.006   PIM get/read: 305    598079       upmem::launch 0.428 
+
+--------------------------------------------------------------------------------
+[rank,dpu,tasklet]: [ 1,  64,  1024]  nbitemsPerPu:  4096   multicore:  0.430   upmem:  6.713  ratio: 15.612   PIM get/read: 1233   8689252      upmem::launch 6.634 
+[rank,dpu,tasklet]: [ 2, 128,  2048]  nbitemsPerPu:  4096   multicore:  0.837   upmem:  6.754  ratio:  8.069   PIM get/read: 1233   8689183      upmem::launch 6.629 
+[rank,dpu,tasklet]: [ 3, 192,  3072]  nbitemsPerPu:  4096   multicore:  1.210   upmem:  6.769  ratio:  5.594   PIM get/read: 1233   8689226      upmem::launch 6.625 
+[rank,dpu,tasklet]: [ 4, 256,  4096]  nbitemsPerPu:  4096   multicore:  1.603   upmem:  6.806  ratio:  4.246   PIM get/read: 1233   8689237      upmem::launch 6.625 
+[rank,dpu,tasklet]: [ 5, 320,  5120]  nbitemsPerPu:  4096   multicore:  1.953   upmem:  6.835  ratio:  3.500   PIM get/read: 1233   8689213      upmem::launch 6.625 
+[rank,dpu,tasklet]: [ 6, 384,  6144]  nbitemsPerPu:  4096   multicore:  2.228   upmem:  6.854  ratio:  3.076   PIM get/read: 1233   8689200      upmem::launch 6.625 
+[rank,dpu,tasklet]: [ 7, 448,  7168]  nbitemsPerPu:  4096   multicore:  2.584   upmem:  6.892  ratio:  2.667   PIM get/read: 1233   8689206      upmem::launch 6.624 
+[rank,dpu,tasklet]: [ 8, 512,  8192]  nbitemsPerPu:  4096   multicore:  2.808   upmem:  6.943  ratio:  2.473   PIM get/read: 1233   8689176      upmem::launch 6.625 
+[rank,dpu,tasklet]: [ 9, 576,  9216]  nbitemsPerPu:  4096   multicore:  3.261   upmem:  6.955  ratio:  2.133   PIM get/read: 1233   8689293      upmem::launch 6.624 
+[rank,dpu,tasklet]: [10, 640, 10240]  nbitemsPerPu:  4096   multicore:  3.510   upmem:  6.989  ratio:  1.991   PIM get/read: 1233   8689240      upmem::launch 6.625 
+[rank,dpu,tasklet]: [11, 704, 11264]  nbitemsPerPu:  4096   multicore:  3.946   upmem:  7.018  ratio:  1.779   PIM get/read: 1233   8689206      upmem::launch 6.624 
+[rank,dpu,tasklet]: [12, 768, 12288]  nbitemsPerPu:  4096   multicore:  4.026   upmem:  7.073  ratio:  1.757   PIM get/read: 1233   8689154      upmem::launch 6.624 
+[rank,dpu,tasklet]: [13, 832, 13312]  nbitemsPerPu:  4096   multicore:  4.117   upmem:  7.082  ratio:  1.720   PIM get/read: 1233   8689233      upmem::launch 6.635 
+[rank,dpu,tasklet]: [14, 896, 14336]  nbitemsPerPu:  4096   multicore:  4.628   upmem:  7.122  ratio:  1.539   PIM get/read: 1233   8689231      upmem::launch 6.63 
+[rank,dpu,tasklet]: [15, 960, 15360]  nbitemsPerPu:  4096   multicore:  4.840   upmem:  7.166  ratio:  1.481   PIM get/read: 1233   8689242      upmem::launch 6.627 
+[rank,dpu,tasklet]: [16,1024, 16384]  nbitemsPerPu:  4096   multicore:  5.187   upmem:  7.176  ratio:  1.383   PIM get/read: 1233   8689223      upmem::launch 6.626 
+[rank,dpu,tasklet]: [17,1088, 17408]  nbitemsPerPu:  4096   multicore:  5.642   upmem:  7.244  ratio:  1.284   PIM get/read: 1233   8689224      upmem::launch 6.625 
+[rank,dpu,tasklet]: [18,1152, 18432]  nbitemsPerPu:  4096   multicore:  5.789   upmem:  7.240  ratio:  1.251   PIM get/read: 1233   8689176      upmem::launch 6.625 
+[rank,dpu,tasklet]: [19,1216, 19456]  nbitemsPerPu:  4096   multicore:  6.254   upmem:  7.314  ratio:  1.169   PIM get/read: 1233   8689237      upmem::launch 6.625 
+[rank,dpu,tasklet]: [20,1280, 20480]  nbitemsPerPu:  4096   multicore:  6.319   upmem:  7.351  ratio:  1.163   PIM get/read: 1233   8689160      upmem::launch 6.625 
+
+

@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -18,4 +18,4 @@
 using resources_t = bpl::ArchMulticore;
 using TaskBase_t  = bpl::TaskBase<bpl::Task<resources_t,1>>;
 
-template<>  decltype(TaskBase_t::mutexes)  TaskBase_t::mutexes = { std::mutex{} };
+template<>  decltype(TaskBase_t::mutexes)  TaskBase_t::mutexes ;

@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics
-// date  : 2025
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -67,7 +67,10 @@ using namespace bpl;
 #include <tasks/VectorSharedIteratorTrue.hpp>
 #include <tasks/VectorSharedIteratorFalse.hpp>
 #include <tasks/VectorSerialize.hpp>
-
+#include <tasks/OnceVectorView.hpp>
+#include <tasks/InplaceVector1.hpp>
+#include <tasks/InplaceVector2.hpp>
+#include <tasks/VectorViewWithTag.hpp>
 #include <ranges>
 
 #include <Runner.hpp>
@@ -1531,5 +1534,68 @@ TEST_CASE ("VectorSerialize", "[Vector]" )
     {
         REQUIRE (std::ranges::equal(res,truth));
     }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("OnceVectorView", "[Vector]" )
+{
+    using type = std::vector<SomeData>;
+
+    size_t nbitems = 4;
+    type v;
+    for (size_t i=0; i<nbitems; i++)  { v.emplace_back (i); }
+
+    Launcher<ArchMulticore> launcher {4_thread};
+
+    auto res = launcher.run<OnceVectorView> (split(v));
+}
+
+//////////////////////////////////////////////////////////////////////////////
+auto InplaceVector1_aux (auto&& launcher, auto&& v)
+{
+	auto result = launcher.template run<InplaceVector1> (v);
+	auto truth  = launcher.getProcUnitNumber() * (v.size()*(v.size()+1)/2);
+	REQUIRE (result == truth);
+}
+
+TEST_CASE ("InplaceVector1", "[Vector]" )
+{
+	InplaceVector1<ArchDummy>::type v;
+	for (std::size_t i=0; i<v.capacity()/2; i++)  {  v.push_back (i+1);  }
+
+	InplaceVector1_aux (Launcher<ArchMulticore>{}, v);
+	InplaceVector1_aux (Launcher<ArchUpmem>    {}, v);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("InplaceVector2", "[Vector]" )
+{
+    auto check = [](auto&& result) {
+        for (auto&& res : result) {
+            REQUIRE (res.capacity()==100);
+            REQUIRE (res.size    ()== 50);
+            for (size_t i=0; i<res.capacity()/2; i++) {
+                REQUIRE (res[i] == i+1);
+            }
+        }
+    };
+
+    std::apply ([&](auto...result) {
+        ( (check(result.second)),...);  },
+        Runner<>::run<InplaceVector2> ());
+}
+
+//////////////////////////////////////////////////////////////////////////////
+TEST_CASE ("VectorViewWithTag", "[Vector]" )
+{
+	std::size_t nbitems = 1000;
+	std::vector<uint32_t> v(nbitems);
+	std::iota (std::begin(v), std::end(v), 1);
+
+	Launcher<ArchMulticore> launcher {4_thread};
+
+	for (auto _ : std::views::iota(0,4)) {
+		REQUIRE (launcher.run<VectorViewWithTag>(split(v)) == nbitems*(nbitems+1)/2);
+	}
 }
 

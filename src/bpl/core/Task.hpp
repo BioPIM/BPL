@@ -43,6 +43,7 @@ template<typename DERIVED> struct TaskBase
 
     /** Mutex type of the task. */
     using mutex_t = typename arch_t::mutex;
+    using barrier_t = typename arch_t::barrier;
 
     /** Number of mutexes available for an instance of the task type. */
     static constexpr int MUTEX_NB = get_crtp_template<DERIVED>::MUTEX_NB;
@@ -66,6 +67,8 @@ template<typename DERIVED> struct TaskBase
      */
     auto guid () const  { return guid_; }
 
+    auto me () const  { return me_; }
+
     /** Tells whether the provided process unit id belongs to the same group as the process unit
      * of the current Task object.
      * \param value: process unit id to be compared to the current one
@@ -78,11 +81,12 @@ template<typename DERIVED> struct TaskBase
      * \param guid: group id of the process unit of the task
      * \param t0: returns a time stamp and should be used as initial timestamp for computing statistics.
      */
-    void configure (tuid_t tuid, guid_t guid, cycles_t t0)
+    void configure (tuid_t tuid, guid_t guid, cycles_t t0, tuid_t me)
     {
         tuid_    = tuid;
         guid_    = guid;
         t0_      = t0;
+        me_      = me;
     }
 
     /** Get the number of cycles that occured since the t0 time (ie since call to 'configure)
@@ -100,11 +104,14 @@ template<typename DERIVED> struct TaskBase
     tuid_t   tuid_;
     guid_t   guid_;
     cycles_t t0_;
+    tuid_t   me_;
 
     template<typename...ARGS>
     void log (ARGS...args) const  { }
 
-    static array_wrapper<mutex_t,MUTEX_NB> mutexes;
+    inline static array_wrapper<mutex_t,MUTEX_NB> mutexes;
+    
+    void barrier_wait() { barrier_t::wait(); }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

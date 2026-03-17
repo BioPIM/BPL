@@ -24,10 +24,11 @@ namespace bpl  {
                                       using traits_t    = std::tuple<__VA_ARGS__>;        \
     template<typename A, typename B>  using pair        = NS (ARCH,__VA_ARGS__) pair<A,B>;      \
     template<class T, std::size_t N>  using array       = NS (ARCH,__VA_ARGS__) array<T,N>;     \
+    template<class T, std::size_t N>  using inplace_vector = NS (ARCH,__VA_ARGS__) inplace_vector<T,N>;     \
     template<class T>                 using allocator   = NS (ARCH,__VA_ARGS__) allocator<T>;   \
     template<class T,typename Alloc=allocator<T>>  using vector      = NS (ARCH,__VA_ARGS__) vector<T,Alloc>;\
     template<class T>                 using span        = NS (ARCH,__VA_ARGS__) span<T>;        \
-    template<class T>                 using vector_view = NS (ARCH,__VA_ARGS__) vector_view<T>; \
+    template<class T>  using vector_view = NS (ARCH,__VA_ARGS__) vector_view<T>; \
     template<class ...Ts>             using tuple       = NS (ARCH,__VA_ARGS__) tuple<Ts...>;   \
     template<class T>                 using lock_guard  = NS (ARCH,__VA_ARGS__) lock_guard<T>;  \
     template<class T>                 using once        = NS (ARCH,__VA_ARGS__) once<T>;        \

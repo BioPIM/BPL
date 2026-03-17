@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -166,11 +166,11 @@ public:
         using result_t = std::decay_t<bpl::return_t<decltype(&task_t::operator())>>;
 
         // We create the result vector.
-        std::vector<result_t> results;
+        std::vector<result_t> results(getProcUnitNumber());
 
         std::vector<float> exectimes(getProcUnitNumber());
 
-        auto loop_future = threadpool_->submit_sequence <std::size_t> (0, getProcUnitNumber(),  [&] (std::size_t idx)
+        threadpool_->detach_sequence  (0, getProcUnitNumber(),  [&] (std::size_t idx)
         {
             task_t task;
 
@@ -179,6 +179,7 @@ public:
                 task,
                 idx, // process unit uid
                 idx, // group uid: same as thread
+                0,   // me id
                 0
             );
 
@@ -186,23 +187,51 @@ public:
             if constexpr(count_predicate_match_v<hasSplitArgument, ARGS...> == 0)
             {
                 TimeStamp ts (exectimes[idx]);
-                return task (std::forward<decltype(args)>(args)...);
+                results[idx] = std::move(task (std::forward<decltype(args)>(args)...));
             }
             else
             {
                 TimeStamp ts (exectimes[idx]);
 
-                auto config = prepare<ARGS...>(idx,getProcUnitNumber(),std::tuple<ARGS...> {std::forward<decltype(args)>(args)...});
+                // We get the task parameters and remove tags if any
+                using params_t = tuple_projection<
+                        remove_all_tags,
+                        typename bpl::args<decltype(&task_t::operator())>::as_tuple
+                    >::type;
 
-                // we use 'apply' here to unpack the current tuple in order to feed the 'run' method of the task.
-                return std::apply ( [&](auto &&... args)  {  return task (std::forward<decltype(args)>(args)...);  },
-                    config
-                );
+                // We look whether one of the task parameter is a left reference.
+                [[maybe_unused]] constexpr int hasNonConstRefArg2 = bpl::CheckPredicate<
+                    bpl::is_noconst_lvalue_reference,
+                    params_t
+                >::value;
+
+                constexpr int hasNonConstRefArg = true;
+
+                // We need to associate each argument with its index, since we might have use type
+                // information of the nth parameter of the task (see 'prepare')
+                auto exec = [&] <std::size_t...Is> (std::index_sequence<Is...>, auto&&...args) {
+                    // We might need an intermediate tuple here in order to have non temporary arguments to provide to the task.
+                    // This is important when a task parameter is a non const reference (eg. sort)
+                    if constexpr (hasNonConstRefArg)
+                    {
+                        auto tup = std::make_tuple (prepare<TASK,Is> (std::forward<decltype(args)>(args), idx, getProcUnitNumber())...);
+                        return std::apply ( [&](auto &&... args)  {  return task (std::forward<decltype(args)>(args)...);  },
+                            tup
+                        );
+                    }
+                    else {
+                        return task(prepare<TASK,Is>(std::forward<decltype(args)>(args), idx, getProcUnitNumber())...);
+                    }
+                };
+
+                results[idx] = std::move(exec (
+                    std::index_sequence_for<ARGS...>{},
+                    std::forward<decltype(args)>(args)...
+                ));
             }
         });
 
-        // we can do a std::move here
-        for (auto&& res : loop_future.get()) { results.push_back (std::move(res)); }
+        threadpool_->wait();
 
         auto maxTime = *std::max_element(exectimes.begin(), exectimes.end());
         statistics_.addTiming("run/once/launch", maxTime);
@@ -211,27 +240,41 @@ public:
         return results;
     }
 
-    /** Transformation of the parameters pack according to the presence or not of a SplitProxy
-     *  For each parameter:
+    /** Transformation of the parameter according to the presence or not of a SplitProxy
      *    - if it is a SplitProxy, we actually split the proxied object
      *    - otherwise, we use the object itself without transformation.
      */
-    template<typename ...ARGS>
-    decltype(auto) prepare (size_t idx, size_t nbitems, const std::tuple<ARGS...>& targs)
+    template<template<typename ...> class TASK, std::size_t Idx>
+    decltype(auto) prepare (auto&& x, size_t idx, size_t nbitems)
     {
-        return bpl::transform_each (targs, [&] (auto&& x)
-        {
-            using dtype = std::decay_t<decltype(x)>;
+        using task_t = TASK<arch_t>;
+        using dtype  = std::decay_t<decltype(x)>;
 
-            if constexpr (impl::GetSplitStatus<dtype,lowest_level_t>::value > 0)
-            {
-                return SplitOperator<dtype>::split (x, idx, nbitems);
+        if constexpr (impl::GetSplitStatus<dtype,lowest_level_t>::value > 0)
+        {
+            // we retrieve the type of the task parameter for the input argument 'x'.
+            using arg_t = std::decay_t<bpl::parameter_t<decltype(&task_t::operator()),Idx>>;
+
+            // We remove potential tags from the type.
+            using notags_t = std::decay_t<std::tuple_element_t<0, bpl::transform_tuple_t <
+                std::tuple<arg_t>,
+                bpl::removetag_once,
+                bpl::removetag_global
+            >>>;
+
+            // We have to consider the type of the corresponding parameter of the task.
+            // If it is a span, we call split_view, otherwise we call split
+            if constexpr(bpl::is_span<notags_t>::value) {
+                return SplitOperator<dtype>::split_view (std::forward<decltype(x)>(x), idx,nbitems);
             }
-            else
-            {
-                return x;
+            else {
+                return SplitOperator<dtype>::split (std::forward<decltype(x)>(x), idx,getProcUnitNumber());
             }
-        });
+        }
+        else
+        {
+            return std::forward<decltype(x)>(x);
+        }
     }
 
     /** Get statistics.

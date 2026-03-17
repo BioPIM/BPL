@@ -65,6 +65,12 @@ public:
         config_ = launcher_t::make_configuration (units, std::forward<ARGS>(args)...);
 
         launchers_.resize (nbLaunchers);
+
+        stats_.resize(launchers_.size());
+
+        for (size_t i=0; i<nbLaunchers; ++i) { this->getLauncher(i); }
+
+        t0_ = std::chrono::high_resolution_clock::now();
     }
 
     /** Get the number of components associated to the launcher pool. This is the sum
@@ -79,10 +85,10 @@ public:
      * callback takes as argument (1) the launcher that ran the task and (2) the result of the task.
      * \param args: arguments to be provided to the task as input
      */
-    template<template<typename ...> class Task, typename Callback, typename...Args>
+    template<template<typename ...> class Task, typename...Traits, typename...Args, typename Callback>
     auto submit (Callback cbk, Args&&...args)
     {
-        // We need to be sure that the arguments to be used for task execution will have a life cycle long enough.
+    	// We need to be sure that the arguments to be used for task execution will have a life cycle long enough.
         // This is important for instance when we directly use 'split' on client side, which implies that this argument
         // is deleted as soon as the call to 'submit' is done. So we make sure here to keep the information in a 'Command'
         // function object that will be used in the 'detach_task' call.
@@ -98,15 +104,27 @@ public:
 
                 if (idx)
                 {
+                    [[maybe_unused]]std::size_t currentRequestId = 0;  {
+						std::lock_guard<std::mutex> g (parent.mutex_);
+						currentRequestId = parent.requestId_++;
+					}
+
                     // We retrieve the launcher matching the current index
                     launcher_t& launcher = parent.getLauncher(*idx);
 
-                    auto&& results = std::apply ([&] (auto&&... theargs)
-                    {
-                        // We launch the task and return its result.
-                        return launcher.template run<Task> (std::forward<decltype(theargs)>(theargs)...);
+                    [[maybe_unused]]auto t1 = std::chrono::high_resolution_clock::now();
 
+                    auto&& results = std::apply ([&] (auto&&... theargs)  {
+                        // We launch the task and return its result.
+                        return launcher.template run<Task,Traits...> (std::forward<decltype(theargs)>(theargs)...);
                     }, args);
+
+                    [[maybe_unused]]auto  t2 = std::chrono::high_resolution_clock::now();
+                    [[maybe_unused]]auto dt1 = std::chrono::duration_cast<std::chrono::milliseconds>(t1-parent.t0_).count();
+                    [[maybe_unused]]auto dt2 = std::chrono::duration_cast<std::chrono::milliseconds>(t2-parent.t0_).count();
+
+					// uncomment this for having "bargraph" stats.
+                    parent.stats_[*idx].emplace_back (currentRequestId, dt1, dt2);
 
                     // We call the callback with the results
                     cbk (launcher, std::move(results));
@@ -117,7 +135,7 @@ public:
                 }
             }
         };
-        threadpool_->detach_task ( Command { *this, cbk, std::make_tuple(args...) } );
+        threadpool_->detach_task ( Command { *this, cbk, std::make_tuple(std::forward<Args>(args)...) } );
     }
 
     /** Synchronization for the pool.
@@ -131,6 +149,37 @@ public:
      * \return the launchers number.
      */
     size_t size() const { return launchers_.size(); }
+
+    auto stats() const { return stats_; }
+
+    auto dump() const {
+    	const int width = 130;
+    	// we look for the max time
+    	std::size_t maxtime = 0;
+    	for (std::size_t i=0; i<stats_.size(); ++i)    {
+    		for (std::size_t j=0; j<stats_[i].size(); ++j)   {
+    			auto const& st = stats_[i][j];
+    			if (st.end > maxtime)    { maxtime=st.end; }
+    		}
+    	}
+    	float div = (float)width/(float)maxtime;
+    	printf ("width: %d  maxtime: %ld  div: %.lf\n", width, maxtime, div);
+    	size_t nbFilled = 0;
+    	char buf[width+1] = {'.'};
+    	for (std::size_t i=0; i<stats_.size(); ++i) {
+    		for (auto& c : buf) { c='.'; }
+    		for (std::size_t j=0; j<stats_[i].size(); ++j) {
+    			auto const& st = stats_[i][j];
+    			for (int k=st.begin*div; k<=st.end*div and k<width; k++)  {
+    				buf[k]='0' + (j%10);
+    			}
+    		}
+    		buf[width] = 0;
+    		for (auto c : buf) { nbFilled += c=='.' ? 1 : 0; }
+    		printf ("[%3ld]  %s\n", i, buf);
+    	}
+    	printf ("usage: %.3f\n", 1.0 - (double) nbFilled / (stats_.size()*width));
+    }
 
 private:
 
@@ -158,8 +207,19 @@ private:
     /** Mutex needed when calling getLauncher. */
     std::mutex mutex_;
 
+    std::size_t requestId_ = 0;
+
     /** The thread pool using the BS::thread_pool library. */
     std::unique_ptr<BS::thread_pool<>> threadpool_;
+
+    std::chrono::time_point<std::chrono::high_resolution_clock> t0_;
+
+    struct Stats  {
+        std::size_t requestId  = 0;
+        unsigned int begin     = 0;
+        unsigned int end       = 0;
+    };
+    std::vector<std::vector<Stats>> stats_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

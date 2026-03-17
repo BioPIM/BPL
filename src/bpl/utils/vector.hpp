@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 // BPL, the Process In Memory library for bioinformatics 
-// date  : 2024
+// date  : 2026
 // author: edrezen
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -231,6 +231,9 @@ public:
      * \return the number of items. */
     size_t size() const { return datablockIdx_ + 1;  }
 
+    /** */
+    size_type capacity() const { return CACHE_NB_ITEMS; }
+
     /** Get an iterator on the vector that points to the beginning of the vector
      * \return the iterator. */
     auto begin() const { return iterator<vector_view,true> (this, 0, true); }
@@ -282,6 +285,23 @@ public:
         currentBlock_  = -1;
     }
 
+    auto data() const {
+        // We need some trick to access the raw data at a given offset according to alignment constraints.
+        // (might need a read in MRAM in UPMEM case)
+        struct RawData {
+            vector_view const& ref_;
+            T* ptr = nullptr;
+            auto operator+ (size_t idx) const  {
+                auto offset = ref_.getFillAddress() + idx;
+                uint8_t delta = offset % 8;
+                ref_.cache().read (offset - delta);
+                return  RawData { ref_, ref_.cache().datablock_ + delta };
+            }
+            operator T*() const { return ptr; }
+        };
+        return RawData { *this, cache().datablock_ };
+    }
+
     value_type const& operator[] (size_type idx) const
     {
         // We may need synchronization. Note that 'empty' impl won't do any synchronization.
@@ -302,6 +322,12 @@ public:
         mutex_.unlock();
 
         return this->cache() [idx];
+    }
+
+    value_type at (size_type idx) const {
+        value_type result = {};
+        ALLOCATOR::read ((T*)this->getFillAddress() + idx, (void*)&result, sizeof(result));
+        return result;
     }
 
     using cache_t = impl::Cache < T, ALLOCATOR,  CACHE_NB_ITEMS>;
