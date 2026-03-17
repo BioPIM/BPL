@@ -1,0 +1,26 @@
+var searchData=
+[
+  ['sequence_0',['Sequence',['../structbpl_1_1Sequence.html',1,'bpl']]],
+  ['sequence_3c_2016_20_3e_1',['Sequence&lt; 16 &gt;',['../structbpl_1_1Sequence.html',1,'bpl']]],
+  ['sequence_3c_20seqsize_20_3e_2',['Sequence&lt; SEQSIZE &gt;',['../structbpl_1_1Sequence.html',1,'bpl']]],
+  ['serializable_3',['serializable',['../structbpl_1_1serializable.html',1,'bpl']]],
+  ['serializable_3c_20bpl_3a_3abankchunk_3c_20archi_2c_20seqsize_2c_20seqnb_20_3e_20_3e_4',['serializable&lt; bpl::BankChunk&lt; ARCHI, SEQSIZE, SEQNB &gt; &gt;',['../structbpl_1_1serializable_3_01bpl_1_1BankChunk_3_01ARCHI_00_01SEQSIZE_00_01SEQNB_01_4_01_4.html',1,'bpl']]],
+  ['serializable_3c_20bpl_3a_3aimpl_3a_3asplitproxy_3c_20l_2c_20k_2c_20tt_20_3e_20_3e_5',['serializable&lt; bpl::impl::SplitProxy&lt; L, K, TT &gt; &gt;',['../structbpl_1_1serializable_3_01bpl_1_1impl_1_1SplitProxy_3_01L_00_01K_00_01TT_01_4_01_4.html',1,'bpl']]],
+  ['serializable_3c_20bpl_3a_3aonce_3c_20t_20_3e_20_3e_6',['serializable&lt; bpl::once&lt; T &gt; &gt;',['../structbpl_1_1serializable_3_01bpl_1_1once_3_01T_01_4_01_4.html',1,'bpl']]],
+  ['serializable_3c_20bpl_3a_3arange_20_3e_7',['serializable&lt; bpl::Range &gt;',['../structbpl_1_1serializable_3_01bpl_1_1Range_01_4.html',1,'bpl']]],
+  ['serialize_8',['Serialize',['../structbpl_1_1Serialize.html',1,'bpl']]],
+  ['serialize_3c_20arch_5ft_2c_20bufferiterator_3c_20archmulticore_20_3e_2c_208_20_3e_9',['Serialize&lt; arch_t, BufferIterator&lt; ArchMulticore &gt;, 8 &gt;',['../structbpl_1_1Serialize.html',1,'bpl']]],
+  ['shared_10',['Shared',['../structbpl_1_1Shared.html',1,'bpl']]],
+  ['slice_11',['slice',['../structbpl_1_1slice.html',1,'bpl']]],
+  ['splitchoice_12',['SplitChoice',['../structbpl_1_1SplitChoice.html',1,'bpl']]],
+  ['splitchoice_3c_20t_2c_20result_2c_20task_20_3e_13',['SplitChoice&lt; T, RESULT, TASK &gt;',['../structbpl_1_1SplitChoice_3_01T_00_01RESULT_00_01TASK_01_4.html',1,'bpl']]],
+  ['splitoperator_14',['SplitOperator',['../structbpl_1_1SplitOperator.html',1,'bpl']]],
+  ['splitoperator_3c_20bpl_3a_3arange_20_3e_15',['SplitOperator&lt; bpl::Range &gt;',['../structbpl_1_1SplitOperator_3_01bpl_1_1Range_01_4.html',1,'bpl']]],
+  ['splitoperator_3c_20impl_3a_3asplitproxy_3c_20level_2c_20kind_2c_20type_20_3e_20_3e_16',['SplitOperator&lt; impl::SplitProxy&lt; LEVEL, KIND, TYPE &gt; &gt;',['../structbpl_1_1SplitOperator_3_01impl_1_1SplitProxy_3_01LEVEL_00_01KIND_00_01TYPE_01_4_01_4.html',1,'bpl']]],
+  ['splitoperator_3c_20std_3a_3apair_3c_20a_2c_20b_20_3e_20_3e_17',['SplitOperator&lt; std::pair&lt; A, B &gt; &gt;',['../structbpl_1_1SplitOperator_3_01std_1_1pair_3_01A_00_01B_01_4_01_4.html',1,'bpl']]],
+  ['splitoperator_3c_20std_3a_3aspan_3c_20t_20_3e_20_3e_18',['SplitOperator&lt; std::span&lt; T &gt; &gt;',['../structbpl_1_1SplitOperator_3_01std_1_1span_3_01T_01_4_01_4.html',1,'bpl']]],
+  ['splitoperator_3c_20std_3a_3avector_3c_20t_20_3e_20_3e_19',['SplitOperator&lt; std::vector&lt; T &gt; &gt;',['../structbpl_1_1SplitOperator_3_01std_1_1vector_3_01T_01_4_01_4.html',1,'bpl']]],
+  ['splitproxy_20',['SplitProxy',['../structbpl_1_1impl_1_1SplitProxy.html',1,'bpl::impl']]],
+  ['stack_21',['stack',['../structbpl_1_1MemoryTree_1_1stack.html',1,'bpl::MemoryTree']]],
+  ['statistics_22',['Statistics',['../classbpl_1_1Statistics.html',1,'bpl']]]
+];

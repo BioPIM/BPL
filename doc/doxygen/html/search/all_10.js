@@ -1,0 +1,25 @@
+var searchData=
+[
+  ['randomsequencegenerator_0',['RandomSequenceGenerator',['../classbpl_1_1RandomSequenceGenerator.html',1,'bpl']]],
+  ['randomsequencegenerator_3c_20seqsize_20_3e_1',['RandomSequenceGenerator&lt; SEQSIZE &gt;',['../classbpl_1_1RandomSequenceGenerator.html',1,'bpl']]],
+  ['range_2',['Range',['../classbpl_1_1Range.html',1,'bpl']]],
+  ['rank_3',['Rank',['../classbpl_1_1ArchUpmem_1_1Rank.html',1,'bpl::ArchUpmem']]],
+  ['reduce_4',['Reduce',['../structbpl_1_1Reduce.html',1,'bpl']]],
+  ['reduce_3c_20false_2c_20task_20_3e_5',['Reduce&lt; false, TASK &gt;',['../structbpl_1_1Reduce_3_01false_00_01TASK_01_4.html',1,'bpl']]],
+  ['reduce_3c_20true_2c_20task_20_3e_6',['Reduce&lt; true, TASK &gt;',['../structbpl_1_1Reduce_3_01true_00_01TASK_01_4.html',1,'bpl']]],
+  ['reducer_7',['Reducer',['../structbpl_1_1Reducer.html',1,'bpl']]],
+  ['remove_5ffirst_5ftype_8',['remove_first_type',['../structbpl_1_1remove__first__type.html',1,'bpl']]],
+  ['remove_5ffirst_5ftype_3c_20std_3a_3atuple_3c_20t_2c_20ts_2e_2e_2e_20_3e_20_3e_9',['remove_first_type&lt; std::tuple&lt; T, Ts... &gt; &gt;',['../structbpl_1_1remove__first__type_3_01std_1_1tuple_3_01T_00_01Ts_8_8_8_01_4_01_4.html',1,'bpl']]],
+  ['remove_5fsplitter_10',['remove_splitter',['../structbpl_1_1remove__splitter.html',1,'bpl']]],
+  ['remove_5fsplitter_3c_20impl_3a_3asplitproxy_3c_20l_2c_20k_2c_20t_20_3e_20_3e_11',['remove_splitter&lt; impl::SplitProxy&lt; L, K, T &gt; &gt;',['../structbpl_1_1remove__splitter_3_01impl_1_1SplitProxy_3_01L_00_01K_00_01T_01_4_01_4.html',1,'bpl']]],
+  ['reset_12',['reset',['../structbpl_1_1MetadataInput.html#ac5e7c2bbb5707c33af1d03bc489ad227',1,'bpl::MetadataInput']]],
+  ['reset_5fstate_13',['reset_state',['../classbpl_1_1vector__view.html#afbdc37811a71fb07d3cc002121fefa1f',1,'bpl::vector_view']]],
+  ['resetstatistics_14',['resetStatistics',['../classbpl_1_1Launcher.html#a2cee4e1c705f9b1f8702de46e99ad844',1,'bpl::Launcher']]],
+  ['restorenberrors_15',['restoreNbErrors',['../structbpl_1_1MetadataOutput.html#a00fd94b5a2510a692ed7c891c0cca4d3',1,'bpl::MetadataOutput']]],
+  ['result_16',['result',['../structbpl_1_1TimeStatsValues.html#a6766651f57a2ad150afc1f769765fb04',1,'bpl::TimeStatsValues']]],
+  ['result_5ftasklet_5forder_17',['result_tasklet_order',['../structbpl_1_1MetadataOutput.html#ab480889b1c6b1f9ae48def4758e10863',1,'bpl::MetadataOutput']]],
+  ['result_5ftasklet_5fsize_18',['result_tasklet_size',['../structbpl_1_1MetadataOutput.html#ae2411704a5ea22cd5e69ca3ac99c9273',1,'bpl::MetadataOutput']]],
+  ['result_5fwrapper_19',['result_wrapper',['../structbpl_1_1result__wrapper.html',1,'bpl']]],
+  ['result_5fwrapper_3c_20std_3a_3avector_3c_20t_20_3e_2c_20true_20_3e_20',['result_wrapper&lt; std::vector&lt; T &gt;, true &gt;',['../structbpl_1_1result__wrapper_3_01std_1_1vector_3_01T_01_4_00_01true_01_4.html',1,'bpl']]],
+  ['run_21',['run',['../classbpl_1_1ArchMulticore.html#a4f97cfaa0cf4b421500735e80f1ee63a',1,'bpl::ArchMulticore::run()'],['../classbpl_1_1ArchUpmem.html#acd874aef641a435ca514492a90363fb6',1,'bpl::ArchUpmem::run()'],['../classbpl_1_1Launcher.html#a84a6146d132a384ebc4b27134a1072c9',1,'bpl::Launcher::run()']]]
+];

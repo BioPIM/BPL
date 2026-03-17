@@ -188,9 +188,12 @@ On the other hand, source code written using the UPMEM SDK would be of no use fo
 
 ## Documentation
 
-The documentation for the BPL is available [here](doc/userguide/BplUserGuide.pdf). 
-You will also find [a report](doc/experiments/BplExperiments.pdf) on the implementation of several algorithms using the BPL.
+The documentation for the BPL is available [here](doc/doc/userguide/BplUserGuide.pdf). 
+
+The doxygen documentation can be generated through cmake (target 'doxygen'). The current version can be found [here](doc/doxygen/html/index.html).
 
 ## Unit tests and benchmark
 
 You will find instructions here for running [unit tests](test/unit/README.md) and for the [benchmark](test/benchmark/README.md)
+
+You will also find [a report](doc/doc/experiments/BplExperiments.pdf) on the implementation of several algorithms using the BPL.
