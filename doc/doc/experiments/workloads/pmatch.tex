@@ -1,0 +1,97 @@
+\subsection{Pattern matching}
+\label{sec:pmatch}
+
+\paragraph{Presentation}
+
+Searching for a pattern within a text is a common operation in various fields of applications, for instance for natural language processing, but also in genomics with a reduced alphabet containing the four DNA nucleotides.
+We consider three state-of-the-art pattern matching algorithms: Aho-Corasick (AC), Knuth-Morris-Pratt (KMP) and Boyer-Moore (BM).
+The Aho-Corasick algorithm~\cite{Aho1975} allows to search for multiple patterns while scanning the text only once, by representing the patterns in a trie and adding failure links to create an automaton.
+The Knuth-Morris-Pratt algorithm~\cite{Knuth1977} uses a pre-computed longest-prefix-suffix array to avoid repeating the same comparisons between the pattern and the text.
+The Boyer-Moore algorithm~\cite{Boyer1977} has a similar approach and skips many positions compared to a naive searching operation. It uses some pre-computed lookup tables to apply a bad-character rule and a good-suffix rule.
+
+Although these algorithms only perform exact matching, they can be adapted to allow for single-letter wildcards to appear in the pattern.
+We break the input pattern to obtain all slices without any wildcards, and search for the hits of each slice.
+The resulting positions, offset by the starting index of the slice within the initial pattern, are then reported in a table of counters.
+When a counter reaches the total amount of slices, this means there is a full match of the initial pattern at this position.
+
+We implement the three algorithms with the BPL library.
+The pre-processing (i.e. building the automaton or the lookup tables) is performed by the main processor.
+The reference text is split over all processing units, with some overlapping between the fragments.
+Each task receives a reference fragment, the pre-computed data, and scans its fragment to apply the algorithm and report the hit positions.
+
+We also write an equivalent implementation that uses the main processor only (denoted Std-Multicore), and another that relies on the UPMEM's SDK (denoted SDK-PiM).
+ 
+\paragraph{Limitations encountered}
+None: the code can be fully architecture-agnostic.
+
+\paragraph{Benchmarks}
+
+To compare the performances of a given algorithm depending on the target architecture and implementation, we sample a reference genome and generate datasets of patterns of various characteristics.
+We set the length $L$ of the patterns to 20 or 50 nucleotides.
+In a dataset, we aggregate a total $N$ of 1 or 100 patterns.
+Also, we introduce a number $W$ of single-letter wildcards in the pattern, either 0 or 5.
+We consider two reference genomes: the human genome GRCh38~\cite{HG38} and the human gut microbiome genome UHGG~\cite{UHGG}.
+
+\paragraph{Results} We present the execution time performances of all datasets in \tablename~\ref{tab:pmatch_results}.
+For the PiM architecture, the first pattern of a dataset is slower than the following because the reference fragment is sent only at the first task execution.
+The datasets of 100 patterns are thus interesting to measure the full speed the processing can achieve once the reference is set up on all processing units.
+We see that the BPL-PiM version has then similar performances to the SDK-based implementation.
+The three pattern matching we consider have a scanning procedure that is fairly simple, the ingenuity lying in the pre-computed data and lookup tables.
+In this use case where there is little room for advanced instructions and manual optimizations on the DPUs, the BPL exhibits negligible overhead and allows to write easily a standard-like program that performs well.
+
+\begin{table}
+    \centering
+    \caption{Results of the pattern matching benchmarks}
+    \label{tab:pmatch_results}
+    \begin{tabular}{lllllrrr}
+    \toprule
+        Reference & $L$ & $N$ & $W$ & Architecture & AC (s) & KMP (s) & BM (s) \\
+
+\midrule
+\multirow{4}{*}{GRCh38} & \multirow{4}{*}{20} & \multirow{4}{*}{1} & \multirow{4}{*}{0} & Std-Multicore & 1.485 & 0.872 & 0.361 \\
+&&&& BPL-Multicore & 1.399 & 0.765 & 0.363 \\
+\arrayrulecolor{lightgray}\cmidrule{5-8}\arrayrulecolor{black}
+&&&& BPL-PiM & 0.174 & 0.255 & 0.132 \\
+&&&& SDK-PiM & 0.226 & 0.258 & 0.149 \\
+\midrule
+\multirow{4}{*}{GRCh38} & \multirow{4}{*}{50} & \multirow{4}{*}{1} & \multirow{4}{*}{0} & Std-Multicore & 1.458 & 0.811 & 0.277 \\
+&&&& BPL-Multicore & 1.348 & 0.71 & 0.276 \\
+\arrayrulecolor{lightgray}\cmidrule{5-8}\arrayrulecolor{black}
+&&&& BPL-PiM & 0.178 & 0.22 & 0.14 \\
+&&&& SDK-PiM & 0.225 & 0.227 & 0.195 \\
+\midrule
+\multirow{4}{*}{GRCh38} & \multirow{4}{*}{20} & \multirow{4}{*}{100} & \multirow{4}{*}{0} & Std-Multicore & 146.954 & 81.617 & 39.711 \\
+&&&& BPL-Multicore & 137.9 & 76.47 & 41.343 \\
+\arrayrulecolor{lightgray}\cmidrule{5-8}\arrayrulecolor{black}
+&&&& BPL-PiM & 11.152 & 18.752 & 9.143 \\
+&&&& SDK-PiM & 10.446 & 17.875 & 8.998 \\
+\midrule
+\multirow{4}{*}{GRCh38} & \multirow{4}{*}{50} & \multirow{4}{*}{100} & \multirow{4}{*}{0} & Std-Multicore & 147.255 & 82.016 & 34.009 \\
+&&&& BPL-Multicore & 139.468 & 75.447 & 37.006 \\
+\arrayrulecolor{lightgray}\cmidrule{5-8}\arrayrulecolor{black}
+&&&& BPL-PiM & 10.904 & 18.092 & 8.718 \\
+&&&& SDK-PiM & 10.344 & 17.24 & 8.333 \\
+\midrule
+\multirow{4}{*}{GRCh38} & \multirow{4}{*}{50} & \multirow{4}{*}{1} & \multirow{4}{*}{5} & Std-Multicore & 2.507 & 5.314 & 3.852 \\
+&&&& BPL-Multicore & 2.455 & 4.778 & 3.79 \\
+\arrayrulecolor{lightgray}\cmidrule{5-8}\arrayrulecolor{black}
+&&&& BPL-PiM & 1.651 & 2.304 & 1.638 \\
+&&&& SDK-PiM & 1.305 & 1.986 & 1.353 \\
+\midrule
+\multirow{4}{*}{GRCh38} & \multirow{4}{*}{50} & \multirow{4}{*}{100} & \multirow{4}{*}{5} & Std-Multicore & 208.504 & 510.858 & 343.22 \\
+&&&& BPL-Multicore & 199.283 & 456.502 & 343.321 \\
+\arrayrulecolor{lightgray}\cmidrule{5-8}\arrayrulecolor{black}
+&&&& BPL-PiM & 83.024 & 153.039 & 95.278 \\
+&&&& SDK-PiM & 79.882 & 147.772 & 91.645 \\
+\midrule
+\multirow{4}{*}{UHGG} & \multirow{4}{*}{20} & \multirow{4}{*}{100} & \multirow{4}{*}{0} & Std-Multicore & 551.344 & 298.103 & 142.182 \\
+&&&& BPL-Multicore & 512.282 & 267.182 & 149.261 \\
+\arrayrulecolor{lightgray}\cmidrule{5-8}\arrayrulecolor{black}
+&&&& BPL-PiM & 35.867 & 57.836 & 20.858 \\
+&&&& SDK-PiM & 33.51 & 55.264 & 20.301 \\
+
+\bottomrule
+    \end{tabular}
+\end{table}
+
+\paragraph{Source code} The implementations are publicly available at \url{https://gitlab.inria.fr/pim/org.pim.pmatch-bpl} (GNU AGPLv3).

@@ -1,0 +1,102 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+
+\usepackage[T1]{fontenc}
+\usepackage{outlines}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{ulem}
+\usepackage{soul}
+\setstcolor{red}
+\usepackage{listings}
+\usepackage{colortbl}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage{xcolor}
+\usepackage[textwidth=14cm]{geometry}
+\usepackage{hyperref}
+\usepackage{xltabular}
+\usepackage{needspace}
+
+\usepackage{minted}
+\definecolor{bg}{rgb}{.9, .9, .9}
+\newcommand{\bpl}{{BioPim Library} }
+\newcommand{\BPL}{{BPL} }
+\newcommand{\UPMEM}{{UPMEM} }
+\newcommand{\PIM}{{PIM} }
+\newcommand{\eg}{e.g. }
+\newcommand{\cxx}[1]{\textsf{#1}}
+
+%New colors defined below
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+%Code listing style named "mystyle"
+\lstdefinestyle{mystyle}{
+  backgroundcolor=\color{backcolour}, commentstyle=\color{codegreen},
+  keywordstyle=\color{magenta},
+  numberstyle=\tiny\color{codegray},
+  stringstyle=\color{codepurple},
+  basicstyle=\ttfamily\footnotesize,
+  breakatwhitespace=false,         
+  breaklines=true,                 
+  captionpos=b,                    
+  keepspaces=true,                 
+  numbers=left,                    
+  numbersep=5pt,                  
+  showspaces=false,                
+  showstringspaces=false,
+  showtabs=false,                  
+  tabsize=2
+}
+\lstset{style=mystyle}
+
+
+\title{Developing algorithms with the BioPiM Library}
+\author{E. Drezen$^1$, F. De Moor$^2$, M. Mognol$^2$, D. Lavenier$^2$\\ 
+~\\
+$^1$Pasteur Institute, Paris -- $^2$CNRS-IRISA, Rennes\\
+France}
+
+\date{February 2026}
+
+\begin{document}
+
+\maketitle
+
+
+
+\section{Introduction}
+
+\input{intro.tex}
+
+%\section{Design of the BioPiM Library}
+
+%\input{design}
+
+\section{Workloads}
+
+\input{workloads/bfs}
+
+\input{workloads/mapping.tex}
+
+\input{workloads/conclud.tex}
+
+\input{workloads/sort.tex}
+
+\input{workloads/mash.tex}
+
+\input{workloads/pang.tex}
+
+\input{workloads/pmatch.tex}
+
+\input{workloads/rematch.tex}
+
+\newpage
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}

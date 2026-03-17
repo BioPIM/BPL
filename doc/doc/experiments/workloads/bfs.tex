@@ -1,0 +1,54 @@
+\subsection{Bloom filters library for large batches of items}
+\label{sec:bfs}
+
+\paragraph{Presentation}
+BFlib is a Bloom filters library aimed at storing and querying large chunks of elements at once.
+Instead of one big array, the library uses a collection of smaller filters.
+The library is specifically designed to run with the Processing-in-Memory hardware from UPMEM, in which case the many filters actually reside on different memory banks.
+Efficient parallel processing can thus be performed to execute large batches of insertions or lookups.
+We re-implement this processing using the BPL library.
+
+\paragraph{Limitations encountered} Since we execute insertions and lookups in batches, the filters need to exist in memory across several executions.
+However, the BPL does not support such feature at the moment.
+Therefore, we had to design an additional class to manage persistent storage and implement it for all architectures supported by the BPL.
+For UPMEM, the persistent data block is reserved in the MRAM of each DPU.
+As for Multicore, we allocate all data blocks required, store them in a vector, and adds an index argument to the task so that each instance can retrieve its assigned block.
+
+\paragraph{Benchmarks} We consider Bloom filters using 8 hash functions, and a varying size (128 KiB or 1 MiB).
+For PiM implementations, we allocate 8 ranks, i.e. 512 processing units.
+One benchmark consists of inserting a varying number of items (10M or 100M), and then querying all the inserted items.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Results of the Bloom filters benchmarks}
+    \label{tab:bflib-results}
+    \begin{tabular}{lrrrrrr}
+    \toprule
+     & & & \multicolumn{2}{c}{Multicore time (s)} & \multicolumn{2}{c}{PiM time (s)} \\
+    \cmidrule(l{3pt}r{3pt}){4-5}\cmidrule(l{3pt}r{3pt}){6-7}
+    & Filter size & \#items & Standard* & BPL & SDK & BPL \\
+    \midrule
+    \multirow{4}{*}{Insertions} & 128 MiB & 10M & 0.22 & 0.56 & 0.13 & 0.11 \\
+    & 128 MiB & 100M & 1.49 & 4.64 & 0.66 & 0.68 \\
+    & 1 GiB & 10M & 0.39 & 0.84 & 0.13 & 0.11 \\
+    & 1 GiB & 100M & 2.24 & 5.56 & 0.66 & 0.68 \\
+    \midrule
+    \multirow{4}{*}{Lookups} & 128 MiB & 10M & 0.25 & 0.41 & 0.27 & 0.28 \\
+    & 128 MiB & 100M & 2.26 & 3.06 & 2.13 & 2.26 \\
+    & 1 GiB & 10M & 0.38 & 0.38 & 0.27 & 0.28 \\
+    & 1 GiB & 100M & 2.89 & 2.94 & 2.13 & 2.81 \\
+    \bottomrule
+    \end{tabular}
+    \\ \vspace{0.3em}
+    {\scriptsize *Uses a single big filter and not the many small filters approach}
+\end{table}
+
+\paragraph{Results} We present the results in \tablename~\ref{tab:bflib-results}.
+The Standard Multicore implementation appears faster than the BPL Multicore version, due to being less memory-bound.
+Indeed, it handles items one at a time instead of regrouping them in batches and processing them altogether.
+Batching is beneficial with the PiM architecture to minimize the overhead of transferring data between the main memory and the small memory banks, but this purpose is absent on Multicore.
+Implementing a program on several architectures at once is a great perk of the BPL, but this comes with a caveat: it forces to use the same parallelization scheme for both Multicore and PiM, which is not necessarily the best choice performance-wise.
+Regarding PiM, the BPL version has similar execution times to the SDK program.
+
+\paragraph{Source code} The BPL implementation is publicly available at \url{https://gitlab.inria.fr/pim/org.pim.bflib-bpl} (GNU AGPLv3).
+The original Standard Multicore and SDK implementations are available at \url{https://gitlab.inria.fr/pim/org.pim.bloomfilters} (GNU AGPLv3).

@@ -1,0 +1,96 @@
+\subsection{Regular expressions matching}
+\label{sec:rematch}
+
+\paragraph{Presentation}
+
+In Section~\ref{sec:pmatch}, we explored the matching of simple patterns made of an exact string and possibly a few single-letter wildcards.
+We now consider a more complex case with the matching of regular expressions.
+These allow for instance for wildcards of any length, or the repetition of a group of letters.
+To perform a scan of a reference text and find matching occurrences of an input regular expression, we use the Thompson's construction algorithm~\cite{Thompson1968} that relies on a nondeterministic finite automaton (NFA).
+
+This automaton has transitions labeled by letters but also $\epsilon$-transitions, meaning a state can have several next possible states, hence its nondeterministic nature.
+The traversal consists of maintaining a stack of pointers to states in the automaton, and progressing all these pointers at the same time when reading a reference letter, possibly creating new pointers when facing multiple possible transitions.
+We also store with the pointers an index to remember at which position in the reference the traversal of this pointer has started.
+If a pointer cannot progress further, it gets deleted.
+When a pointer however reaches the final state, we record a match at the reference index stored with the pointer.
+For each letter in the reference, we add a pointer to the starting state of the automaton to the stack, to try to accept the regular expression at every possible position in the reference.
+
+We implement this algorithm with the BPL library.
+The pre-processing (i.e. building the NFA) is performed by the main processor.
+The reference text is split over all processing units, with some overlapping between the fragments.
+Wildcards of any length thus get limited by the overlapping length, which we set to 128 letters.
+Each task receives a reference fragment, the NFA data, and scans its fragment to apply the algorithm and report the hit positions.
+
+We also write an equivalent implementation that uses the main processor only (denoted Std-Multicore), and another that relies on the UPMEM's SDK (denoted SDK-PiM).
+ 
+\paragraph{Limitations encountered}
+
+None: the code can be fully architecture-agnostic.
+
+\paragraph{Benchmarks}
+
+To compare the performances of a given algorithm depending on the target architecture and implementation, we sample a reference genome and generate datasets of regular expressions of various characteristics.
+To do so, we pick exact patterns in the genome and alter them to introduce a total of $W$ meta characters such as \texttt{*}, \texttt{+} or \texttt{?}, the original pattern having to be one possible instance of the resulting regular expression.
+For instance, \texttt{CACACTGTTCTGTCCCTCCG} may become \texttt{C(AC)*TGT*CTGTCCCTC+G}.
+We consider $W$ equal to 0, 5 and 10.
+Also, we denote by $L$ the length of the original exact pattern, either 20 or 50 nucleotides.
+In a dataset, we aggregate a total $N$ of 10 regular expressions.
+We consider two reference genomes: the human genome GRCh38~\cite{HG38} and the human gut microbiome genome UHGG~\cite{UHGG}.
+
+\paragraph{Results} We present the execution time performances of all datasets in \tablename~\ref{tab:rematch_results}.
+
+We see that BPL-Multicore exhibits similar execution times to Std-Multicore for all the GRCh38 datasets.
+The overhead appear however a bit less negligible when matching against the UHGG genome which is four times bigger than GRCh38.
+On the other hand, BPL-PiM is consistently slightly slower than SDK-PiM.
+
+
+\begin{table}
+    \centering
+    \caption{Results of the regular expressions matching benchmarks}
+    \label{tab:rematch_results}
+    \begin{tabular}{lllllr}
+    \toprule
+        Reference & $L$ & $N$ & $M$ & Architecture & Thompson NFA (s) \\
+
+\midrule
+\multirow{4}{*}{GRCh38} & \multirow{4}{*}{20} & \multirow{4}{*}{10} & \multirow{4}{*}{0} & Std-Multicore & 16.894 \\
+&&&& BPL-Multicore & 17.759 \\
+\arrayrulecolor{lightgray}\cmidrule{5-6}\arrayrulecolor{black}
+&&&& BPL-PiM & 5.068 \\
+&&&& SDK-PiM & 4.202 \\
+\midrule
+\multirow{4}{*}{GRCh38} & \multirow{4}{*}{50} & \multirow{4}{*}{10} & \multirow{4}{*}{0} & Std-Multicore & 17.282 \\
+&&&& BPL-Multicore & 18.042 \\
+\arrayrulecolor{lightgray}\cmidrule{5-6}\arrayrulecolor{black}
+&&&& BPL-PiM & 5.097 \\
+&&&& SDK-PiM & 4.217 \\
+\midrule
+\multirow{4}{*}{GRCh38} & \multirow{4}{*}{20} & \multirow{4}{*}{10} & \multirow{4}{*}{5} & Std-Multicore & 17.733 \\
+&&&& BPL-Multicore & 18.602 \\
+\arrayrulecolor{lightgray}\cmidrule{5-6}\arrayrulecolor{black}
+&&&& BPL-PiM & 4.890 \\
+&&&& SDK-PiM & 3.955 \\
+\midrule
+\multirow{4}{*}{GRCh38} & \multirow{4}{*}{50} & \multirow{4}{*}{10} & \multirow{4}{*}{5} & Std-Multicore & 20.097 \\
+&&&& BPL-Multicore & 20.953 \\
+\arrayrulecolor{lightgray}\cmidrule{5-6}\arrayrulecolor{black}
+&&&& BPL-PiM & 6.142 \\
+&&&& SDK-PiM & 4.644 \\
+\midrule
+\multirow{4}{*}{GRCh38} & \multirow{4}{*}{50} & \multirow{4}{*}{10} & \multirow{4}{*}{10} & Std-Multicore & 19.662 \\
+&&&& BPL-Multicore & 20.572 \\
+\arrayrulecolor{lightgray}\cmidrule{5-6}\arrayrulecolor{black}
+&&&& BPL-PiM & 6.603 \\
+&&&& SDK-PiM & 5.095 \\
+\midrule
+\multirow{4}{*}{UHGG} & \multirow{4}{*}{50} & \multirow{4}{*}{10} & \multirow{4}{*}{10} & Std-Multicore & 83.887 \\
+&&&& BPL-Multicore & 87.293 \\
+\arrayrulecolor{lightgray}\cmidrule{5-6}\arrayrulecolor{black}
+&&&& BPL-PiM & 29.583 \\
+&&&& SDK-PiM & 25.709 \\
+
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+\paragraph{Source code} The implementations are publicly available at \url{https://gitlab.inria.fr/pim/org.pim.rematch-bpl} (GNU AGPLv3).

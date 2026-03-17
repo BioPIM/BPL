@@ -1,0 +1,120 @@
+\subsection{Sort}
+\label{sec:sort}
+
+\paragraph{Presentation}
+Sort workloads consist of a series of independent applications of small sorting algorithms.
+In this implementation, the size of the data to be sorted is fixed, as the primary objective is benchmarking against CPU and BPL implementations.
+Each application sorts a large number of independent arrays.
+
+\paragraph{Limitations encountered}
+The BPL code executed on CPU and PiM is identical; however, the application was originally designed to run on PiM.
+As a result, the applications are constrained by the maximum array size that can be sorted.
+
+\paragraph{PiM specifics}
+In addition to the BPL version, SDK-based implementations are also provided, as for other workloads.
+No special instructions are used.
+The SDK versions are available in two variants: one relying on an automatic cache between MRAM and WRAM (SDK-C), implemented in this work using an RRIP-based policy, and another using explicit manual data transfers(SDK).
+
+\paragraph{Benchmarks}
+Uniformly distributed random arrays of \texttt{int32} values are used as input.
+The number of arrays being sorted depends on the number of ranks (real or emulated), scaling up to 40{,}960.
+The array size is limited by the MRAM capacity and the MRAM memory overhead introduced by BPL, and all benchmarks are conducted using the maximum supported size of 131{,}072 elements.
+Each benchmark is executed five times, and the reported results correspond to the mean value.
+To give CPU implementations the best possible performance, applications are compiled with the flags \texttt{-march=native} and \texttt{-O3}.
+Additionally, an Intel-optimized version of Quicksort is included (indicated in parentheses).
+
+
+
+\paragraph{Results}
+
+\begin{table}[!t]
+\centering
+{\footnotesize
+\renewcommand{\arraystretch}{0.85}
+\setlength{\aboverulesep}{1pt}
+\setlength{\belowrulesep}{2pt}
+\setlength{\cmidrulewidth}{0.1pt}
+\setlength{\cmidrulekern}{0pt}
+
+\caption{Aggregated results of sorting benchmark across all ranks and array sizes}
+\label{tab:sort-results-all}
+
+\begin{tabular}{lllrrrrr}
+\toprule
+& & & \multicolumn{2}{c}{Multicore time (s)} & \multicolumn{3}{c}{PiM time (s)} \\
+\cmidrule(l{3pt}r{3pt}){4-5}\cmidrule(l{3pt}r{3pt}){6-8}
+Rank & ARR\_SIZE & Algorithm & Standard & BPL & SDK & SDK-C & BPL \\
+\midrule
+    \multirow{9}{*}{1} & \multirow{3}{*}{131072} & Quicksort & 0.5 (0.1) & 0.5 & 4.9 & 5.9 & 8.2 \\
+     &  & Heapsort  & 0.7 & 0.7 & 25.4 & 19.9 & 25.0 \\
+     &  & Radixsort & 0.2 & 0.2 & 3.2 & 4.3 & 6.4 \\
+\cmidrule(l{3pt}r{3pt}){2-8}
+     & \multirow{3}{*}{262144} & Quicksort & 1.0 (0.2) & 1.0 & 10.1 & 12.7 & 17.6 \\
+     &  & Heapsort  & 1.6 & 1.6 & 54.1 & 42.3 & 52.1 \\
+     &  & Radixsort & 0.5 & 0.7 & 6.5 & 8.3 & NA \\
+\cmidrule(l{3pt}r{3pt}){2-8}
+     & \multirow{3}{*}{524288} & Quicksort & 2.1 (0.6) & 2.1 & 21.3 & 26.8 & NA \\
+     &  & Heapsort  & 3.3 & 4.3 & 115.0 & 89.4 & NA \\
+     &  & Radixsort & 1.4 & 1.5 & 13.0 & 16.5 & NA \\
+\midrule 
+    \multirow{9}{*}{10} & \multirow{3}{*}{131072} & Quicksort & 4.8 (1.0) & 4.7 & 6.5 & 7.4 & 12.3 \\
+     &  & Heapsort  & 7.0 & 6.9 & 26.9 & 21.4 & 28.4 \\
+     &  & Radixsort & 1.5 & 1.8 & 4.8 & 5.7 & 10.2 \\
+\cmidrule(l{3pt}r{3pt}){2-8}
+     & \multirow{3}{*}{262144} & Quicksort & 10.1 (2.5) & 9.8 & 13.2 & 15.5 & 24.8 \\
+     &  & Heapsort  & 15.9 & 15.1 & 57.2 & 45.4 & 59.4 \\
+     &  & Radixsort & 6.2 & 5.9 & 9.6 & 11.2 & NA \\
+\cmidrule(l{3pt}r{3pt}){2-8}
+     & \multirow{3}{*}{524288} & Quicksort & 21.0 (6.8) & 20.3 & 27.5 & 32.9 & NA \\
+     &  & Heapsort  & 48.0 & 42.4 & 121.5 & 95.4 & NA \\
+     &  & Radixsort & 14.7 & 13.8 & 19.0 & 22.6 & NA \\
+\midrule
+    \multirow{9}{*}{20} & \multirow{3}{*}{131072} & Quicksort & 9.6 (1.8) & 9.4 & 7.2 & 8.2 & 14.4 \\
+     &  & Heapsort  & 13.9 & 13.8 & 27.7 & 22.2 & 30.3 \\
+     &  & Radixsort & 2.9 & 3.4 & 5.6 & 6.5 & 12.4 \\
+\cmidrule(l{3pt}r{3pt}){2-8}
+     & \multirow{3}{*}{262144} & Quicksort & 20.2 (4.9) & 19.6 & 14.4 & 16.8 & 29.0 \\
+     &  & Heapsort  & 31.8 & 30.1 & 58.6 & 46.6 & 63.7 \\
+     &  & Radixsort & 11.9 & 11.5 & 10.8 & 12.5 & NA \\
+\cmidrule(l{3pt}r{3pt}){2-8}
+     & \multirow{3}{*}{524288} & Quicksort & 41.9 (13.2) & 40.5 & 29.2 & 34.5 & NA \\
+     &  & Heapsort  & 95.4 & 85.5 & 123.5 & 97.3 & NA \\
+     &  & Radixsort & 29.3 & 27.7 & 20.8 & 24.5 & NA \\
+\midrule
+    \multirow{9}{*}{30} & \multirow{3}{*}{131072} & Quicksort & 14.4 (2.8) & 14.0 & 8.2 & 9.1 & 16.8 \\
+     &  & Heapsort  & 20.8 & 20.6 & 28.5 & 22.9 & 32.8 \\
+     &  & Radixsort & 4.4 & 5.1 & 6.5 & 7.3 & 14.6 \\
+\cmidrule(l{3pt}r{3pt}){2-8}
+     & \multirow{3}{*}{262144} & Quicksort & 30.2 (7.2) & 29.3 & 15.8 & 18.2 & 34.3 \\
+     &  & Heapsort  & 46.9 & 45.0 & 59.8 & 47.8 & 68.3 \\
+     &  & Radixsort & 17.7 & 17.1 & 12.2 & 14.0 & NA \\
+\cmidrule(l{3pt}r{3pt}){2-8}
+     & \multirow{3}{*}{524288} & Quicksort & 62.0 (19.9) & 60.6 & 31.7 & 37.2 & NA \\
+     &  & Heapsort  & 102.7 & 126.6 & 126.0 & 99.9 & NA \\
+     &  & Radixsort & 43.9 & 40.7 & 23.8 & 27.2 & NA \\
+\midrule
+    \multirow{9}{*}{40} & \multirow{3}{*}{131072} & Quicksort & 19.2 (3.7) & 18.7 & 8.8 & 9.9 & 19.3 \\
+     &  & Heapsort  & 27.8 & 27.5 & 29.2 & 23.7 & 35.0 \\
+     &  & Radixsort & 5.9 & 7.0 & 7.2 & 8.1 & 17.0 \\
+\cmidrule(l{3pt}r{3pt}){2-8}
+     & \multirow{3}{*}{262144} & Quicksort & 40.3 (9.5) & 39.0 & 17.3 & 19.8 & 38.3 \\
+     &  & Heapsort  & 63.5 & 60.0 & 61.1 & 49.0 & 73.1 \\
+     &  & Radixsort & 23.9 & 22.9 & 13.7 & 15.5 & NA \\
+\cmidrule(l{3pt}r{3pt}){2-8}
+     & \multirow{3}{*}{524288} & Quicksort & 82.6 (26.2) & 80.8 & 34.5 & 40.3 & NA \\
+     &  & Heapsort  & 136.8 & 167.9 & 128.4 & 102.8 & NA \\
+     &  & Radixsort & 58.2 & 55.4 & 26.6 & 29.7 & NA \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+We report the results of the sorting benchmark in Table~\ref{tab:sort-results-all}.
+On both targets, the BPL implementation is consistently slower than the architecture-specific versions.
+On the PiM architecture, the BPL version exhibits a significant overhead compared to the SDK and SDK-C implementations for all sorting algorithms.
+For instance, in the case of Quicksort, the BPL version is almost four times slower than the SDK version.
+This overhead will be further analyzed once execution traces are available.
+
+On the Multicore target, similar trends are observed.
+The BPL version remains slower than the Standard implementation for all algorithms.
+The current implementation suffers from unnecessary memory copies, even though the data are already accessible to the CPU cores.
+Overall, these results highlight the performance cost of maintaining portability and architecture-agnosticism with BPL.

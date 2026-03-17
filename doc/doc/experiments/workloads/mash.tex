@@ -1,0 +1,88 @@
+\subsection{Sketches comparison}
+\label{sec:mash}
+
+\paragraph{Presentation}
+
+We present here a benchmark comparing sketches.
+As a reminder,, 
+Comparing two genomic sequences can therefore be approximated by comparing two sketches, that is, two ordered sequences of integers of the same size $N$,
+which can be performed with a complexity of $O(N)$. 
+As a result, a comparison score is produced, making it possible to estimate the similarity between the two genomic sequences.
+
+\paragraph{Limitations encountered} 
+For simplicity, the PIM version using the UPMEM SDK only allows certain sizes of the reference and query databases to be used.
+
+\paragraph{Benchmarks} 
+For this benchmark, we consider two databases: a reference database containing $R$ sketches, and a query database containing $Q$ sketches. The benchmark consists of performing the $R \cdot Q$ comparisons for each (ref, qry) pair. 
+We will use sketches of $10,000$ integers, each integer encoded on $4$ bytes.
+
+We choose to vary the sizes $R$ and $Q$ of the reference and query databases, as well as the number of compute units (threads for multicore and ranks for PIM).
+In its largest configuration, the reference database contains 245,760 sketches of 10,000 integers of 4 bytes each, totaling over 9 GB of data.
+For each configuration (reference database size, query database size), the list of scores is computed. A checksum of these scores is then calculated, and we verify that each implementation returns the same checksum for a given configuration, regardless of the number of compute units used.
+
+\begin{table}
+\caption{Results of the sketches comparison benchmark}
+\label{tab:mash-results}
+\begin{tabular}{lll|rr|rr}
+\toprule
+ &  &  & \multicolumn{4}{r}{duration} \\
+ &  & type & 1.MC std & 2.MC BPL & 3.PIM SDK & 4.PIM BPL \\
+ref & qry & nbunits &  &  &  &  \\
+\midrule
+\multirow[t]{8}{*}{\textbf{24576}} & \multirow[t]{4}{*}{\textbf{16}} & \textbf{3} & 1.79 & 2.11 & 1.31 & 1.07 \\
+\textbf{} & \textbf{} & \textbf{6} & 0.93 & 1.10 & 0.71 & 0.59 \\
+\textbf{} & \textbf{} & \textbf{12} & 0.48 & 0.57 & 0.41 & 0.37 \\
+\textbf{} & \textbf{} & \textbf{24} & 0.34 & 0.38 & 0.26 & 0.24 \\
+\cline{2-7}
+\textbf{} & \multirow[t]{4}{*}{\textbf{128}} & \textbf{3} & 13.50 & 16.14 & 9.61 & 7.64 \\
+\textbf{} & \textbf{} & \textbf{6} & 7.07 & 8.49 & 4.88 & 3.93 \\
+\textbf{} & \textbf{} & \textbf{12} & 3.66 & 4.37 & 2.53 & 2.10 \\
+\textbf{} & \textbf{} & \textbf{24} & 2.33 & 2.63 & 1.39 & 1.19 \\
+\cline{1-7} \cline{2-7}
+\multirow[t]{8}{*}{\textbf{122880}} & \multirow[t]{4}{*}{\textbf{16}} & \textbf{3} & 8.53 & 10.40 & 6.71 & 5.38 \\
+\textbf{} & \textbf{} & \textbf{6} & 4.50 & 5.73 & 3.44 & 2.82 \\
+\textbf{} & \textbf{} & \textbf{12} & 2.32 & 2.77 & 1.88 & 1.57 \\
+\textbf{} & \textbf{} & \textbf{24} & 1.56 & 1.75 & 1.11 & 0.95 \\
+\cline{2-7}
+\textbf{} & \multirow[t]{4}{*}{\textbf{128}} & \textbf{3} & 67.22 & 80.53 & 47.83 & 37.97 \\
+\textbf{} & \textbf{} & \textbf{6} & 35.42 & 42.27 & 24.15 & 19.26 \\
+\textbf{} & \textbf{} & \textbf{12} & 18.35 & 21.88 & 12.29 & 9.84 \\
+\textbf{} & \textbf{} & \textbf{24} & 9.71 & 11.66 & 6.41 & 5.11 \\
+\cline{1-7} \cline{2-7}
+\multirow[t]{8}{*}{\textbf{245760}} & \multirow[t]{4}{*}{\textbf{16}} & \textbf{3} & 17.79 & 20.77 & 13.70 & 10.89 \\
+\textbf{} & \textbf{} & \textbf{6} & 9.33 & 11.09 & 6.88 & 5.68 \\
+\textbf{} & \textbf{} & \textbf{12} & 4.64 & 5.79 & 3.92 & 3.23 \\
+\textbf{} & \textbf{} & \textbf{24} & 2.81 & 3.42 & 2.21 & 1.87 \\
+\cline{2-7}
+\textbf{} & \multirow[t]{4}{*}{\textbf{128}} & \textbf{3} & 134.47 & 161.01 & 95.88 & 76.03 \\
+\textbf{} & \textbf{} & \textbf{6} & 70.83 & 84.50 & 48.19 & 38.42 \\
+\textbf{} & \textbf{} & \textbf{12} & 36.70 & 43.73 & 24.56 & 19.55 \\
+\textbf{} & \textbf{} & \textbf{24} & 19.28 & 22.73 & 12.63 & 10.06 \\
+\cline{1-7} \cline{2-7}
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\paragraph{Results} We present the results in \tablename~\ref{tab:mash-results}. The four implementations tested are:
+\begin{enumerate}
+\item \textbf{MC std}: the multicore implementation using standard threads; The {BS::thread\_pool} library is used to simplify thread management
+\item \textbf{MC BPL}: the multicore implementation using the BPL
+\item \textbf{PIM SDK}: an implementation directly using the UPMEM SDK; The reading of the reference and query databases is optimized using a local cache to minimize WRAM/MRAM transfers.
+\item \textbf{PIM BPL}: the PIM implementation using the BPL
+\end{enumerate}
+
+As usual, there is actually a single BPL implementation, executed on both a multicore architecture and a PIM architecture. 
+For this implementation, the reference database is partitioned into $K$ parts, with each thread or tasklet handling its own partition. The sketches from the query database are thus compared to each of these partitions.
+
+For both PIM versions (SDK UPMEM and BPL) and for a fair comparison, it should be noted that the measured time does not include the duration of DPU allocation/deallocation.
+
+Regarding the two multicore versions, we observe that the BPL version is slightly slower than the standard version, regardless of the configuration. This difference can be explained by two reasons. First, the data partitioning may be more advantageous for the standard version than for the multicore version, resulting in fewer cache misses and therefore fewer memory reloads. Second, the generic nature of the BPL version involves certain design and implementation choices that can sometimes prove less efficient than a more direct implementation.
+
+For the two PIM versions, we observe slightly better performance for the BPL version. This result may seem counterintuitive, since the SDK version is conceptually close to what the BPL can produce in this example, notably with the same data partitioning. The compilation options for both versions are also equivalent for generating the DPU binaries. One possible explanation is that the compiler may be able to better optimize the BPL version compared to the SDK version.
+
+We also observe that scalability is relatively good for all four versions. Since the number of compute units (i.e. threads or ranks) is doubled for each configuration, the execution time should in principle be halved, which is roughly what we observe. For example, none of the versions shows performance stagnation when the number of compute units is doubled.
+
+Finally, for an equivalent number of threads and ranks, we observe that the PIM version is approximately twice as fast as the multithreaded version, whether comparing the two SDK versions or the two PIM versions.
+
+\paragraph{Source code} The BPL implementation is publicly available at \url{https://gitlab.inria.fr/pim/org.pim.bpl/-/tree/main/test/xp/mash} (GNU AGPLv3)

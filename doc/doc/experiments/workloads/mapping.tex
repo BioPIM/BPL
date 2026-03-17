@@ -1,0 +1,46 @@
+\subsection{Mapping based on Hamming distance}
+\label{sec:mapping}
+
+\paragraph{Presentation}MiMyCS is a software that performs reference-based lossless compression of next-gen sequencing datasets~\cite{DeMoor2024}.
+It relies on mapping each read against a known reference and storing the mapping position along with potential substitution errors.
+The mapping stage is implemented with PiM acceleration by partitioning the reference across memory banks and sending reads to map to only a few well-chosen processing units.
+We re-implement this mapping procedure using the BPL library.
+
+\paragraph{Limitations encountered} We process the reference and need to store the resulting indexing information for all future mapping executions.
+However, the BPL does not support such feature at the moment.
+Therefore, we had to design an additional class to manage persistent storage and implement it for all architectures supported by the BPL.
+For UPMEM, the persistent indexing tables are allocated in the MRAM of each DPU.
+As for Multicore, we allocate all tables required, store them in a vector, and adds an index argument to the task so that each instance can retrieve its assigned tables.
+
+\paragraph{PiM specifics} To perform the Hamming distance computations as efficiently as possible on the UPMEM architecture, we write manually a few lines of assembly instructions.
+This part of the task thus uses target-specific code.
+
+\paragraph{Benchmarks} We consider a real whole genome sequencing dataset obtained with the Illumina technology, known as accession code SRR14724532 on the European Nucleotide Archive portal.
+We map this dataset against the human genome GRCh38.
+For PiM, we use 8 ranks as this is the minimum required to fit the entire reference genome across all memory banks.
+We report the execution time of the two stages: indexing the reference, and mapping all the reads of the dataset.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Results of the mapping benchmark}
+    \label{tab:mapping-results}
+    \begin{tabular}{lrrrr}
+    \toprule
+     &\multicolumn{2}{c}{Multicore time (s)} & \multicolumn{2}{c}{PiM time (s)} \\
+    \cmidrule(l{3pt}r{3pt}){2-3}\cmidrule(l{3pt}r{3pt}){4-5}
+    & Standard & BPL & SDK & BPL \\
+    \midrule
+    Indexing reference & 33.1 & 49.4 & 20.4 & 34.2 \\
+    Mapping reads & 104.6 & 142.2 & 59.1 & 92.8 \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+\paragraph{Results} We present results in \tablename~\ref{tab:mapping-results}.
+For both the indexing and the mapping, we see that the BPL introduces a non-negligible overhead and is 63\% slower compared to the optimized SDK version.
+The overhead is for the most part due to the serialization process when retrieving the task results back to the host.
+Indeed, this involves several memory copies: first on the DPUs, to re-aggregate all the tasklets results into a single buffer, and then on the host, to reformat the transferred buffer into the expected type.
+All of these copies do not exist when using the SDK.
+
+\paragraph{Source code} The BPL implementation is publicly available at \url{https://gitlab.inria.fr/pim/org.pim.mimycs-bpl} (GNU AGPLv3).
+The original Standard Multicore and SDK implementations are available at \url{https://gitlab.inria.fr/pim/org.pim.srm} (GNU AGPLv3).

@@ -1,0 +1,47 @@
+\subsection{Primer alignment with the Smith-Waterman algorithm}
+\label{sec:conclud}
+
+\paragraph{Presentation}ConCluD is a software that relies on De-Buijn graph partitioning to generate consensus sequences in the context of DNA storage decoding~\cite{DeMoor2025}.
+The partitioning step requires to align reads against a set of known primers to find the best fitting one.
+The published version of ConCluD uses a simple approach based on the Hamming distance.
+Such computation has already been investigated in Section~\ref{sec:mapping} with the MiMyCS software.
+To explore a different scenario, we thus decide to rather re-implement with the BPL library an older version of ConCluD where the alignment step was originally done with the Smith-Waterman algorithm.
+
+\paragraph{Limitations encountered} None: the code can be fully architecture-agnostic.
+
+\paragraph{PiM specifics} To perform the alignment computations as efficiently as possible on the UPMEM architecture, we write manually a few lines of assembly code.
+In particular, we take advantage of the \texttt{cmp4} instruction to compare four bytes at once.
+This part of the task thus uses target-specific code.
+
+\paragraph{Benchmarks} We use three real datasets from the experimental evaluation in ~\cite{DeMoor2025}, namely Odeuropa, Dunhuang-d0 and HorrorMovie.
+For PiM, we use 32 ranks.
+
+\paragraph{Results} We give results in \tablename~\ref{tab:sw-results}.
+On all datasets, the BPL version is slower than the SDK version regarding the PiM architecture.
+For the largest dataset, HorrorMovie, it is 34\% slower.
+On top of the BPL overhead, another reason contributes to this observation: we had to split the work statically between tasklets to keep the program entirely architecture-agnostic with regard to the current BPL features.
+On the other hand, the SDK version uses dynamic scheduling to assign reads to tasklets on the same DPU.
+The latter is more efficient because the processing time of a read can differ drastically: some reads lead to a perfect alignment very fast, while other require to go through the whole Smith-Waterman matrix or even try several primers.
+
+Regarding the Multicore target, the BPL version is also slower, except for the Dunhuang-d0 dataset where it is faster.
+The fact that the BPL version processes reads in batches instead of one at a time, combined with the dataset having only one primer, seem to make the BPL version less memory-bound that the Standard program in this case.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Results of the primer alignment benchmark}
+    \label{tab:sw-results}
+    \begin{tabular}{lrrrr}
+    \toprule
+    & \multicolumn{2}{c}{Multicore time (s)} & \multicolumn{2}{c}{PiM time (s)} \\
+    \cmidrule(l{3pt}r{3pt}){2-3}\cmidrule(l{3pt}r{3pt}){4-5}
+    & Standard & BPL & SDK & BPL \\
+    \midrule
+    Odeuropa & 12.5 & 16.3 & 4.7 & 6.7 \\
+    Dunhuang-d0 & 37.0 & 25.8 & 12.4 & 20.6 \\
+    HorrorMovie & 262.4 & 382.0 & 92.3 & 123.9 \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+\paragraph{Source code} The BPL implementation is publicly available at \url{https://gitlab.inria.fr/pim/org.pim.conclud-bpl} (GNU AGPLv3).
+The original Standard Multicore and SDK implementations are available at \url{https://gitlab.inria.fr/pim/org.pim.dnarxiv/-/tags/experiments-bioRxiv-preprint} (GNU AGPLv3).

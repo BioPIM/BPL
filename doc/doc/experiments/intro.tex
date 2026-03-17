@@ -1,0 +1,39 @@
+Designing an efficient algorithm is often a delicate art, as it requires not only achieving a reasonably low algorithmic complexity but also making the best possible use of the hardware resources available in order to speed up the algorithm’s execution.
+
+It is therefore necessary to adopt both the researcher’s point of view for the purely algorithmic aspects and the engineer’s point of view to find the best possible implementation with respect to the chosen hardware architecture. Moreover, some hardware aspects can have a direct impact on the algorithm itself. One may cite, for example, the literature on cache-friendly algorithms, which attempt to make optimal use of memory caches in architectures featuring L1, L2, and L3 caches. Another example is the PIM architecture from UPMEM, which enables a very high level of parallelism (i.e., tens of thousands of threads running concurrently), sometimes requiring specific considerations regarding how to partition the data processed by the algorithm.
+
+Beyond these considerations, a hardware architecture always comes with a programming model that may be more or less mature and more or less easy for the developer to use. Today, hardware architectures such as multi-core processors and GPU-type graphics cards provide APIs (Application Programming Interfaces) that are widely adopted by the community and allow algorithms to be developed easily. But this is not necessarily the case for more exotic architectures, as they often stem from recent research and therefore lack historical maturity to have converged toward a simple-to-use API. This is, in practice, a crucial point, because an API that is too complex or perceived as too “low-level” can become a psychological barrier for developers who are reluctant to invest in learning a programming model deemed difficult.
+
+\subsection{The UPMEM PiM Architecture}
+
+In this regard, UPMEM’s PIM architecture is an interesting case. Its hardware characteristics can be easily understood by the developer by drawing a parallel with the familiar world of multi-core architectures. At first approximation, one can consider that UPMEM’s logical execution unit, called a “tasklet,” is equivalent to a “thread” in a multi-core environment, and that an API similar to that used for threads can be employed. Unfortunately, this represents only a small part of the problem, as the developer must take into account low-level aspects such as communication between the CPUs and the PIM memories called DPUs, specific memory-alignment constraints, and the fact that it is necessary to write not one but two programs: one for the so-called “host” running on the CPUs, and another for the DPU memories. This also impacts the compilation toolchain, since two programs must be generated, each compiled with its own compiler and specific options.
+
+Another characteristic of UPMEM is the existence of several levels of parallelization. In a multi-core context, one may see only a single level, insofar as N threads are created to work in parallel. In the case of UPMEM, there are three levels of parallelization, called rank/DPU/tasklets: one rank controls 64 DPUs, and each DPU controls 16 tasklets, the tasklet being the logical unit that performs computations. As we shall see later, this particularity must be taken into account if one wishes to propose an API close to that used in multi-core environments.
+
+Today, the API provided by UPMEM therefore exhibits intrinsic characteristics of the hardware architecture’s very design, which makes learning it and using it on a daily basis rather delicate. The remainder of this document will introduce the BPL (BioPim Library), which not only simplifies development for the UPMEM architecture by adopting a more commonly used programming model—such as the multithreaded multicore model, but also makes it possible to write code that can run both on the UPMEM architecture and on a multicore architecture, and potentially on other architectures in the future.
+
+\subsection{Overview of the BioPiM Library}
+
+A fundamental design goal of the BPL is to enable writing algorithms in a way that is almost identical to the more conventional approach one would adopt, for example through a multithreaded model on a multicore architecture.
+
+To understand the intended benefit, an example of a simple program\footnote{The source code is presented in the section that defines the LOC metric.} shows how to compute the sum of the elements of an array, using the native UPMEM C API on one side (66 lines of code) and the BPL C++ API on the other (18 lines of code).
+
+In the UPMEM case, the following points can be observed:
+\begin{itemize}
+\item the dichotomy between the program intended for the CPU and the one intended for the DPUs is clearly visible due to the use of two separate subsets of functions (“host” API for the CPU and “runtime” API for the DPUs). The developer must therefore genuinely think of their application as two distinct programs, which may feel rather unnatural.
+\item in a certain sense, the DPU program can be viewed as a function F that takes input parameters and returns a result. The role of the CPU program is to handle the low-level management of data transfers between the CPU and the DPUs to deliver the input parameters to function F, and then to retrieve the function’s output. This management resembles what one might encounter when computation occurs on a remote node in a machine cluster, or through a Remote Procedure Call (RPC) mechanism allowing the invocation of a remote procedure.
+\end{itemize}
+
+In the BPL case, we observe:
+\begin{itemize}
+\item a clear definition of the algorithm in the form of a function that takes the data as input, computes the result, and returns it as the function’s output
+\item a main function that executes the algorithm through a “launcher” object. This object is created by specifying the intent to run the function on the UPMEM architecture, and this is the only reference to the target architecture: all remaining code resembles “classical” code without any mention of low-level features.
+\end{itemize}
+
+We can already see the value of the BPL in terms of ease of algorithm development. The aspects tied to the characteristics of UPMEM’s hardware architecture are hidden inside the concept of the “launcher,” which handles all low-level operations. Furthermore, the developer remains in familiar territory and can focus more on the algorithm than on architecture-specific considerations.
+
+Regarding the build system, the BPL library uses the widely adopted CMake tool. A default configuration is provided to the developer, who therefore does not need to worry about writing scripts to generate these programs.
+
+The ambition of the BPL is thus to allow developers to quickly take advantage of the UPMEM architecture without the long learning curve associated with the native UPMEM API.
+For further details on the BPL, the reader may refer to the user documentation. In the remainder of this document, we will review several algorithms developed for a PIM architecture (1) using the low-level UPMEM SDK and (2) using the BPL; this will allow us to compare the relative performance of the two approaches. Note that in some cases, we will also be able to compare performance using a multicore architecture.
+
