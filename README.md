@@ -185,3 +185,12 @@ bpl::Launcher<bpl::ArchMulticore> launcher {16_thread};
 ```
 
 On the other hand, source code written using the UPMEM SDK would be of no use for execution on a multicore architecture, requiring a complete rewrite.
+
+## Documentation
+
+The documentation for the BPL is available [here](doc/userguide/BplUserGuide.pdf). 
+You will also find [a report](doc/experiments/BplExperiments.pdf) on the implementation of several algorithms using the BPL.
+
+## Unit tests and benchmark
+
+You will find instructions here for running [unit tests](test/unit/README.md) and for the [benchmark](test/benchmark/README.md)
