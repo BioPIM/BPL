@@ -73,7 +73,7 @@ Launcher<ArchUpmem> launcher (4_dpu);
 \end{minted}
 or 
 \begin{minted}[bgcolor=bg]{c++}
-Launcher<Multicore> launcher (16_thread);
+Launcher<ArchMulticore> launcher (16_thread);
 \end{minted}
 The constructor may take different parameters depending on the type of architecture; for more details, 
 one can refer to the corresponding API.
@@ -341,7 +341,7 @@ the same object like this (here, we assume that we know how to partition an inte
 Now, we can partition by rank by using \cxx{split} with the corresponding constant: 
 each tasklet of the same rank will receive the same data:
 \begin{minted}[bgcolor=bg]{c++}
-launcher.run<DoSomething> (split<ArchUpmem::Rank>(range);
+launcher.run<DoSomething> (split<ArchUpmem::Rank>(range));
 \end{minted}
 The data will be partitioned as follows:
 \begin{figure}[H] \centering \includegraphics[scale=0.4]{images/split2.png} \end{figure}
@@ -349,7 +349,7 @@ The data will be partitioned as follows:
 We can partition by DPU by using \cxx{split} with the corresponding constant: 
 each tasklet of the same DPU will receive the same data:
 \begin{minted}[bgcolor=bg]{c++}
-launcher.run<DoSomething> (split<ArchUpmem::DPU>(range);
+launcher.run<DoSomething> (split<ArchUpmem::DPU>(range));
 \end{minted}
 The data will be partitioned as follows:
 \begin{figure}[H] \centering \includegraphics[scale=0.4]{images/split3.png} \end{figure}
@@ -357,7 +357,7 @@ The data will be partitioned as follows:
 We can partition by tasklet by using \cxx{split} with the corresponding constant (or without specifying it since this is the default value): 
 each tasklet will receive specific data:
 \begin{minted}[bgcolor=bg]{c++}
-launcher.run<DoSomething> (split<ArchUpmem::Tasklet>(range);
+launcher.run<DoSomething> (split<ArchUpmem::Tasklet>(range));
 \end{minted}
 The data will be partitioned as follows:
 \begin{figure}[H] \centering \includegraphics[scale=0.4]{images/split4.png} \end{figure}
@@ -584,10 +584,9 @@ template<class TASK>  struct Reduce<true,TASK> {
 
 // Specialization 2: return the partial results
 template<class TASK>  struct Reduce<false,TASK> {
-    using Result_t = return_t <decltype(&TASK::operator())>;
     template<typename RESULT_RANGE>
-    auto& operator() (RESULT_RANGE& results) {
-        return results;
+    decltype(auto) operator() (RESULT_RANGE&& results)  {
+        return std::move(results);
     }
 };
 \end{minted}
@@ -911,7 +910,7 @@ can vary dynamically, it is necessary to first implement a dynamic memory alloca
 
 This second point is particularly tricky because the working memory on the DPU is the WRAM, which is very limited in size - 64 KBytes
  that must be shared among 16 tasklets, leaving only 4 KBytes of memory available per execution stack. 
- Consequently, it becomes necessary to use the larger-capacity MRAM to store data, with the MRAM serving at best as a temporary 
+ Consequently, it becomes necessary to use the larger-capacity MRAM to store data, with the WRAM serving at best as a temporary 
  cache for a small portion of the complete structure, which is therefore stored in MRAM.
 
  Using the WRAM as a cache for vector data is restrictive because the vector data of interest to the developer will not necessarily 
